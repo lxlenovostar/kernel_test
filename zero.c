@@ -1,11 +1,15 @@
 #include <linux/module.h>		// for printk()
 #include <asm/pgtable.h>                // for ZERO_PAGE
+#include <linux/mm.h>             // for struct page
 
 static int __init init_hello( void )
 {
+	int i;
+	struct page * zero_page;
 	printk( "\n   Kello, the first! \n\n" );
-	unsigned long i = 0x100;
-	printk(" the ZERO address is %p", ZERO_PAGE(&i));
+	i = 0x100;
+	zero_page = ZERO_PAGE(&i);
+	printk(" the ZERO address is %p", zero_page);
 	return	0;
 }
 
