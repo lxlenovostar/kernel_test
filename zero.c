@@ -1,7 +1,6 @@
 #include <linux/module.h>		// for printk()
-#include <linux/mm.h>             // for struct page
-#include <asm/page.h>             // for struct page
 #include <asm/pgtable.h>                // for ZERO_PAGE
+#include <linux/mm.h>             // for struct page
 
 static int __init init_hello( void )
 {
