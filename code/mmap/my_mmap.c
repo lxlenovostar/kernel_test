@@ -276,22 +276,30 @@ unsigned int hook_local_in_p(unsigned int hooknum, struct sk_buff **pskb, const 
 
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, const struct net_device *out,int (*okfn)(struct sk_buff *))
 {
+		/*
+		 *   The IPv4 header is represented by the iphdr structure.
+		 */
 		struct iphdr *iph = ip_hdr(skb);
+		/*
+		 *  The UDP header
+		 */
 		struct udphdr *uh = NULL;
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
 		int i;
 
-		/* Point into the IP datagram */ 
+		/* passs the IPv4 header */ 
 		__skb_pull(skb, ip_hdrlen(skb));
+		/* update the transport_header, which represent the transport Layer(L4) header. */
 		skb_reset_transport_header(skb);
 
 		/* judge start and host */
 		if (skb->pkt_type != PACKET_HOST){
 			goto exit_func;
 		}
-		
+	
+		/* check the length of header */	
 		if(!pskb_may_pull(skb, sizeof(struct udphdr))){ 
 			goto exit_func;
 		}
@@ -307,6 +315,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		daddr = iph->daddr;
 		sport = uh->source;
 		dport = uh->dest;
+
+		if (dport != 53) {
+			goto exit_func;    
+		}
+
 		packet_count++;
 
 		memcpy(mmap_buf + packet_count * 1024, skb->data, ulen);
