@@ -117,4 +117,5 @@ set tags=/opt/lx/kernel/kernel_test/kernel/linux/tags
 let g:winManagerWindowLayout='FileExplorer|TagList'
 nmap wm :WMToggle<cr>
 
-
+set foldmethod=indent
+map <F4> zo
