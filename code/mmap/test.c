@@ -72,42 +72,40 @@ RingBuffer *ring = NULL;
 
 int RingBuffer_read(RingBuffer *buffer, char *target, int amount)
 {
-       printf("\nwhat1");
-       if (amount > RingBuffer_available_data(buffer)){
-                printf("Not enough in the buffer: has %d, needs %d", RingBuffer_available_data(buffer), amount);
-                return -1;
-        }
- 
-       printf("what2");
-        void *result = memcpy(target, RingBuffer_starts_at(buffer), amount);
-       printf("what3");
-        if (result != target){
-                 printf("Failed to write buffer into data.");
-                 return -1;
-        }
+		if (amount > RingBuffer_available_data(buffer)){
+				printf("Not enough in the buffer: has %d, needs %d", RingBuffer_available_data(buffer), amount);
+				return -1;
+		}
 
-       printf("what4");
-       RingBuffer_commit_read(buffer, amount);
-       printf("what5");
- 
-        if(buffer->end == buffer->start) {
-                 buffer->start = buffer->end = 0;
-        }
-       printf("what6\n");
-        
-	return amount;
+		void *result = memcpy(target, RingBuffer_starts_at(buffer), amount);
+		if (result != target){
+				 printf("Failed to write buffer into data.");
+				 return -1;
+		}
+
+		RingBuffer_commit_read(buffer, amount);
+
+		if(buffer->end == buffer->start) {
+				 buffer->start = buffer->end = 0;
+		}
+
+		return amount;
 }
 
 
 void *thread_read(void *arg)
 {
 	char mem_data[SLOT];
-	int num = 2048;
+	int num = 20480;
+	int i;
 
 	while (num){
 		RingBuffer_read(ring, mem_data, SLOT);
-		mem_data[2] = '\0';
-		printf("read length is %d, start is %d, end is %d, data is %s, buffer is %p\n", ring->length, ring->start, ring->end, mem_data, ring->buffer);
+		//printf("read length is %d, start is %d, end is %d, data is %s, buffer is %p\n", ring->length, ring->start, ring->end, mem_data, ring->buffer);
+		for (i = 0; i < 46; ++i){
+				printf("%02x ", (unsigned char)*(mem_data + i));
+		}
+		printf("\n\n");
 		--num;
 		sleep(1);
 	}

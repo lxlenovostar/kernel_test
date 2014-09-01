@@ -289,41 +289,34 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		unsigned short ulen;
 		int i;
 
-		/* passs the IPv4 header */ 
-		__skb_pull(skb, ip_hdrlen(skb));
-		/* update the transport_header, which represent the transport Layer(L4) header. */
-		skb_reset_transport_header(skb);
 
-		/* judge start and host */
-		if (skb->pkt_type != PACKET_HOST){
-			goto exit_func;
-		}
-	
-		/* check the length of header */	
-		if(!pskb_may_pull(skb, sizeof(struct udphdr))){ 
+		if (skb->pkt_type != PACKET_HOST || iph->protocol != IPPROTO_UDP) {
 			goto exit_func;
 		}
 
-		if(iph->protocol != IPPROTO_UDP){
-			goto exit_func;    
-		}
-
-		uh = udp_hdr(skb);
-		ulen= skb->len - 8;
-		skb->data += 8;
+		uh = (struct udphdr *)(skb->data + iph->ihl*4);
+		ulen = ntohs(uh->len) + (iph->ihl*4);
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 		sport = uh->source;
 		dport = uh->dest;
 
+		/*
 		if (dport != 53) {
 			goto exit_func;    
 		}
+		*/
 
 		packet_count++;
 
-		memcpy(mmap_buf + packet_count * 1024, skb->data, ulen);
-
+		//memcpy(mmap_buf + packet_count * 1024, skb->data, ulen);
+		/*
+		 * write into the ring buffer
+		 **/
+		char fix_buffer[SLOT];
+		memcpy(fix_buffer, skb->data, ulen);
+		memset(fix_buffer + ulen, '\0', sizeof(fix_buffer) - ulen);
+		RingBuffer_write(ring_buffer, fix_buffer, SLOT);
 		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
 						packet_count, NIPQUAD(saddr), ntohs(sport), NIPQUAD(daddr), ntohs(dport), ulen);
 		for(i = 0 ; i < ulen; i++){
@@ -401,7 +394,10 @@ int wsmmap_init(void)
 		*/
 		ring_buffer = RingBuffer_create(mmap_buf, mmap_size - SLOT - 1);
 
-		kernel_thread(kernel_thread_write, NULL, CLONE_KERNEL);
+		//kernel_thread(kernel_thread_write, NULL, CLONE_KERNEL);
+		
+		
+		
 		//kernel_thread(kernel_thread_read, NULL, CLONE_KERNEL);
 		/*
 		int i; 
