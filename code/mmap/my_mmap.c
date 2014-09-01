@@ -55,6 +55,7 @@ typedef struct {
 
 RingBuffer * ring_buffer;
 unsigned long packet_count = 0;
+long int ts_begin = 0;
 
 static int ws_open(struct inode *inode, struct file *file)
 {
@@ -307,16 +308,26 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		}
 		*/
 
+		if (packet_count == 0) {
+				struct timeval tv;
+				do_gettimeofday(&tv);
+				ts_begin = tv.tv_sec;
+				printk("second begin is %ld\n", ts_begin);
+			}
 		packet_count++;
 
+		//memcpy(mmap_buf, skb->data, ulen);
 		//memcpy(mmap_buf + packet_count * 1024, skb->data, ulen);
+		
 		/*
 		 * write into the ring buffer
-		 **/
+		 *//*
 		char fix_buffer[SLOT];
 		memcpy(fix_buffer, skb->data, ulen);
 		memset(fix_buffer + ulen, '\0', sizeof(fix_buffer) - ulen);
-		RingBuffer_write(ring_buffer, fix_buffer, SLOT);
+		RingBuffer_write(ring_buffer, fix_buffer, SLOT);*/
+		
+		/*
 		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
 						packet_count, NIPQUAD(saddr), ntohs(sport), NIPQUAD(daddr), ntohs(dport), ulen);
 		for(i = 0 ; i < ulen; i++){
@@ -324,7 +335,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		}
 
 		printk("\n\n");
-
+		*/
 exit_func:
 	return NF_ACCEPT;
 }
@@ -347,6 +358,12 @@ static struct nf_hook_ops hook_ops[] = {
 static void wsmmap_exit(void)
 {
 		int ret;
+				
+		/* time and speed */
+		struct timeval tv;
+		do_gettimeofday(&tv);
+		long int t_second = tv.tv_sec;
+		printk("cost time  is %ld , packet_count is %d, speed is %d pkt/\sec \n", (t_second - ts_begin), packet_count, packet_count/(t_second - ts_begin));
 
 		ret = mmap_free( );
 		if(ret) {
