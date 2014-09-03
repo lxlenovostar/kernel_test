@@ -13,12 +13,14 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <asm/io.h>
+#include <linux/atomic.h>
 #include <asm/system.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>
 #include <linux/udp.h>
+#include <linux/tcp.h>
 #include <linux/in.h>
 #include <linux/version.h>
 #include <net/ip.h>
@@ -53,9 +55,14 @@ typedef struct {
 		volatile int end;
 } RingBuffer;
 
+
 RingBuffer * ring_buffer;
-unsigned long packet_count = 0;
+atomic_t packet_count;
+atomic_t drop_count;
 long int ts_begin = 0;
+rwlock_t read_lock = RW_LOCK_UNLOCKED;
+rwlock_t write_lock = RW_LOCK_UNLOCKED;
+
 
 static int ws_open(struct inode *inode, struct file *file)
 {
@@ -173,6 +180,34 @@ static const struct file_operations ws_fops ={
 		//.release = ws_release,
 };
 
+#define WORD 32  
+#define SHIFT 5 ////移动5个位,左移则相当于乘以32,右移相当于除以32取整  
+#define MASK 0x1F //16进制下的31  
+#define N 10000000  
+int bitmap[1 + N / WORD];  
+int *bitmap_addr;
+
+/* 
+ * 要进行置1位操作，必须先确定逻辑位置：
+ * 字节位置(数组下标)和位位置。
+ * 字节位置=数据/32;(采用位运算即右移5位)
+ * 位位置=数据%32;(采用位运算即跟0X1F进行与操作)。
+ * m mod n 运算，当n = 2的X次幂的时候,m mod n = m&(n-1) 
+ */  
+void set(int i) {  
+	bitmap[i >> SHIFT] |= (1 << (i & MASK));  
+}  
+
+/* 清除位操作，用&~操作符 */  
+void clear(int i) {  
+    bitmap[i >> SHIFT] &= ~(1 << (i & MASK));  
+}  
+
+/* 测试位操作用&操作符 */  
+int test(int i) {  
+    return bitmap[i >> SHIFT] & (1 << (i & MASK));  
+}  
+
 RingBuffer *RingBuffer_create(void *start_malloc, int length)
 {
 		RingBuffer *buffer = (RingBuffer *)start_malloc;
@@ -190,79 +225,32 @@ RingBuffer *RingBuffer_create(void *start_malloc, int length)
 
 int RingBuffer_write(RingBuffer *buffer, char *data, int length)
 {
-		if(RingBuffer_available_data(buffer) == 0) {
-			buffer->start = buffer->end = 0;
-		}
+	//read_lock(&read_lock);
+	if(RingBuffer_available_data(buffer) == 0) {
+		buffer->start = buffer->end = 0;
+	}
 
-		if (length > RingBuffer_available_space(buffer)){
-			printk("Not enough space: %d request, %d available", RingBuffer_available_data(buffer), length);
-			return -1;
-		}
-
-		void *result = memcpy(RingBuffer_ends_at(buffer), data, length);
-		if (result != RingBuffer_ends_at(buffer)){
-			printk("Failed to write data into buffer.");
+	if (length > RingBuffer_available_space(buffer)){
+		printk("Not enough space: %d request, %d available", RingBuffer_available_data(buffer), length);
+		//read_unlock(&read_lock);
 		return -1;
-		}
+		
+		//buffer->start = buffer->end = 0;
+	}
+	//read_unlock(&read_lock);
 
-		RingBuffer_commit_write(buffer, length);
-		return length;
-}
+	//write_lock(&write_lock);
+	void *result = memcpy(RingBuffer_ends_at(buffer), data, length);
+	if (result != RingBuffer_ends_at(buffer)){
+		printk("Failed to write data into buffer.");
+		//write_unlock(&write_lock);
+		return -1;
+	}
+	memset(RingBuffer_ends_at(buffer) + length, '\0', SLOT - length);
 
-#define RingBuffer_starts_at(B) ((B)->buffer + (B)->start)
-#define RingBuffer_commit_read(B, A) ((B)->start = ((B)->start + (A)) % (B)->length)
-int RingBuffer_read(RingBuffer *buffer, char *target, int amount)
-{
-		if (amount > RingBuffer_available_data(buffer)){
-			printk("Not enough in the buffer: has %d, needs %d\n", RingBuffer_available_data(buffer), amount);
-			return -1;
-		}
-
-		void *result = memcpy(target, RingBuffer_starts_at(buffer), amount);
-		if (result != target){
-			printk("Failed to write buffer into data.");
-			return -1;
-		}
-
-		RingBuffer_commit_read(buffer, amount);
-
-		if(buffer->end == buffer->start) {
-			buffer->start = buffer->end = 0;
-		}
-
-		return amount;
-}
-
-int kernel_thread_write(void *argc)
-{
-		char *a = "aa";
-		char fix_buffer[SLOT];
-		memcpy(fix_buffer, a, strlen(a));
-		memset(fix_buffer + strlen(a), '\0', sizeof(fix_buffer) - strlen(a));
-
-		int num = 2048;
-		while (num){
-			RingBuffer_write(ring_buffer, fix_buffer, SLOT);
-			printk("write length is %d, start is %d, end is %d\n", ring_buffer->length, ring_buffer->start, ring_buffer->end);
-			--num;
-			msleep(10);
-		}
-		return 0;
-}
-
-int kernel_thread_read(void *argc)
-{
-		char mem_data[64];
-		int num = 2;
-
-		while (num){
-			RingBuffer_read(ring_buffer, mem_data, 2);
-			mem_data[2] = '\0';
-		 	printk("read length is %d, start is %d, end is %d, data is %s\n", ring_buffer->length, ring_buffer->start, ring_buffer->end, mem_data);
-		 	--num;
-		 	msleep(10);
-		}
-		return 0;
+	RingBuffer_commit_write(buffer, length);
+	//write_unlock(&write_lock);
+	return length;
 }
 
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, 
@@ -284,60 +272,131 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		/*
 		 *  The UDP header
 		 */
-		struct udphdr *uh = NULL;
+		struct udphdr *udph = NULL;
+		struct iphdr *send_iph = NULL;
+		struct ethhdr *eth = NULL;
+		struct net_device *dev = skb->dev;
+
+		struct tcphdr *th = NULL;
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-		int i;
+		//int i;
+		//char fix_buffer[SLOT];
 
 
-		if (skb->pkt_type != PACKET_HOST || iph->protocol != IPPROTO_UDP) {
+		//if (skb->pkt_type != PACKET_HOST || iph->protocol != IPPROTO_UDP) {
+		/*if (skb->pkt_type != PACKET_HOST) {
 			goto exit_func;
 		}
-
+		*/
+		/*
 		uh = (struct udphdr *)(skb->data + iph->ihl*4);
 		ulen = ntohs(uh->len) + (iph->ihl*4);
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 		sport = uh->source;
 		dport = uh->dest;
-
-		/*
-		if (dport != 53) {
-			goto exit_func;    
-		}
 		*/
 
-		if (packet_count == 0) {
+		th = (struct tcphdr*)(skb->data + iph->ihl*4);
+		ulen = ntohs(iph->tot_len);
+		saddr = iph->saddr;
+		daddr = iph->daddr;
+		sport = th->source;
+		dport = th->dest;
+
+		if (atomic_read(&packet_count) == 0) {
 				struct timeval tv;
 				do_gettimeofday(&tv);
 				ts_begin = tv.tv_sec;
 				printk("second begin is %ld\n", ts_begin);
 			}
-		packet_count++;
+		atomic_inc(&packet_count);
 
-		//memcpy(mmap_buf, skb->data, ulen);
-		//memcpy(mmap_buf + packet_count * 1024, skb->data, ulen);
-		
+		if (ntohs(dport) == 80) {
+			
+			/*
+			 * write into the ring buffer
+			 */
+			//memcpy(fix_buffer, skb->data, ulen);
+			//memset(fix_buffer + ulen, '\0', sizeof(fix_buffer) - ulen);
+			//printk("fix_buffer %d\n", strlen(fix_buffer));
+			//if (RingBuffer_write(ring_buffer, skb->data, ulen) == ulen) {
+			memcpy(ring_buffer + SLOT, skb->data, ulen);
+			atomic_inc(&drop_count);
+
 		/*
-		 * write into the ring buffer
-		 *//*
-		char fix_buffer[SLOT];
-		memcpy(fix_buffer, skb->data, ulen);
-		memset(fix_buffer + ulen, '\0', sizeof(fix_buffer) - ulen);
-		RingBuffer_write(ring_buffer, fix_buffer, SLOT);*/
-		
+	 	* send packet 
+	 	*/
+		int eth_len, udph_len, iph_len, len;
+		eth_len = sizeof(struct ethhdr);
+		iph_len = sizeof(struct iphdr);
+		udph_len  = sizeof(struct tcphdr);
+		len	= eth_len + iph_len + udph_len;
+
+		struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
+		if (!send_skb)
+			return NF_DROP;
+
+		skb_put(skb, len);
+
+		skb_push(skb, sizeof(*udph));
+		skb_reset_transport_header(skb);
+		udph = udp_hdr(skb);
+		udph->source = dport;
+		udph->dest = sport;
+		udph->len = htons(udph_len);
+		udph->check = 0;
+		udph->check = csum_tcpudp_magic(daddr, saddr, udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
+		if (udph->check == 0)
+			udph->check = CSUM_MANGLED_0;
+
+		skb_push(skb, sizeof(*send_iph));
+		skb_reset_network_header(skb);
+		send_iph = ip_hdr(skb);
+
+		/* iph->version = 4; iph->ihl = 5; */
+		put_unaligned(0x45, (unsigned char *)send_iph);
+		send_iph->tos      = 0;
+		put_unaligned(htons(iph_len), &(send_iph->tot_len));
 		/*
+		 * IP 分片使用 
+		 * */
+		//send_iph->id       = htons(atomic_inc_return(&ip_ident));
+		send_iph->id       = 0
+		send_iph->frag_off = 0;
+		send_iph->ttl      = 64;
+		send_iph->protocol = IPPROTO_UDP;
+		send_iph->check    = 0;
+		put_unaligned(daddr, &(send_iph->saddr));
+		put_unaligned(saddr, &(send_iph->daddr));
+		send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
+
+		eth = (struct ethhdr *) skb_push(skb, ETH_HLEN);
+		skb_reset_mac_header(skb);
+		skb->protocol = eth->h_proto = htons(ETH_P_IP);
+		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
+		/*
+		 * 到时候这个对端的mac地址具体写吧！
+		 */
+		memcpy(eth->h_dest, remote_mac, ETH_ALEN);
+
+		skb->dev = dev;
+		dev_queue_xmit(skb);
+				
+		return NF_DROP;
+		}
+		/*	
 		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
 						packet_count, NIPQUAD(saddr), ntohs(sport), NIPQUAD(daddr), ntohs(dport), ulen);
 		for(i = 0 ; i < ulen; i++){
 			printk("%02x ",  (unsigned char)*((skb->data)+i));
 		}
 
-		printk("\n\n");
-		*/
-exit_func:
-	return NF_ACCEPT;
+		printk("what\n\n");*/
+
+		return NF_ACCEPT;
 }
 
 static struct nf_hook_ops hook_ops[] = {
@@ -350,7 +409,8 @@ static struct nf_hook_ops hook_ops[] = {
 		.hooknum	= NF_IP_LOCAL_IN,
 #else
 		.hook   	= hook_local_in,
-		.hooknum	= NF_INET_LOCAL_IN,
+		//.hooknum	= NF_INET_LOCAL_IN,
+		.hooknum	= NF_INET_PRE_ROUTING,
 #endif
 		},
 };
@@ -363,7 +423,7 @@ static void wsmmap_exit(void)
 		struct timeval tv;
 		do_gettimeofday(&tv);
 		long int t_second = tv.tv_sec;
-		printk("cost time  is %ld , packet_count is %d, speed is %d pkt/\sec \n", (t_second - ts_begin), packet_count, packet_count/(t_second - ts_begin));
+		printk("cost time  is %ld , packet_count is %d, all packet speed is %d pkt//sec, port hook speed is %d pkt//sec\n", (t_second - ts_begin), atomic_read(&packet_count), atomic_read(&drop_count)/(t_second - ts_begin), atomic_read(&packet_count)/(t_second - ts_begin));
 
 		ret = mmap_free( );
 		if(ret) {
@@ -386,18 +446,22 @@ free_failed:
 int wsmmap_init(void)
 {
 		int ret;
-
+		atomic_set(&packet_count, 0);
+		atomic_set(&drop_count, 0);
+		
 		ret = mmap_alloc( );
 		if(ret) {
 			printk("wsmmap: mmap alloc failed!\n");
 			goto alloc_failed;
 		}
 
+		/*
 		ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 		if (ret) {
 			printk("wsmmap: local_in hooks failed\n");
 			goto nf_failed;
 		}
+		*/
 
 		ret = register_chrdev(MAJOR_DEVICE, "wsmmap", &ws_fops);
 		if(ret) {
@@ -409,7 +473,7 @@ int wsmmap_init(void)
 		/*
 		* Initialization RingBuffer
 		*/
-		ring_buffer = RingBuffer_create(mmap_buf, mmap_size - SLOT - 1);
+		ring_buffer = RingBuffer_create(mmap_buf, mmap_size);
 
 		//kernel_thread(kernel_thread_write, NULL, CLONE_KERNEL);
 		
