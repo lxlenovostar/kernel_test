@@ -13,7 +13,9 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <asm/io.h>
-#include <linux/atomic.h>
+#include <asm/atomic.h>
+#include <asm/unaligned.h>
+#include <linux/delay.h>
 #include <asm/system.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
@@ -24,6 +26,7 @@
 #include <linux/in.h>
 #include <linux/version.h>
 #include <net/ip.h>
+#include <net/checksum.h>
 #include <linux/uaccess.h>
 #include <linux/timer.h>
 #include <linux/pid.h>
@@ -44,7 +47,7 @@
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
-unsigned long mmap_size = 4*1024*1024*20;
+unsigned long mmap_size = 4*1024;
 //unsigned long mmap_size = 4*1024;
 
 /*manage data*/
@@ -315,7 +318,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		atomic_inc(&packet_count);
 
 		if (ntohs(dport) == 80) {
-			
+			printk("get http packet num is %d\n", drop_count);	
 			/*
 			 * write into the ring buffer
 			 */
@@ -323,12 +326,15 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//memset(fix_buffer + ulen, '\0', sizeof(fix_buffer) - ulen);
 			//printk("fix_buffer %d\n", strlen(fix_buffer));
 			//if (RingBuffer_write(ring_buffer, skb->data, ulen) == ulen) {
-			memcpy(ring_buffer + SLOT, skb->data, ulen);
+			
+			//memcpy(ring_buffer + SLOT, skb->data, ulen);
 			atomic_inc(&drop_count);
 
 		/*
 	 	* send packet 
 	 	*/
+		
+		printk("what1\n");	
 		int eth_len, udph_len, iph_len, len;
 		eth_len = sizeof(struct ethhdr);
 		iph_len = sizeof(struct iphdr);
@@ -349,22 +355,21 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		udph->len = htons(udph_len);
 		udph->check = 0;
 		udph->check = csum_tcpudp_magic(daddr, saddr, udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
-		if (udph->check == 0)
-			udph->check = CSUM_MANGLED_0;
+		
+		//if (udph->check == 0)
+		//	udph->check = CSUM_MANGLED_0;
 
+		printk("what2\n");	
 		skb_push(skb, sizeof(*send_iph));
 		skb_reset_network_header(skb);
 		send_iph = ip_hdr(skb);
 
-		/* iph->version = 4; iph->ihl = 5; */
+		// iph->version = 4; iph->ihl = 5; 
 		put_unaligned(0x45, (unsigned char *)send_iph);
 		send_iph->tos      = 0;
 		put_unaligned(htons(iph_len), &(send_iph->tot_len));
-		/*
-		 * IP 分片使用 
-		 * */
 		//send_iph->id       = htons(atomic_inc_return(&ip_ident));
-		send_iph->id       = 0
+		send_iph->id       = 0;
 		send_iph->frag_off = 0;
 		send_iph->ttl      = 64;
 		send_iph->protocol = IPPROTO_UDP;
@@ -374,13 +379,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
 
 		eth = (struct ethhdr *) skb_push(skb, ETH_HLEN);
+		printk("what3\n");	
 		skb_reset_mac_header(skb);
 		skb->protocol = eth->h_proto = htons(ETH_P_IP);
 		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-		/*
-		 * 到时候这个对端的mac地址具体写吧！
-		 */
-		memcpy(eth->h_dest, remote_mac, ETH_ALEN);
+		memcpy(eth->h_dest, "00:50:56:AF:1A:AE", ETH_ALEN);
 
 		skb->dev = dev;
 		dev_queue_xmit(skb);
@@ -455,13 +458,13 @@ int wsmmap_init(void)
 			goto alloc_failed;
 		}
 
-		/*
+		
 		ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 		if (ret) {
 			printk("wsmmap: local_in hooks failed\n");
 			goto nf_failed;
 		}
-		*/
+		
 
 		ret = register_chrdev(MAJOR_DEVICE, "wsmmap", &ws_fops);
 		if(ret) {
@@ -473,7 +476,7 @@ int wsmmap_init(void)
 		/*
 		* Initialization RingBuffer
 		*/
-		ring_buffer = RingBuffer_create(mmap_buf, mmap_size);
+		//ring_buffer = RingBuffer_create(mmap_buf, mmap_size);
 
 		//kernel_thread(kernel_thread_write, NULL, CLONE_KERNEL);
 		
