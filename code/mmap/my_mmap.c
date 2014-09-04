@@ -284,6 +284,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
+
 		//int i;
 		//char fix_buffer[SLOT];
 
