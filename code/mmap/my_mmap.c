@@ -284,7 +284,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-
 		//int i;
 		//char fix_buffer[SLOT];
 
@@ -318,6 +317,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			}
 		atomic_inc(&packet_count);
 
+		printk("what0 port is %d\n", ntohs(dport));	
 		if (ntohs(dport) == 80) {
 			printk("get http packet num is %d\n", drop_count);	
 			/*
@@ -329,67 +329,69 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//if (RingBuffer_write(ring_buffer, skb->data, ulen) == ulen) {
 			
 			//memcpy(ring_buffer + SLOT, skb->data, ulen);
+			//printk("Packet %d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
+				NIPQUAD(in_aton(dest_addr)), ntohs(sport), NIPQUAD(daddr), ntohs(dport), ulen);
 			atomic_inc(&drop_count);
 
-		/*
-	 	* send packet 
-	 	*/
-		
-		printk("what1\n");	
-		int eth_len, udph_len, iph_len, len;
-		eth_len = sizeof(struct ethhdr);
-		iph_len = sizeof(struct iphdr);
-		udph_len  = sizeof(struct tcphdr);
-		len	= eth_len + iph_len + udph_len;
+			/*
+			* send packet 
+			*/
+			char *dest_addr = "192.168.109.176";
+			int eth_len, udph_len, iph_len, len;
+			eth_len = sizeof(struct ethhdr);
+			iph_len = sizeof(struct iphdr);
+			udph_len  = sizeof(struct udphdr);
+			len	= eth_len + iph_len + udph_len;
 
-		struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
-		if (!send_skb)
-			return NF_DROP;
+			struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
+			if (!send_skb)
+				return NF_DROP;
 
-		skb_put(skb, len);
-
-		skb_push(skb, sizeof(*udph));
-		skb_reset_transport_header(skb);
-		udph = udp_hdr(skb);
-		udph->source = dport;
-		udph->dest = sport;
-		udph->len = htons(udph_len);
-		udph->check = 0;
-		udph->check = csum_tcpudp_magic(daddr, saddr, udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
-		
-		//if (udph->check == 0)
-		//	udph->check = CSUM_MANGLED_0;
-
-		printk("what2\n");	
-		skb_push(skb, sizeof(*send_iph));
-		skb_reset_network_header(skb);
-		send_iph = ip_hdr(skb);
-
-		// iph->version = 4; iph->ihl = 5; 
-		put_unaligned(0x45, (unsigned char *)send_iph);
-		send_iph->tos      = 0;
-		put_unaligned(htons(iph_len), &(send_iph->tot_len));
-		//send_iph->id       = htons(atomic_inc_return(&ip_ident));
-		send_iph->id       = 0;
-		send_iph->frag_off = 0;
-		send_iph->ttl      = 64;
-		send_iph->protocol = IPPROTO_UDP;
-		send_iph->check    = 0;
-		put_unaligned(daddr, &(send_iph->saddr));
-		put_unaligned(saddr, &(send_iph->daddr));
-		send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
-
-		eth = (struct ethhdr *) skb_push(skb, ETH_HLEN);
-		printk("what3\n");	
-		skb_reset_mac_header(skb);
-		skb->protocol = eth->h_proto = htons(ETH_P_IP);
-		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-		memcpy(eth->h_dest, "00:50:56:AF:1A:AE", ETH_ALEN);
-
-		skb->dev = dev;
-		dev_queue_xmit(skb);
+			//skb_put(send_skb, len);
+			skb_reserve(send_skb, len);
+			 
+			skb_push(send_skb, sizeof(struct udphdr));
+			 
+			skb_reset_transport_header(send_skb);
+			
+			udph = udp_hdr(send_skb);
+			udph->source = dport;
+			udph->dest = dport;
+			udph->len = htons(udph_len);
+			udph->check = 0;
+			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
 				
-		return NF_DROP;
+			//if (udph->check == 0)
+			//	udph->check = CSUM_MANGLED_0;
+
+			skb_push(send_skb, sizeof(struct iphdr));
+			skb_reset_network_header(send_skb);
+			send_iph = ip_hdr(send_skb);
+
+			// iph->version = 4; iph->ihl = 5; 
+			put_unaligned(0x45, (unsigned char *)send_iph);
+			send_iph->tos      = 0;
+			put_unaligned(htons(iph_len), &(send_iph->tot_len));
+			//send_iph->id       = htons(atomic_inc_return(&ip_ident));
+			send_iph->id       = 0;
+			send_iph->frag_off = 0;
+			send_iph->ttl      = 64;
+			send_iph->protocol = IPPROTO_UDP;
+			send_iph->check    = 0;
+			put_unaligned(daddr, &(send_iph->saddr));
+			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
+			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
+			  
+			eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);
+			skb_reset_mac_header(send_skb);
+			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
+			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
+			memcpy(eth->h_dest, "00:0C:29:DC:2D:F5", ETH_ALEN);
+
+			send_skb->dev = dev;
+			dev_queue_xmit(send_skb);
+				
+			return NF_DROP;
 		}
 		/*	
 		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
