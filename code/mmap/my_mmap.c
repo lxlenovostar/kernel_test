@@ -53,6 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1024
+#define NUM 1024
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -274,6 +275,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
+		char in_buf[NUM];
+		char out_buf[NUM];
+		memset(in_buf, '0', NUM);
+
 		//int i;
 		//char fix_buffer[SLOT];
 
@@ -283,14 +288,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			goto exit_func;
 		}
 		*/
-		/*
-		uh = (struct udphdr *)(skb->data + iph->ihl*4);
-		ulen = ntohs(uh->len) + (iph->ihl*4);
-		saddr = iph->saddr;
-		daddr = iph->daddr;
-		sport = uh->source;
-		dport = uh->dest;
-		*/
 
 		th = (struct tcphdr*)(skb->data + iph->ihl*4);
 		ulen = ntohs(iph->tot_len);
@@ -298,7 +295,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		daddr = iph->daddr;
 		sport = th->source;
 		dport = th->dest;
-
+		/*
 		if (atomic_read(&packet_count) == 0) {
 				struct timeval tv;
 				do_gettimeofday(&tv);
@@ -306,7 +303,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 				//printk("second begin is %ld\n", ts_begin);
 			}
 		atomic_inc(&packet_count);
-
+		*/
 		if (ntohs(dport) == 80) {
 			//printk("get http packet num is %d\n", drop_count);	
 			/*
@@ -314,12 +311,14 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			 */
 			//if (RingBuffer_write(ring_buffer, skb->data, ulen) == ulen) {
 			
-			memcpy(mmap_buf, skb->data, ulen);
-			atomic_inc(&drop_count);
+			memcpy(mmap_buf, in_buf, NUM);
+			memcpy(out_buf, mmap_buf, NUM);
+			//atomic_inc(&drop_count);
 
 			/*
 			* send packet 
 			*/
+			
 			char *dest_addr = "192.168.99.1";
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
@@ -372,6 +371,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 
 			send_skb->dev = dev;
 			dev_queue_xmit(send_skb);
+				
 				
 			return NF_DROP;
 		}
