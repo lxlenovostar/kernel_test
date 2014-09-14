@@ -69,22 +69,9 @@ void * mmap_buf = 0;
 unsigned long mmap_size = 4*1024;
 //unsigned long mmap_size = 4*1024;
 
-/*manage data*/
-typedef struct {
-		char *buffer;
-		int length;
-		volatile int start;
-		volatile int end;
-} RingBuffer;
-
-
-RingBuffer * ring_buffer;
 atomic_t packet_count;
 atomic_t drop_count;
 long int ts_begin = 0;
-rwlock_t read_lock = RW_LOCK_UNLOCKED;
-rwlock_t write_lock = RW_LOCK_UNLOCKED;
-
 
 static int ws_open(struct inode *inode, struct file *file)
 {
@@ -202,51 +189,6 @@ static const struct file_operations ws_fops ={
 		//.release = ws_release,
 };
 
-RingBuffer *RingBuffer_create(void *start_malloc, int length)
-{
-		RingBuffer *buffer = (RingBuffer *)start_malloc;
-		buffer->length  = length + 1;
-		buffer->start = 0;
-		buffer->end = 0;
-		buffer->buffer = (char *)start_malloc + SLOT;
-		return buffer;
-}
-
-#define RingBuffer_available_data(B) ((B)->end % (B)->length - (B)->start)
-#define RingBuffer_available_space(B) ((B)->length - (B)->end - 1)
-#define RingBuffer_commit_write(B, A) ((B)->end = ((B)->end + (A)) % (B)->length)
-#define RingBuffer_ends_at(B) ((B)->buffer + (B)->end)
-
-int RingBuffer_write(RingBuffer *buffer, char *data, int length)
-{
-	//read_lock(&read_lock);
-	if(RingBuffer_available_data(buffer) == 0) {
-		buffer->start = buffer->end = 0;
-	}
-
-	if (length > RingBuffer_available_space(buffer)){
-		printk("Not enough space: %d request, %d available", RingBuffer_available_data(buffer), length);
-		//read_unlock(&read_lock);
-		return -1;
-		
-		//buffer->start = buffer->end = 0;
-	}
-	//read_unlock(&read_lock);
-
-	//write_lock(&write_lock);
-	void *result = memcpy(RingBuffer_ends_at(buffer), data, length);
-	if (result != RingBuffer_ends_at(buffer)){
-		printk("Failed to write data into buffer.");
-		//write_unlock(&write_lock);
-		return -1;
-	}
-	memset(RingBuffer_ends_at(buffer) + length, '\0', SLOT - length);
-
-	RingBuffer_commit_write(buffer, length);
-	//write_unlock(&write_lock);
-	return length;
-}
-
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, 
 								const struct net_device *out,int (*okfn)(struct sk_buff *));
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
@@ -349,14 +291,14 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 
 			// iph->version = 4; iph->ihl = 5; 
 			put_unaligned(0x45, (unsigned char *)send_iph);
-			send_iph->tos      = 0;
+			send_iph->tos = 0;
 			put_unaligned(htons(iph_len) + htons(udph_len), &(send_iph->tot_len));
 			//send_iph->id       = htons(atomic_inc_return(&ip_ident));
-			send_iph->id       = 0;
+			send_iph->id = 0;
 			send_iph->frag_off = 0;
-			send_iph->ttl      = 64;
+			send_iph->ttl = 64;
 			send_iph->protocol = IPPROTO_UDP;
-			send_iph->check    = 0;
+			send_iph->check = 0;
 			put_unaligned(daddr, &(send_iph->saddr));
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
@@ -371,7 +313,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 
 			send_skb->dev = dev;
 			dev_queue_xmit(send_skb);
-				
 				
 			return NF_DROP;
 		}
@@ -457,17 +398,7 @@ int wsmmap_init(void)
 			goto chr_failed;
 		}  	
 
-
-		/*
-		* Initialization RingBuffer
-		*/
-		//ring_buffer = RingBuffer_create(mmap_buf, mmap_size);
-
-		//kernel_thread(kernel_thread_write, NULL, CLONE_KERNEL);
 		
-		
-		
-		//kernel_thread(kernel_thread_read, NULL, CLONE_KERNEL);
 		/*
 		int i; 
 		for (i = 0; i < mmap_size; i += PAGE_SIZE){
