@@ -63,7 +63,12 @@
         ((unsigned char *)&addr)[3]
 #endif
 
+/*
+ * The dest addr.
+ */
+char *dest_addr = "192.168.99.1";
 #define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
+
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
 unsigned long mmap_size = 4*1024;
@@ -212,24 +217,18 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		struct udphdr *udph = NULL;
 		struct iphdr *send_iph = NULL;
 		struct ethhdr *eth = NULL;
-
 		struct tcphdr *th = NULL;
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
 		char in_buf[NUM];
 		char out_buf[NUM];
+
 		memset(in_buf, '0', NUM);
 
-		//int i;
-		//char fix_buffer[SLOT];
-
-
-		//if (skb->pkt_type != PACKET_HOST || iph->protocol != IPPROTO_UDP) {
-		/*if (skb->pkt_type != PACKET_HOST) {
-			goto exit_func;
+		if (iph->protocol != IPPROTO_TCP) {
+			return NF_DROP;
 		}
-		*/
 
 		th = (struct tcphdr*)(skb->data + iph->ihl*4);
 		ulen = ntohs(iph->tot_len);
@@ -237,6 +236,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		daddr = iph->daddr;
 		sport = th->source;
 		dport = th->dest;
+		
 		/*
 		if (atomic_read(&packet_count) == 0) {
 				struct timeval tv;
@@ -247,12 +247,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		atomic_inc(&packet_count);
 		*/
 		if (ntohs(dport) == 80) {
-			//printk("get http packet num is %d\n", drop_count);	
-			/*
-			 * write into the ring buffer
-			 */
-			//if (RingBuffer_write(ring_buffer, skb->data, ulen) == ulen) {
-			
 			memcpy(mmap_buf, in_buf, NUM);
 			memcpy(out_buf, mmap_buf, NUM);
 			//atomic_inc(&drop_count);
@@ -261,17 +255,28 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			* send packet 
 			*/
 			
-			char *dest_addr = "192.168.99.1";
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
 			udph_len  = sizeof(struct udphdr);
 			len	= eth_len + iph_len + udph_len;
-			struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
-			if (!send_skb)
+			
+			/*
+			 * build a new sk_buff
+			 */
+			struct kmem_cache *skbuff_head_cache;
+			struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
+			if (!send_skb) {
 				return NF_DROP;
+			}
+			memset(skb, 0, offsetof(struct sk_buff, tail));
+			atomic_set(&send_skb->users, 1);
+			send_skb->head = mmap_buf + 1024 + SKB_DATA_ALIGN(len);
+			send_skb->data = mmap_buf + 1024 + SKB_DATA_ALIGN(len);
+			send_skb->tail = mmap_buf + 1024 + SKB_DATA_ALIGN(len) + SKB_DATA_ALIGN(NUM);
+			send_skb->end = mmap_buf + 1024 + SKB_DATA_ALIGN(len) + SKB_DATA_ALIGN(NUM);
 
-			skb_reserve(send_skb, len);
+			skb_reserve(send_skb, SKB_DATA_ALIGN(len));
 			skb_push(send_skb, sizeof(struct udphdr));
 			skb_reset_transport_header(send_skb);
 			
@@ -304,7 +309,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
 			  
 			struct net_device *dev = skb->dev;
-			eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);
+			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
