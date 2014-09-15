@@ -63,11 +63,14 @@
         ((unsigned char *)&addr)[3]
 #endif
 
+spinlock_t lock = SPIN_LOCK_UNLOCKED;
+static struct kmem_cache *skbuff_head_cache __read_mostly;
 /*
  * The dest addr.
  */
-char *dest_addr = "192.168.99.1";
-#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
+char *dest_addr = "192.168.109.176";
+//#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
+#define DST_MAC {0x00, 0x0c, 0x29, 0x71, 0x18, 0xdd}
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
@@ -248,13 +251,13 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		*/
 		if (ntohs(dport) == 80) {
 			memcpy(mmap_buf, in_buf, NUM);
-			memcpy(out_buf, mmap_buf, NUM);
+			//memcpy(out_buf, mmap_buf, NUM);
 			//atomic_inc(&drop_count);
 
 			/*
 			* send packet 
 			*/
-			
+			spin_lock(&lock);
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -264,21 +267,36 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
 			 * build a new sk_buff
 			 */
-			struct kmem_cache *skbuff_head_cache;
 			struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
+			
 			if (!send_skb) {
 				return NF_DROP;
 			}
-			memset(skb, 0, offsetof(struct sk_buff, tail));
+			
+			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 1);
-			send_skb->head = mmap_buf + 1024 + SKB_DATA_ALIGN(len);
-			send_skb->data = mmap_buf + 1024 + SKB_DATA_ALIGN(len);
-			send_skb->tail = mmap_buf + 1024 + SKB_DATA_ALIGN(len) + SKB_DATA_ALIGN(NUM);
-			send_skb->end = mmap_buf + 1024 + SKB_DATA_ALIGN(len) + SKB_DATA_ALIGN(NUM);
-
-			skb_reserve(send_skb, SKB_DATA_ALIGN(len));
+			send_skb->head = mmap_buf + 1024;
+			send_skb->data = mmap_buf + 1024;
+			send_skb->tail = mmap_buf + 1024;
+			send_skb->end = mmap_buf + 1024 + len + NUM;
+			
+			struct skb_shared_info *shinfo;
+			shinfo = skb_shinfo(skb);
+			memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
+			atomic_set(&shinfo->dataref, 1);
+			kmemcheck_annotate_variable(shinfo->destructor_arg);	
+	
+			printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
+			skb_reserve(send_skb, len);
+			printk("data %p, len is %d\n", send_skb->data, len);	
 			skb_push(send_skb, sizeof(struct udphdr));
+			printk("udp data %p\n", send_skb->data);	
 			skb_reset_transport_header(send_skb);
+		
+			/*
+ 			 * just instead of copy datas.
+ 			 */	
+			send_skb->tail = send_skb->end;
 			
 			udph = udp_hdr(send_skb);
 			udph->source = dport;
@@ -291,6 +309,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//	udph->check = CSUM_MANGLED_0;
 
 			skb_push(send_skb, sizeof(struct iphdr));
+			printk("ip data %p\n", send_skb->data);	
 			skb_reset_network_header(send_skb);
 			send_iph = ip_hdr(send_skb);
 
@@ -310,15 +329,17 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			  
 			struct net_device *dev = skb->dev;
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
+			printk("eth data %p\n", send_skb->data);	
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
+			//printk("dev_addr is %p, len is %d", dev->dev_addr, ETH_ALEN);
+			printk("h_source is %p, dev_addr is %p, len is %d", eth->h_source, dev->dev_addr, ETH_ALEN);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
-
 			send_skb->dev = dev;
 			dev_queue_xmit(send_skb);
-				
+			spin_unlock(&lock);
 			return NF_DROP;
 		}
 		/*	
@@ -403,7 +424,7 @@ int wsmmap_init(void)
 			goto chr_failed;
 		}  	
 
-		
+		skbuff_head_cache = kmem_cache_create("skbuff_head_cache_temp", sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 		/*
 		int i; 
 		for (i = 0; i < mmap_size; i += PAGE_SIZE){
