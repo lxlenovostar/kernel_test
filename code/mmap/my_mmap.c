@@ -274,18 +274,24 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			}
 			
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
-			atomic_set(&send_skb->users, 1);
+			atomic_set(&send_skb->users, 2);
 			send_skb->head = mmap_buf + 1024;
 			send_skb->data = mmap_buf + 1024;
-			send_skb->tail = mmap_buf + 1024;
-			send_skb->end = mmap_buf + 1024 + len + NUM;
+			skb_reset_tail_pointer(skb);
+			send_skb->end = skb->tail + len + NUM;
 			
 			struct skb_shared_info *shinfo;
 			shinfo = skb_shinfo(skb);
-			memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
 			atomic_set(&shinfo->dataref, 1);
-			kmemcheck_annotate_variable(shinfo->destructor_arg);	
-	
+			shinfo->nr_frags  = 0;
+			shinfo->gso_size = 0;
+			shinfo->gso_segs = 0;
+			shinfo->gso_type = 0;
+			shinfo->ip6_frag_id = 0;
+			shinfo->tx_flags.flags = 0;
+			skb_frag_list_init(skb);
+			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
+
 			printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
 			skb_reserve(send_skb, len);
 			printk("data %p, len is %d\n", send_skb->data, len);	
