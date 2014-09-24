@@ -53,7 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1024
-#define NUM 1024
+#define NUM 2
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -250,7 +250,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		atomic_inc(&packet_count);
 		*/
 		if (ntohs(dport) == 80) {
-			memcpy(mmap_buf, in_buf, NUM);
+			//memcpy(mmap_buf, in_buf, NUM);
 			//memcpy(out_buf, mmap_buf, NUM);
 			//atomic_inc(&drop_count);
 
@@ -279,10 +279,14 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			send_skb->data = mmap_buf + 1024;
 			skb_reset_tail_pointer(skb);
 			send_skb->end = skb->tail + len + NUM;
+			kmemcheck_annotate_bitfield(skb, flags1);
+			kmemcheck_annotate_bitfield(skb, flags2);
+
+			//send_skb->ip_summed = CHECKSUM_PARTIAL;	
 			
 			struct skb_shared_info *shinfo;
 			shinfo = skb_shinfo(skb);
-			atomic_set(&shinfo->dataref, 1);
+			atomic_set(&shinfo->dataref, 2);
 			shinfo->nr_frags  = 0;
 			shinfo->gso_size = 0;
 			shinfo->gso_segs = 0;
@@ -302,7 +306,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
  			 * just instead of copy datas.
  			 */	
-			send_skb->tail = send_skb->end;
+			//send_skb->tail = send_skb->end;
 			
 			udph = udp_hdr(send_skb);
 			udph->source = dport;
@@ -311,8 +315,8 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			udph->check = 0;
 			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
 				
-			//if (udph->check == 0)
-			//	udph->check = CSUM_MANGLED_0;
+			if (udph->check == 0)
+				udph->check = CSUM_MANGLED_0;
 
 			skb_push(send_skb, sizeof(struct iphdr));
 			printk("ip data %p\n", send_skb->data);	
@@ -344,7 +348,8 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
-			dev_queue_xmit(send_skb);
+			int result = dev_queue_xmit(send_skb);
+			printk("result is %d\n", result);
 			spin_unlock(&lock);
 			return NF_DROP;
 		}
