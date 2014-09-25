@@ -277,15 +277,15 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			atomic_set(&send_skb->users, 2);
 			send_skb->head = mmap_buf + 1024;
 			send_skb->data = mmap_buf + 1024;
-			skb_reset_tail_pointer(skb);
-			send_skb->end = skb->tail + len + NUM;
-			kmemcheck_annotate_bitfield(skb, flags1);
-			kmemcheck_annotate_bitfield(skb, flags2);
+			skb_reset_tail_pointer(send_skb);
+			send_skb->end = send_skb->tail + len + NUM;
+			kmemcheck_annotate_bitfield(send_skb, flags1);
+			kmemcheck_annotate_bitfield(send_skb, flags2);
 
 			//send_skb->ip_summed = CHECKSUM_PARTIAL;	
 			
 			struct skb_shared_info *shinfo;
-			shinfo = skb_shinfo(skb);
+			shinfo = skb_shinfo(send_skb);
 			atomic_set(&shinfo->dataref, 2);
 			shinfo->nr_frags  = 0;
 			shinfo->gso_size = 0;
@@ -293,7 +293,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			shinfo->gso_type = 0;
 			shinfo->ip6_frag_id = 0;
 			shinfo->tx_flags.flags = 0;
-			skb_frag_list_init(skb);
+			skb_frag_list_init(send_skb);
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
 			printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
