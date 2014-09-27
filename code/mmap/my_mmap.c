@@ -68,9 +68,10 @@ static struct kmem_cache *skbuff_head_cache __read_mostly;
 /*
  * The dest addr.
  */
-char *dest_addr = "192.168.109.176";
+char *dest_addr = "192.168.100.1";
 //#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
-#define DST_MAC {0x00, 0x0c, 0x29, 0x71, 0x18, 0xdd}
+#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
+//#define DST_MAC {0x00, 0x26, 0xb9, 0x4f, 0x94, 0xa6}
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
@@ -228,11 +229,12 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		char out_buf[NUM];
 
 		memset(in_buf, '0', NUM);
-
+		
 		if (iph->protocol != IPPROTO_TCP) {
-			return NF_DROP;
+			//return NF_DROP;
+			return NF_ACCEPT;
 		}
-
+		
 		th = (struct tcphdr*)(skb->data + iph->ihl*4);
 		ulen = ntohs(iph->tot_len);
 		saddr = iph->saddr;
@@ -257,7 +259,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
 			* send packet 
 			*/
-			spin_lock(&lock);
+			//spin_lock(&lock);
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -348,10 +350,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
-			int result = dev_queue_xmit(send_skb);
-			printk("result is %d\n", result);
-			spin_unlock(&lock);
-			return NF_DROP;
+		//	int result = dev_queue_xmit(send_skb);
+		//	printk("result is %d\n", result);
+			//spin_unlock(&lock);
+			//return NF_DROP;
+			return NF_ACCEPT;
 		}
 		/*	
 		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
