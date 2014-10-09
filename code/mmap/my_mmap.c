@@ -68,15 +68,18 @@ static struct kmem_cache *skbuff_head_cache __read_mostly;
 /*
  * The dest addr.
  */
-char *dest_addr = "192.168.100.1";
+char *dest_addr = "192.168.99.1";
 //#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
 #define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //#define DST_MAC {0x00, 0x26, 0xb9, 0x4f, 0x94, 0xa6}
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
-unsigned long mmap_size = 4*1024;
+unsigned long mmap_size = 4*1024*40;
 //unsigned long mmap_size = 4*1024;
+
+int index[150];
+
 
 atomic_t packet_count;
 atomic_t drop_count;
@@ -225,16 +228,15 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-		char in_buf[NUM];
+		/*char in_buf[NUM];
 		char out_buf[NUM];
 
-		memset(in_buf, '0', NUM);
-		
+		memset(in_buf, '0', NUM);*/
+	
 		if (iph->protocol != IPPROTO_TCP) {
 			//return NF_DROP;
 			return NF_ACCEPT;
 		}
-		
 		th = (struct tcphdr*)(skb->data + iph->ihl*4);
 		ulen = ntohs(iph->tot_len);
 		saddr = iph->saddr;
@@ -259,7 +261,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
 			* send packet 
 			*/
-			//spin_lock(&lock);
+			spin_lock(&lock);
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -272,13 +274,27 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
 			
 			if (!send_skb) {
+				//spin_unlock(&lock);
 				return NF_DROP;
 			}
 			
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 2);
+			/*
+			int z;
+			for (z = 0; z < 150; z++) {
+				if (index[z] == 0){
+					index[z] = 1;
+					break;
+				}
+			}
+			send_skb->head = mmap_buf + 1024*z;
+			send_skb->data = mmap_buf + 1024*z;
+			*/
+
 			send_skb->head = mmap_buf + 1024;
 			send_skb->data = mmap_buf + 1024;
+		
 			skb_reset_tail_pointer(send_skb);
 			send_skb->end = send_skb->tail + len + NUM;
 			kmemcheck_annotate_bitfield(send_skb, flags1);
@@ -288,7 +304,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			
 			struct skb_shared_info *shinfo;
 			shinfo = skb_shinfo(send_skb);
-			atomic_set(&shinfo->dataref, 2);
+			atomic_set(&shinfo->dataref, 1);
 			shinfo->nr_frags  = 0;
 			shinfo->gso_size = 0;
 			shinfo->gso_segs = 0;
@@ -350,20 +366,12 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
-		//	int result = dev_queue_xmit(send_skb);
-		//	printk("result is %d\n", result);
-			//spin_unlock(&lock);
-			//return NF_DROP;
-			return NF_ACCEPT;
+			int result = dev_queue_xmit(send_skb);
+			printk("result is %d\n", result);
+			spin_unlock(&lock);
+			return NF_DROP;
+			//return NF_ACCEPT;
 		}
-		/*	
-		printk("Packet %d:%d.%d.%d.%d:%d -> %d.%d.%d.%d:%d ulen=%d\n", \
-						packet_count, NIPQUAD(saddr), ntohs(sport), NIPQUAD(daddr), ntohs(dport), ulen);
-		for(i = 0 ; i < ulen; i++){
-			printk("%02x ",  (unsigned char)*((skb->data)+i));
-		}
-
-		printk("what\n\n");*/
 
 		return NF_ACCEPT;
 }
@@ -446,7 +454,13 @@ int wsmmap_init(void)
 		memset(mmap_buf + i + PAGE_SIZE - 1, '\0', 1);
 		}*/
 		printk("insmod module wsmmap successfully!\n");	
+
+		int j;
+		for (j = 0; j < 150; ++j){
+			index[j] = 0;
+		}
 		return 0;
+
 
 chr_failed:
 	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));  
