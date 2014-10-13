@@ -53,7 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1024
-#define NUM 2
+#define NUM 0
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -64,18 +64,23 @@
 #endif
 
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
+atomic_t count;
 static struct kmem_cache *skbuff_head_cache __read_mostly;
 /*
  * The dest addr.
  */
-char *dest_addr = "192.168.99.1";
+//char *dest_addr = "192.168.99.1";
+//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
+//char *dest_addr = "192.168.99.2";
+//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
+char *dest_addr = "192.168.99.3";
+#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9f, 0x0e}
 //#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
-#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //#define DST_MAC {0x00, 0x26, 0xb9, 0x4f, 0x94, 0xa6}
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
-unsigned long mmap_size = 4*1024*40;
+unsigned long mmap_size = 4*1024;
 //unsigned long mmap_size = 4*1024;
 
 int index[150];
@@ -110,7 +115,9 @@ int mmap_alloc(void)
 		mmap_size = PAGE_ALIGN(mmap_size);
 
 #ifdef USE_KMALLOC //for kmalloc
+		printk("what1.1\n");
 		mmap_buf = kzalloc(mmap_size, GFP_KERNEL);
+		printk("what1.2\n");
 		printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
 		if (!mmap_buf) {
 			printk("kmalloc failed!\n");
@@ -120,15 +127,26 @@ int mmap_alloc(void)
 			SetPageReserved(page);
 		}
 #else //for vmalloc
-		mmap_buf  = vmalloc(mmap_size);
+		//mmap_buf  = vmalloc(mmap_size);
+		printk("what1\n");
+		mmap_buf  = kmalloc(mmap_size, GFP_ATOMIC);
+		printk("what2\n");
+		//mmap_buf = kzalloc(mmap_size, GFP_ATOMIC);
 		printk("vmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
 		if (!mmap_buf ) {
 			printk("vmalloc failed!\n");
 			return -1;
-		}
+		}/*
 		for (i = 0; i < mmap_size; i += PAGE_SIZE) {
 			SetPageReserved(vmalloc_to_page(mmap_buf + i));
+		}*/
+		struct page *page;
+		printk("what3\n");
+		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
+			SetPageReserved(page);
 		}
+		printk("what4\n");
+		
 #endif
 
 		return 0;
@@ -162,6 +180,7 @@ static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 		unsigned long start = vma->vm_start;
 		unsigned long size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
 		void * ptmp = mmap_buf;
+		printk("what3\n");
 		if (size > mmap_size || !mmap_buf) {
 			return -EINVAL;
 		}
@@ -211,7 +230,6 @@ unsigned int hook_local_in_p(unsigned int hooknum, struct sk_buff **pskb, const 
 }
 #endif
 
-
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, const struct net_device *out,int (*okfn)(struct sk_buff *))
 {
 		/*
@@ -228,10 +246,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-		/*char in_buf[NUM];
-		char out_buf[NUM];
+		//char in_buf[NUM];
+		//char out_buf[NUM];
 
-		memset(in_buf, '0', NUM);*/
+		//memset(in_buf, '0', NUM);
 	
 		if (iph->protocol != IPPROTO_TCP) {
 			//return NF_DROP;
@@ -244,15 +262,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		sport = th->source;
 		dport = th->dest;
 		
-		/*
-		if (atomic_read(&packet_count) == 0) {
-				struct timeval tv;
-				do_gettimeofday(&tv);
-				ts_begin = tv.tv_sec;
-				//printk("second begin is %ld\n", ts_begin);
-			}
-		atomic_inc(&packet_count);
-		*/
 		if (ntohs(dport) == 80) {
 			//memcpy(mmap_buf, in_buf, NUM);
 			//memcpy(out_buf, mmap_buf, NUM);
@@ -261,7 +270,17 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
 			* send packet 
 			*/
-			spin_lock(&lock);
+			//spin_lock(&lock);
+			printk("begin one");
+
+			if (netif_queue_stopped(skb->dev)){
+				printk("block\n");
+			}
+			else {
+				printk("unblock\n");
+			}
+			//atomic_inc(&one);
+			//printk("end one is %d\n", atomic_read(&one));
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -280,6 +299,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 2);
+			send_skb->cloned = 0;
 			/*
 			int z;
 			for (z = 0; z < 150; z++) {
@@ -294,6 +314,15 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 
 			send_skb->head = mmap_buf + 1024;
 			send_skb->data = mmap_buf + 1024;
+			/*
+			spin_lock(&lock);
+			send_skb->head = mmap_buf + 1024 * atomic_read(&count);
+			send_skb->data = mmap_buf + 1024 * atomic_read(&count);
+			atomic_inc(&count);
+			spin_unlock(&lock);
+			*/
+			printk("eth data %p\n", send_skb->data);	
+			
 		
 			skb_reset_tail_pointer(send_skb);
 			send_skb->end = send_skb->tail + len + NUM;
@@ -301,6 +330,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			kmemcheck_annotate_bitfield(send_skb, flags2);
 
 			//send_skb->ip_summed = CHECKSUM_PARTIAL;	
+			send_skb->ip_summed = CHECKSUM_NONE;	
 			
 			struct skb_shared_info *shinfo;
 			shinfo = skb_shinfo(send_skb);
@@ -314,11 +344,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			skb_frag_list_init(send_skb);
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
-			printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
+			//printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
 			skb_reserve(send_skb, len);
-			printk("data %p, len is %d\n", send_skb->data, len);	
+			//printk("data %p, len is %d\n", send_skb->data, len);	
 			skb_push(send_skb, sizeof(struct udphdr));
-			printk("udp data %p\n", send_skb->data);	
+			//printk("udp data %p\n", send_skb->data);	
 			skb_reset_transport_header(send_skb);
 		
 			/*
@@ -333,11 +363,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			udph->check = 0;
 			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
 				
-			if (udph->check == 0)
-				udph->check = CSUM_MANGLED_0;
+			//if (udph->check == 0)
+			//	udph->check = CSUM_MANGLED_0;
 
 			skb_push(send_skb, sizeof(struct iphdr));
-			printk("ip data %p\n", send_skb->data);	
+			//printk("ip data %p\n", send_skb->data);	
 			skb_reset_network_header(send_skb);
 			send_iph = ip_hdr(send_skb);
 
@@ -357,20 +387,21 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			  
 			struct net_device *dev = skb->dev;
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
-			printk("eth data %p\n", send_skb->data);	
+			//printk("eth data %p\n", send_skb->data);	
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
 			//printk("dev_addr is %p, len is %d", dev->dev_addr, ETH_ALEN);
-			printk("h_source is %p, dev_addr is %p, len is %d", eth->h_source, dev->dev_addr, ETH_ALEN);
+			//printk("h_source is %p, dev_addr is %p, len is %d", eth->h_source, dev->dev_addr, ETH_ALEN);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
+			printk("data len is %d\n", send_skb->data_len);
 			int result = dev_queue_xmit(send_skb);
-			printk("result is %d\n", result);
-			spin_unlock(&lock);
-			return NF_DROP;
-			//return NF_ACCEPT;
+			printk("result is %d and len is %d and par1 is %d par2 is %d\n", result, send_skb->users,  shinfo->nr_frags ,  shinfo->frag_list );
+			//spin_unlock(&lock);
+			//return NF_DROP;
+			return NF_ACCEPT;
 		}
 
 		return NF_ACCEPT;
@@ -396,7 +427,7 @@ static void wsmmap_exit(void)
 {
 		int ret;
 				
-		/* time and speed */
+	
 		struct timeval tv;
 		do_gettimeofday(&tv);
 		long int t_second = tv.tv_sec;
@@ -454,11 +485,13 @@ int wsmmap_init(void)
 		memset(mmap_buf + i + PAGE_SIZE - 1, '\0', 1);
 		}*/
 		printk("insmod module wsmmap successfully!\n");	
-
+		atomic_set(&count, 1);
+		/*
 		int j;
 		for (j = 0; j < 150; ++j){
 			index[j] = 0;
 		}
+		*/
 		return 0;
 
 
