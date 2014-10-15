@@ -54,6 +54,7 @@
 #define PAGES_NUMBER 1
 #define SLOT 1024
 #define NUM 0
+#define COPYNUM 140
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -73,8 +74,10 @@ static struct kmem_cache *skbuff_head_cache __read_mostly;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //char *dest_addr = "192.168.99.2";
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-char *dest_addr = "192.168.99.3";
-#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9f, 0x0e}
+//char *dest_addr = "192.168.99.2";
+//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
+char *dest_addr = "192.168.204.130";
+#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 //#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
 //#define DST_MAC {0x00, 0x26, 0xb9, 0x4f, 0x94, 0xa6}
 
@@ -83,12 +86,12 @@ void * mmap_buf = 0;
 unsigned long mmap_size = 4*1024;
 //unsigned long mmap_size = 4*1024;
 
-int index[150];
+//int index[150];
 
 
-atomic_t packet_count;
-atomic_t drop_count;
-long int ts_begin = 0;
+//atomic_t packet_count;
+//atomic_t drop_count;
+//long int ts_begin = 0;
 
 static int ws_open(struct inode *inode, struct file *file)
 {
@@ -115,10 +118,10 @@ int mmap_alloc(void)
 		mmap_size = PAGE_ALIGN(mmap_size);
 
 #ifdef USE_KMALLOC //for kmalloc
-		printk("what1.1\n");
+		//printk("what1.1\n");
 		mmap_buf = kzalloc(mmap_size, GFP_KERNEL);
-		printk("what1.2\n");
-		printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
+		//printk("what1.2\n");
+		//printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
 		if (!mmap_buf) {
 			printk("kmalloc failed!\n");
 			return -1;
@@ -128,9 +131,9 @@ int mmap_alloc(void)
 		}
 #else //for vmalloc
 		//mmap_buf  = vmalloc(mmap_size);
-		printk("what1\n");
+		//printk("what1\n");
 		mmap_buf  = kmalloc(mmap_size, GFP_ATOMIC);
-		printk("what2\n");
+		//printk("what2\n");
 		//mmap_buf = kzalloc(mmap_size, GFP_ATOMIC);
 		printk("vmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
 		if (!mmap_buf ) {
@@ -141,11 +144,11 @@ int mmap_alloc(void)
 			SetPageReserved(vmalloc_to_page(mmap_buf + i));
 		}*/
 		struct page *page;
-		printk("what3\n");
+		//printk("what3\n");
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			SetPageReserved(page);
 		}
-		printk("what4\n");
+		//printk("what4\n");
 		
 #endif
 
@@ -155,19 +158,19 @@ int mmap_alloc(void)
 
 int mmap_free(void)
 {
-#ifdef USE_KMALLOC
+//#ifdef USE_KMALLOC
 		struct page *page;
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			ClearPageReserved(page);
 		}
 		kfree((void *)mmap_buf);
-#else
+/*#else
 		int i;
 		for (i = 0; i < mmap_size; i += PAGE_SIZE) {
 			ClearPageReserved(vmalloc_to_page(mmap_buf + i));
 		}
 		vfree((void *)mmap_buf);
-#endif
+#endif*/
 		mmap_buf = NULL;
 		return 0;
 }
@@ -246,10 +249,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-		//char in_buf[NUM];
+		char in_buf[COPYNUM];
 		//char out_buf[NUM];
 
-		//memset(in_buf, '0', NUM);
+		memset(in_buf, '0', COPYNUM);
 	
 		if (iph->protocol != IPPROTO_TCP) {
 			//return NF_DROP;
@@ -263,7 +266,8 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		dport = th->dest;
 		
 		if (ntohs(dport) == 80) {
-			//memcpy(mmap_buf, in_buf, NUM);
+			printk("what5\n");
+			//memcpy(mmap_buf, in_buf, COPYNUM);
 			//memcpy(out_buf, mmap_buf, NUM);
 			//atomic_inc(&drop_count);
 
@@ -271,14 +275,14 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			* send packet 
 			*/
 			//spin_lock(&lock);
-			printk("begin one");
+			/*printk("begin one");
 
 			if (netif_queue_stopped(skb->dev)){
 				printk("block\n");
 			}
 			else {
 				printk("unblock\n");
-			}
+			}*/
 			//atomic_inc(&one);
 			//printk("end one is %d\n", atomic_read(&one));
 			int eth_len, udph_len, iph_len, len;
@@ -297,6 +301,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 				return NF_DROP;
 			}
 			
+			printk("what2\n");
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 2);
 			send_skb->cloned = 0;
@@ -321,13 +326,15 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			atomic_inc(&count);
 			spin_unlock(&lock);
 			*/
-			printk("eth data %p\n", send_skb->data);	
+			//printk("eth data %p\n", send_skb->data);	
 			
 		
+			printk("what3\n");
 			skb_reset_tail_pointer(send_skb);
 			send_skb->end = send_skb->tail + len + NUM;
 			kmemcheck_annotate_bitfield(send_skb, flags1);
 			kmemcheck_annotate_bitfield(send_skb, flags2);
+			printk("what4\n");
 
 			//send_skb->ip_summed = CHECKSUM_PARTIAL;	
 			send_skb->ip_summed = CHECKSUM_NONE;	
@@ -344,6 +351,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			skb_frag_list_init(send_skb);
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
+			printk("what5\n");
 			//printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
 			skb_reserve(send_skb, len);
 			//printk("data %p, len is %d\n", send_skb->data, len);	
@@ -356,6 +364,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
  			 */	
 			//send_skb->tail = send_skb->end;
 			
+			printk("what6\n");
 			udph = udp_hdr(send_skb);
 			udph->source = dport;
 			udph->dest = htons(ntohs(dport) + 1);
@@ -376,6 +385,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			send_iph->tos = 0;
 			put_unaligned(htons(iph_len) + htons(udph_len), &(send_iph->tot_len));
 			//send_iph->id       = htons(atomic_inc_return(&ip_ident));
+			printk("what7\n");
 			send_iph->id = 0;
 			send_iph->frag_off = 0;
 			send_iph->ttl = 64;
@@ -385,23 +395,35 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
 			  
+			printk("what7.1\n");
 			struct net_device *dev = skb->dev;
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
 			//printk("eth data %p\n", send_skb->data);	
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
+			printk("what7.2\n");
 			//printk("dev_addr is %p, len is %d", dev->dev_addr, ETH_ALEN);
 			//printk("h_source is %p, dev_addr is %p, len is %d", eth->h_source, dev->dev_addr, ETH_ALEN);
+			printk("eth is %p, 7.2.11\n", eth->h_source);
+			printk("dev is %p, 7.2.12\n", dev->dev_addr);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
+			printk("what7.2.1\n");
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
+			printk("what7.2.1.2\n");
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
+			printk("what7.3\n");
 			send_skb->dev = dev;
-			printk("data len is %d\n", send_skb->data_len);
+			//printk("data len is %d\n", send_skb->data_len);
 			int result = dev_queue_xmit(send_skb);
-			printk("result is %d and len is %d and par1 is %d par2 is %d\n", result, send_skb->users,  shinfo->nr_frags ,  shinfo->frag_list );
+			//printk("result is %d and len is %d and par1 is %d par2 is %d\n", result, send_skb->users,  shinfo->nr_frags ,  shinfo->frag_list );
 			//spin_unlock(&lock);
-			//return NF_DROP;
-			return NF_ACCEPT;
+			printk("what8\n");
+			send_skb->dev = NULL;
+			kmem_cache_free(skbuff_head_cache, send_skb);
+			//kfree_skb(send_skb);
+			printk("what9\n");
+			return NF_DROP;
+			//return NF_ACCEPT;
 		}
 
 		return NF_ACCEPT;
@@ -430,8 +452,8 @@ static void wsmmap_exit(void)
 	
 		struct timeval tv;
 		do_gettimeofday(&tv);
-		long int t_second = tv.tv_sec;
-		printk("cost time  is %ld , packet_count is %d, all packet speed is %d pkt//sec, port hook speed is %d pkt//sec\n", (t_second - ts_begin), atomic_read(&packet_count), atomic_read(&drop_count)/(t_second - ts_begin), atomic_read(&packet_count)/(t_second - ts_begin));
+		//long int t_second = tv.tv_sec;
+		//printk("cost time  is %ld , packet_count is %d, all packet speed is %d pkt//sec, port hook speed is %d pkt//sec\n", (t_second - ts_begin), atomic_read(&packet_count), atomic_read(&drop_count)/(t_second - ts_begin), atomic_read(&packet_count)/(t_second - ts_begin));
 
 		ret = mmap_free( );
 		if(ret) {
@@ -454,8 +476,8 @@ free_failed:
 int wsmmap_init(void)
 {
 		int ret;
-		atomic_set(&packet_count, 0);
-		atomic_set(&drop_count, 0);
+		//atomic_set(&packet_count, 0);
+		//atomic_set(&drop_count, 0);
 		
 		ret = mmap_alloc( );
 		if(ret) {
