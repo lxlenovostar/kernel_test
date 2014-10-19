@@ -65,8 +65,21 @@
 #endif
 
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
-atomic_t count;
-static struct kmem_cache *skbuff_head_cache __read_mostly;
+struct timer_list my_timer;
+//static struct kmem_cache *skbuff_head_cache __read_mostly;
+struct kmem_cache *skbuff_head_cache;
+struct kmem_cache *skbuff_free_cache;
+
+struct free_slab{
+	//struct sk_buff *free_mem;
+	int free_mem;
+	struct list_head list;
+};
+struct free_slab *tmp_slab;
+struct free_slab *next_slab;
+struct list_head head_free_slab;
+struct list_head *pos;
+
 /*
  * The dest addr.
  */
@@ -78,20 +91,64 @@ static struct kmem_cache *skbuff_head_cache __read_mostly;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
 char *dest_addr = "192.168.204.130";
 #define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
-//#define DST_MAC {0x00, 0x0c, 0x29, 0xdc, 0x2d, 0xf5}
-//#define DST_MAC {0x00, 0x26, 0xb9, 0x4f, 0x94, 0xa6}
+#define SOU_MAC {0x00, 0x0c, 0x29, 0xdf, 0xdf, 0xb0}
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
 unsigned long mmap_size = 4*1024;
-//unsigned long mmap_size = 4*1024;
 
-//int index[150];
+struct net_device *ws_sp_get_dev(__be32 ip)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
+	struct list_head *net_iter;
+	struct list_head *net_device_iter;
+	struct net *net;
+#endif
 
+	struct net_device *netdev;
+	struct in_ifaddr  *ifa;
+	__be32 netmask;
 
-//atomic_t packet_count;
-//atomic_t drop_count;
-//long int ts_begin = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
+	list_for_each(net_iter, &net_namespace_list) {
+		net = list_entry(net_iter, struct net, list);
+		list_for_each(net_device_iter, &net->dev_base_head) {
+			netdev = list_entry(net_device_iter, 
+					struct net_device, dev_list);
+			if (unlikely(!netdev->ip_ptr))
+				continue;
+			for(ifa = ((struct in_device *)netdev->ip_ptr)->ifa_list;
+				ifa; ifa = ifa->ifa_next) {
+				netmask = ifa->ifa_mask;
+				if ((ip & netmask) == (ifa->ifa_address & netmask)) {
+					if (netdev->flags & IFF_LOOPBACK)
+						continue;
+					goto out;
+				}
+
+			}
+		}
+	}
+
+#else
+	for(netdev = dev_base; netdev; netdev = netdev->next) {
+		if (netdev->ip_ptr) {
+			for(ifa = ((struct in_device *)netdev->ip_ptr)->ifa_list;
+				ifa; ifa = ifa->ifa_next)  {
+				netmask = ifa->ifa_mask;
+				if ((ip & netmask) == (ifa->ifa_address & netmask)) {
+					if (netdev->flags & IFF_LOOPBACK)
+						continue;
+					goto out;
+				}
+			}
+		}
+	}
+#endif
+	netdev = NULL;
+out:
+	return netdev;
+}
 
 static int ws_open(struct inode *inode, struct file *file)
 {
@@ -114,14 +171,11 @@ long ws_ioctl(struct file *file, u_int cmd, u_long data)
 
 int mmap_alloc(void)
 {
-		int i;    
 		mmap_size = PAGE_ALIGN(mmap_size);
 
 #ifdef USE_KMALLOC //for kmalloc
-		//printk("what1.1\n");
 		mmap_buf = kzalloc(mmap_size, GFP_KERNEL);
-		//printk("what1.2\n");
-		//printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
+		printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
 		if (!mmap_buf) {
 			printk("kmalloc failed!\n");
 			return -1;
@@ -130,25 +184,16 @@ int mmap_alloc(void)
 			SetPageReserved(page);
 		}
 #else //for vmalloc
-		//mmap_buf  = vmalloc(mmap_size);
-		//printk("what1\n");
 		mmap_buf  = kmalloc(mmap_size, GFP_ATOMIC);
-		//printk("what2\n");
-		//mmap_buf = kzalloc(mmap_size, GFP_ATOMIC);
-		printk("vmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
-		if (!mmap_buf ) {
-			printk("vmalloc failed!\n");
+		printk("kmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
+		if (!mmap_buf) {
+			printk("kmalloc failed!\n");
 			return -1;
-		}/*
-		for (i = 0; i < mmap_size; i += PAGE_SIZE) {
-			SetPageReserved(vmalloc_to_page(mmap_buf + i));
-		}*/
+		}
 		struct page *page;
-		//printk("what3\n");
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			SetPageReserved(page);
 		}
-		//printk("what4\n");
 		
 #endif
 
@@ -158,19 +203,11 @@ int mmap_alloc(void)
 
 int mmap_free(void)
 {
-//#ifdef USE_KMALLOC
 		struct page *page;
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			ClearPageReserved(page);
 		}
 		kfree((void *)mmap_buf);
-/*#else
-		int i;
-		for (i = 0; i < mmap_size; i += PAGE_SIZE) {
-			ClearPageReserved(vmalloc_to_page(mmap_buf + i));
-		}
-		vfree((void *)mmap_buf);
-#endif*/
 		mmap_buf = NULL;
 		return 0;
 }
@@ -183,7 +220,6 @@ static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 		unsigned long start = vma->vm_start;
 		unsigned long size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
 		void * ptmp = mmap_buf;
-		printk("what3\n");
 		if (size > mmap_size || !mmap_buf) {
 			return -EINVAL;
 		}
@@ -211,7 +247,6 @@ static int ws_release(struct inode *inode, struct file *file)
 {
     return 0;
 }
-
 
 static const struct file_operations ws_fops ={    
 		.owner = THIS_MODULE,
@@ -266,25 +301,14 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		dport = th->dest;
 		
 		if (ntohs(dport) == 80) {
-			printk("what5\n");
+			//printk("what5\n");
 			//memcpy(mmap_buf, in_buf, COPYNUM);
 			//memcpy(out_buf, mmap_buf, NUM);
-			//atomic_inc(&drop_count);
 
 			/*
 			* send packet 
 			*/
 			//spin_lock(&lock);
-			/*printk("begin one");
-
-			if (netif_queue_stopped(skb->dev)){
-				printk("block\n");
-			}
-			else {
-				printk("unblock\n");
-			}*/
-			//atomic_inc(&one);
-			//printk("end one is %d\n", atomic_read(&one));
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -294,49 +318,29 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			/*
 			 * build a new sk_buff
 			 */
-			struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
+			//struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
+			struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA);
 			
 			if (!send_skb) {
 				//spin_unlock(&lock);
 				return NF_DROP;
 			}
 			
-			printk("what2\n");
+			//printk("what2\n");
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 2);
 			send_skb->cloned = 0;
-			/*
-			int z;
-			for (z = 0; z < 150; z++) {
-				if (index[z] == 0){
-					index[z] = 1;
-					break;
-				}
-			}
-			send_skb->head = mmap_buf + 1024*z;
-			send_skb->data = mmap_buf + 1024*z;
-			*/
 
 			send_skb->head = mmap_buf + 1024;
 			send_skb->data = mmap_buf + 1024;
-			/*
-			spin_lock(&lock);
-			send_skb->head = mmap_buf + 1024 * atomic_read(&count);
-			send_skb->data = mmap_buf + 1024 * atomic_read(&count);
-			atomic_inc(&count);
-			spin_unlock(&lock);
-			*/
-			//printk("eth data %p\n", send_skb->data);	
-			
 		
-			printk("what3\n");
+			//printk("what3\n");
 			skb_reset_tail_pointer(send_skb);
 			send_skb->end = send_skb->tail + len + NUM;
 			kmemcheck_annotate_bitfield(send_skb, flags1);
 			kmemcheck_annotate_bitfield(send_skb, flags2);
-			printk("what4\n");
+			//printk("what4\n");
 
-			//send_skb->ip_summed = CHECKSUM_PARTIAL;	
 			send_skb->ip_summed = CHECKSUM_NONE;	
 			
 			struct skb_shared_info *shinfo;
@@ -351,12 +355,9 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			skb_frag_list_init(send_skb);
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
-			printk("what5\n");
-			//printk("mmap_buf + 1024 is %p\n", mmap_buf + 1024);	
+			//printk("what5\n");
 			skb_reserve(send_skb, len);
-			//printk("data %p, len is %d\n", send_skb->data, len);	
 			skb_push(send_skb, sizeof(struct udphdr));
-			//printk("udp data %p\n", send_skb->data);	
 			skb_reset_transport_header(send_skb);
 		
 			/*
@@ -364,7 +365,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
  			 */	
 			//send_skb->tail = send_skb->end;
 			
-			printk("what6\n");
+			//printk("what6\n");
 			udph = udp_hdr(send_skb);
 			udph->source = dport;
 			udph->dest = htons(ntohs(dport) + 1);
@@ -376,16 +377,13 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//	udph->check = CSUM_MANGLED_0;
 
 			skb_push(send_skb, sizeof(struct iphdr));
-			//printk("ip data %p\n", send_skb->data);	
 			skb_reset_network_header(send_skb);
 			send_iph = ip_hdr(send_skb);
 
-			// iph->version = 4; iph->ihl = 5; 
 			put_unaligned(0x45, (unsigned char *)send_iph);
 			send_iph->tos = 0;
 			put_unaligned(htons(iph_len) + htons(udph_len), &(send_iph->tot_len));
-			//send_iph->id       = htons(atomic_inc_return(&ip_ident));
-			printk("what7\n");
+			//printk("what7\n");
 			send_iph->id = 0;
 			send_iph->frag_off = 0;
 			send_iph->ttl = 64;
@@ -395,33 +393,36 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
 			  
-			printk("what7.1\n");
-			struct net_device *dev = skb->dev;
+			struct net_device *dev = ws_sp_get_dev(daddr);
+			if (!dev){
+				printk("NULL\n");
+				return NF_DROP;
+			}
+			//printk("what8\n");
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
-			//printk("eth data %p\n", send_skb->data);	
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
-			printk("what7.2\n");
-			//printk("dev_addr is %p, len is %d", dev->dev_addr, ETH_ALEN);
-			//printk("h_source is %p, dev_addr is %p, len is %d", eth->h_source, dev->dev_addr, ETH_ALEN);
-			printk("eth is %p, 7.2.11\n", eth->h_source);
-			printk("dev is %p, 7.2.12\n", dev->dev_addr);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-			printk("what7.2.1\n");
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
-			printk("what7.2.1.2\n");
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
-			printk("what7.3\n");
 			send_skb->dev = dev;
-			//printk("data len is %d\n", send_skb->data_len);
-			int result = dev_queue_xmit(send_skb);
-			//printk("result is %d and len is %d and par1 is %d par2 is %d\n", result, send_skb->users,  shinfo->nr_frags ,  shinfo->frag_list );
-			//spin_unlock(&lock);
-			printk("what8\n");
-			send_skb->dev = NULL;
-			kmem_cache_free(skbuff_head_cache, send_skb);
-			//kfree_skb(send_skb);
-			printk("what9\n");
+			//printk("what9\n");
+			dev_queue_xmit(send_skb);
+			printk("what10\n");
+			if (atomic_dec_and_test(&(send_skb->users))){
+				printk("what10.5\n");
+				kmem_cache_free(skbuff_head_cache, send_skb);
+			}
+			else
+			{
+				printk("what10.6\n");
+				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC);
+				ptr->free_mem = send_skb;
+				list_add(&ptr->list, &head_free_slab);
+			}
+
+			//kfree(send_skb);
+			printk("what11\n");
 			return NF_DROP;
 			//return NF_ACCEPT;
 		}
@@ -445,16 +446,25 @@ static struct nf_hook_ops hook_ops[] = {
 		},
 };
 
+void my_function(unsigned long data)
+{
+	printk("HELLO WORLD\n");
+	list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
+	{
+		printk("what is %d\n", tmp_slab->free_mem);
+	}
+	mod_timer(&my_timer, jiffies + 5*HZ);
+}
+
 static void wsmmap_exit(void)
 {
 		int ret;
 				
-	
 		struct timeval tv;
 		do_gettimeofday(&tv);
-		//long int t_second = tv.tv_sec;
-		//printk("cost time  is %ld , packet_count is %d, all packet speed is %d pkt//sec, port hook speed is %d pkt//sec\n", (t_second - ts_begin), atomic_read(&packet_count), atomic_read(&drop_count)/(t_second - ts_begin), atomic_read(&packet_count)/(t_second - ts_begin));
 
+		del_timer(&my_timer);
+		
 		ret = mmap_free( );
 		if(ret) {
 			printk("wsmmap: mmap free failed!\n");
@@ -476,22 +486,18 @@ free_failed:
 int wsmmap_init(void)
 {
 		int ret;
-		//atomic_set(&packet_count, 0);
-		//atomic_set(&drop_count, 0);
-		
+
 		ret = mmap_alloc( );
 		if(ret) {
 			printk("wsmmap: mmap alloc failed!\n");
 			goto alloc_failed;
 		}
-
 		
 		ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 		if (ret) {
 			printk("wsmmap: local_in hooks failed\n");
 			goto nf_failed;
 		}
-		
 
 		ret = register_chrdev(MAJOR_DEVICE, "wsmmap", &ws_fops);
 		if(ret) {
@@ -500,6 +506,48 @@ int wsmmap_init(void)
 		}  	
 
 		skbuff_head_cache = kmem_cache_create("skbuff_head_cache_temp", sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+		if (skbuff_head_cache == NULL){
+			printk("alloc slab is failed.\n");
+			return 1;
+		}
+		
+		skbuff_free_cache = kmem_cache_create("skbuff_free_cache_temp", sizeof(struct free_slab), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+		if (skbuff_free_cache == NULL){
+			printk("alloc slab is failed.\n");
+			return 1;
+		}
+
+
+		/*
+ 		 * install a timer which free the slab.
+ 		 */		
+		setup_timer(&my_timer, my_function, 0);
+		my_timer.expires = jiffies + 10*HZ;
+		add_timer(&my_timer);
+
+		INIT_LIST_HEAD(&head_free_slab);
+		/*
+		int j = 0;
+		for (j = 0; j < 3; ++j){
+			struct free_slab *ptr = (struct free_slab*)kmalloc(sizeof(struct free_slab), GFP_KERNEL);
+			ptr->free_mem = j;
+			list_add(&ptr->list, &head_free_slab);
+		}
+					
+		list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
+		{
+			//tmp_slab = list_entry(pos, struct free_slab, list);
+			printk("what is %d\n", tmp_slab->free_mem);
+			if (tmp_slab->free_mem == 1)
+				list_del(&tmp_slab->list);
+		}	
+		
+		list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
+		{
+			printk("what is %d\n", tmp_slab->free_mem);
+		}
+		*/
+			
 		/*
 		int i; 
 		for (i = 0; i < mmap_size; i += PAGE_SIZE){
@@ -507,13 +555,7 @@ int wsmmap_init(void)
 		memset(mmap_buf + i + PAGE_SIZE - 1, '\0', 1);
 		}*/
 		printk("insmod module wsmmap successfully!\n");	
-		atomic_set(&count, 1);
-		/*
-		int j;
-		for (j = 0; j < 150; ++j){
-			index[j] = 0;
-		}
-		*/
+		
 		return 0;
 
 
