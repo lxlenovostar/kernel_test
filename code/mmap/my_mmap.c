@@ -53,7 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1024
-#define NUM 0
+#define NUM 3
 #define COPYNUM 140
 
 #ifndef NIPQUAD
@@ -86,10 +86,10 @@ struct list_head *pos;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //char *dest_addr = "192.168.99.2";
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-char *dest_addr = "192.168.99.2";
-#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-//char *dest_addr = "192.168.204.130";
-//#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
+//char *dest_addr = "192.168.99.2";
+//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
+char *dest_addr = "192.168.204.130";
+#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 #define SOU_MAC {0x00, 0x0c, 0x29, 0xdf, 0xdf, 0xb0}
 
 static int MAJOR_DEVICE = 30;
@@ -355,7 +355,13 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
 			//printk("what5\n");
-			skb_reserve(send_skb, len);
+			skb_reserve(send_skb, len + NUM);
+			
+			/*
+ 			 * instead of copy data
+ 			 */
+			skb_push(send_skb, NUM);
+			
 			skb_push(send_skb, sizeof(struct udphdr));
 			skb_reset_transport_header(send_skb);
 		
