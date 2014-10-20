@@ -71,8 +71,7 @@ struct kmem_cache *skbuff_head_cache;
 struct kmem_cache *skbuff_free_cache;
 
 struct free_slab{
-	//struct sk_buff *free_mem;
-	int free_mem;
+	struct sk_buff *free_mem;
 	struct list_head list;
 };
 struct free_slab *tmp_slab;
@@ -87,10 +86,10 @@ struct list_head *pos;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //char *dest_addr = "192.168.99.2";
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-//char *dest_addr = "192.168.99.2";
-//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-char *dest_addr = "192.168.204.130";
-#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
+char *dest_addr = "192.168.99.2";
+#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
+//char *dest_addr = "192.168.204.130";
+//#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 #define SOU_MAC {0x00, 0x0c, 0x29, 0xdf, 0xdf, 0xb0}
 
 static int MAJOR_DEVICE = 30;
@@ -408,21 +407,23 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			send_skb->dev = dev;
 			//printk("what9\n");
 			dev_queue_xmit(send_skb);
-			printk("what10\n");
-			if (atomic_dec_and_test(&(send_skb->users))){
-				printk("what10.5\n");
+			//printk("what10\n");
+			if (atomic_read(&(send_skb->users)) == 1){
+				//printk("what10.5\n");
 				kmem_cache_free(skbuff_head_cache, send_skb);
 			}
 			else
 			{
-				printk("what10.6\n");
-				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC);
+				//printk("what10.6 users is %d\n", atomic_read(&send_skb->users));
+				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC & ~__GFP_DMA);
 				ptr->free_mem = send_skb;
+				spin_lock(&lock);
 				list_add(&ptr->list, &head_free_slab);
+				spin_unlock(&lock);
 			}
 
 			//kfree(send_skb);
-			printk("what11\n");
+			//printk("what11\n");
 			return NF_DROP;
 			//return NF_ACCEPT;
 		}
@@ -448,10 +449,25 @@ static struct nf_hook_ops hook_ops[] = {
 
 void my_function(unsigned long data)
 {
-	printk("HELLO WORLD\n");
+	//printk("HELLO WORLD\n");
 	list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
 	{
-		printk("what is %d\n", tmp_slab->free_mem);
+		if (atomic_read(&((tmp_slab->free_mem)->users)) == 1){
+			//printk("what2 is %d\n", atomic_read(&(tmp_slab->free_mem)->users));
+			//struct free_slab *tmp_free = list_entry(tmp_slab->list, struct free_slab, list);
+			list_del(&tmp_slab->list);
+			struct free_slab *tmp_free = tmp_slab;
+			//printk("what2.0\n");
+			struct sk_buff *tmp_buff = tmp_slab->free_mem;
+			//printk("what2.1\n");
+			kmem_cache_free(skbuff_head_cache, tmp_buff);
+			//printk("what2.2\n");
+			tmp_buff = NULL;
+			kmem_cache_free(skbuff_free_cache, tmp_free);
+			//printk("what2.3\n");
+			tmp_free = NULL;
+		}
+		
 	}
 	mod_timer(&my_timer, jiffies + 5*HZ);
 }
