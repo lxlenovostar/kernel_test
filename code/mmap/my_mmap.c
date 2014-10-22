@@ -65,6 +65,8 @@
 #endif
 
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
+spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
+spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
 struct timer_list my_timer;
 //static struct kmem_cache *skbuff_head_cache __read_mostly;
 struct kmem_cache *skbuff_head_cache;
@@ -94,7 +96,9 @@ char *dest_addr = "192.168.204.130";
 
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
-unsigned long mmap_size = 4*1024;
+//unsigned long mmap_size = 4096+4096*4096;
+unsigned long mmap_size = 4096+4096*512;
+#define  BITMAP_SIZE ((mmap_size-4096)/512)
 
 struct net_device *ws_sp_get_dev(__be32 ip)
 {
@@ -283,10 +287,12 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		__be32 saddr, daddr;
 		unsigned short sport, dport;
 		unsigned short ulen;
-		char in_buf[COPYNUM];
+		//char in_buf[100];
+		int  index;
+		int send_len;
 		//char out_buf[NUM];
 
-		memset(in_buf, '0', COPYNUM);
+		//memset(in_buf, '0', 100);
 	
 		if (iph->protocol != IPPROTO_TCP) {
 			//return NF_DROP;
@@ -300,9 +306,21 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		dport = th->dest;
 		
 		if (ntohs(dport) == 80) {
-			//printk("what5\n");
 			//memcpy(mmap_buf, in_buf, COPYNUM);
-			//memcpy(out_buf, mmap_buf, NUM);
+			//memcpy(out_buf, mmap_buf, NUM)		
+					
+			spin_lock(&rece_lock);
+			index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
+			if (index == BITMAP_SIZE){
+				printk("receive mmap memory is full");
+				//BUG();
+			}
+			printk("index zero is %d\n", index);
+			memcpy(mmap_buf+ 4096 + index * 512, skb->data, skb->len);
+			bitmap_set(mmap_buf, index, 1);
+			spin_unlock(&rece_lock);
+
+
 
 			/*
 			* send packet 
@@ -313,11 +331,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			iph_len = sizeof(struct iphdr);
 			udph_len  = sizeof(struct udphdr);
 			len	= eth_len + iph_len + udph_len;
-			
+			send_len = skb->len;
 			/*
 			 * build a new sk_buff
 			 */
-			//struct sk_buff *send_skb = kmem_cache_alloc_node(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA, NUMA_NO_NODE);
 			struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA);
 			
 			if (!send_skb) {
@@ -335,7 +352,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		
 			//printk("what3\n");
 			skb_reset_tail_pointer(send_skb);
-			send_skb->end = send_skb->tail + len + NUM;
+			send_skb->end = send_skb->tail + len + send_len;
 			kmemcheck_annotate_bitfield(send_skb, flags1);
 			kmemcheck_annotate_bitfield(send_skb, flags2);
 			//printk("what4\n");
@@ -355,13 +372,16 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
 			//printk("what5\n");
-			skb_reserve(send_skb, len + NUM);
+			skb_reserve(send_skb, len + send_len);
 			
 			/*
  			 * instead of copy data
  			 */
-			skb_push(send_skb, NUM);
-			
+			skb_push(send_skb, send_len);
+			memcpy(send_skb->data, mmap_buf+ 4096 + index * 512, skb->len);
+			bitmap_clear(mmap_buf, index, 1);
+			printk("index %d is clear\n", index);
+	
 			skb_push(send_skb, sizeof(struct udphdr));
 			skb_reset_transport_header(send_skb);
 		
@@ -496,7 +516,7 @@ static void wsmmap_exit(void)
 		unregister_chrdev(MAJOR_DEVICE,"wsmmap");  
 
 		nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));  
-
+		
 		printk("rmmod wsmmap module!\n");
 		return ;
 
@@ -508,7 +528,8 @@ free_failed:
 int wsmmap_init(void)
 {
 		int ret;
-
+		
+		
 		ret = mmap_alloc( );
 		if(ret) {
 			printk("wsmmap: mmap alloc failed!\n");
@@ -538,7 +559,7 @@ int wsmmap_init(void)
 			printk("alloc slab is failed.\n");
 			return 1;
 		}
-
+		
 
 		/*
  		 * install a timer which free the slab.
@@ -548,35 +569,33 @@ int wsmmap_init(void)
 		add_timer(&my_timer);
 
 		INIT_LIST_HEAD(&head_free_slab);
-		/*
-		int j = 0;
-		for (j = 0; j < 3; ++j){
-			struct free_slab *ptr = (struct free_slab*)kmalloc(sizeof(struct free_slab), GFP_KERNEL);
-			ptr->free_mem = j;
-			list_add(&ptr->list, &head_free_slab);
-		}
 					
-		list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
-		{
-			//tmp_slab = list_entry(pos, struct free_slab, list);
-			printk("what is %d\n", tmp_slab->free_mem);
-			if (tmp_slab->free_mem == 1)
-				list_del(&tmp_slab->list);
-		}	
+
+		bitmap_zero(mmap_buf, BITMAP_SIZE);	
+		/*printk("size is %d\n", BITMAP_SIZE);	
+		bitmap_set(mmap_buf, 0, 1);
+		bitmap_set(mmap_buf, 1, 1);
+		bitmap_set(mmap_buf, 2, 1);
+		bitmap_set(mmap_buf, 3, 1);
+		bitmap_set(mmap_buf, 4, 1);
+		bitmap_set(mmap_buf, 5, 1);
+		bitmap_set(mmap_buf, 6, 1);
+		bitmap_set(mmap_buf, 7, 1);
+		int index = find_first_bit(mmap_buf, BITMAP_SIZE);	
+		printk("index set is %d\n", index);*/
+		//bitmap_clear(mmai
+		//int index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
+		//printk("index zero is %d\n", index);
 		
-		list_for_each_entry_safe_reverse(tmp_slab, next_slab, &head_free_slab, list)
-		{
-			printk("what is %d\n", tmp_slab->free_mem);
-		}
-		*/
-			
+
+		printk("insmod module wsmmap successfully!\n");	
+
 		/*
 		int i; 
 		for (i = 0; i < mmap_size; i += PAGE_SIZE){
 		memset(mmap_buf + i, 'a', PAGE_SIZE);
 		memset(mmap_buf + i + PAGE_SIZE - 1, '\0', 1);
 		}*/
-		printk("insmod module wsmmap successfully!\n");	
 		
 		return 0;
 
