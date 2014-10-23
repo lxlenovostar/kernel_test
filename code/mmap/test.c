@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -9,114 +9,146 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#define BITS_PER_LONG (sizeof(unsigned long) * 8)
+#define BIT_WORD(nr)        ((nr) / BITS_PER_LONG)
+#define BITMAP_FIRST_WORD_MASK(start) (~0UL << ((start) % BITS_PER_LONG))
+#define BITMAP_LAST_WORD_MASK(nbits)                    \
+(                                   \
+    ((nbits) % BITS_PER_LONG) ?                 \
+        (1UL<<((nbits) % BITS_PER_LONG))-1 : ~0UL       \
+)
 
-#include <unistd.h>
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <time.h>
-#include <string.h>
-
-void handler(int sig)
+/*
+ * __ffs - find first set bit in word
+ * @word: The word to search
+ *  
+ * Undefined if no bit exists, so code should check against 0 first.
+ */
+static inline unsigned long __ffs(unsigned long word)
 {
-#ifndef WIN32
-	void *array[10];
-	size_t size;
-	size = backtrace(array, 10);
-	int file_dump = open("/opt/dump.log", O_APPEND | O_RDWR);
-	char message[7] = "BEGIN ";
-	write(file_dump, message, 7);
-
-	time_t now;
-	struct tm *timenow;
-	char strtemp[255];
-
-	time(&now);  
-	timenow = localtime(&now);
-	sprintf(strtemp, "recent time is : %s\n", asctime(timenow));
-
-	int length=strlen(strtemp)+1;
-	write(file_dump, strtemp, length);
-
-	backtrace_symbols_fd(array, size, file_dump);
-
-	close(file_dump);
-
-	exit(1);
-#endif
+    asm("bsf %1,%0"
+        : "=r" (word)
+        : "rm" (word));
+    return word;
 }
 
-#define SLOT 1024
-unsigned long phymem_addr = 0;
-unsigned long phymem_size = 4*1024*1024*20;
-//unsigned long phymem_size = 4*1024;
+/*
+ * ffz - find first zero bit in word
+ * @word: The word to search
+ *
+ * Undefined if no zero exists, so code should check against ~0UL first.
+ */
+static inline unsigned long ffz(unsigned long word)
+{   
+    asm("bsf %1,%0"
+        : "=r" (word)
+        : "r" (~word));
+    return word;
+}
 
-/*manage data*/
-typedef struct {
-   char *buffer;
-   int length;
-   volatile int start;
-   volatile int end;
-} RingBuffer;
+
+/*
+ * Find the first cleared bit in a memory region.
+ */
+unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
+{
+    const unsigned long *p = addr;
+    unsigned long result = 0;
+    unsigned long tmp;
+
+    while (size & ~(BITS_PER_LONG-1)) {
+        if (~(tmp = *(p++)))
+            goto found;
+        result += BITS_PER_LONG;
+        size -= BITS_PER_LONG;
+    }
+    if (!size) 
+        return result;
+
+    tmp = (*p) | (~0UL << size);
+    if (tmp == ~0UL)    /* Are any bits zero? */
+        return result + size;   /* Nope. */
+found:
+    return result + ffz(tmp);
+}
+
+/*
+ *Find the first set bit in a memory region.
+ */ 
+unsigned long find_first_bit(const unsigned long *addr, unsigned long size)
+{
+    const unsigned long *p = addr;
+    unsigned long result = 0;
+    unsigned long tmp;
+    
+    while (size & ~(BITS_PER_LONG-1)) {
+        if ((tmp = *(p++)))
+            goto found;
+        result += BITS_PER_LONG;
+        size -= BITS_PER_LONG;
+    }   
+    if (!size) 
+        return result;  
+        
+    tmp = (*p) & (~0UL >> (BITS_PER_LONG - size));
+    if (tmp == 0UL)     /* Are any bits set? */
+        return result + size;   /* Nope. */
+found:
+    return result + __ffs(tmp);
+}
+
+void bitmap_clear(unsigned long *map, int start, int nr)
+{
+    unsigned long *p = map + BIT_WORD(start);
+    const int size = start + nr;
+    int bits_to_clear = BITS_PER_LONG - (start % BITS_PER_LONG);
+    unsigned long mask_to_clear = BITMAP_FIRST_WORD_MASK(start);
+
+    while (nr - bits_to_clear >= 0) {
+        *p &= ~mask_to_clear;
+        nr -= bits_to_clear;
+        bits_to_clear = BITS_PER_LONG;
+        mask_to_clear = ~0UL;
+        p++;
+    }
+    if (nr) {
+        mask_to_clear &= BITMAP_LAST_WORD_MASK(size);
+        *p &= ~mask_to_clear;
+    }
+}
+
+void bitmap_set(unsigned long *map, int start, int nr)
+{
+        unsigned long *p = map + BIT_WORD(start);
+        const int size = start + nr;
+        int bits_to_set = BITS_PER_LONG - (start % BITS_PER_LONG);
+        unsigned long mask_to_set = BITMAP_FIRST_WORD_MASK(start);
+
+        while (nr - bits_to_set >= 0) {
+                *p |= mask_to_set;
+                nr -= bits_to_set;
+                bits_to_set = BITS_PER_LONG;
+                mask_to_set = ~0UL;
+                p++;
+        }
+        if (nr) {
+                mask_to_set &= BITMAP_LAST_WORD_MASK(size);
+                *p |= mask_to_set;
+        }
+}
+
 
 void *mmap_addr = NULL;
-RingBuffer *ring = NULL;
-
-#define RingBuffer_available_data(B) ((B)->end % (B)->length - (B)->start)
-#define RingBuffer_starts_at(B) ((mmap_addr + SLOT) + (B)->start)
-#define RingBuffer_commit_read(B, A) ((B)->start = ((B)->start + (A)) % (B)->length)
-
-int RingBuffer_read(RingBuffer *buffer, char *target, int amount)
-{
-		if (amount > RingBuffer_available_data(buffer)){
-				printf("Not enough in the buffer: has %d, needs %d", RingBuffer_available_data(buffer), amount);
-				return -1;
-		}
-
-		void *result = memcpy(target, RingBuffer_starts_at(buffer), amount);
-		if (result != target){
-				 printf("Failed to write buffer into data.");
-				 return -1;
-		}
-
-		RingBuffer_commit_read(buffer, amount);
-
-		if(buffer->end == buffer->start) {
-				 buffer->start = buffer->end = 0;
-		}
-
-		return amount;
-}
+unsigned long phymem_addr = 0;
+unsigned long phymem_size = 4096+4096*512;
 
 
-void *thread_read(void *arg)
-{
-	char mem_data[SLOT];
-	int num = 20480;
-	int i;
-
-	while (num){
-		RingBuffer_read(ring, mem_data, SLOT);
-		//printf("read length is %d, start is %d, end is %d, data is %s, buffer is %p\n", ring->length, ring->start, ring->end, mem_data, ring->buffer);
-		for (i = 0; i < 46; ++i){
-				printf("%02x ", (unsigned char)*(mem_data + i));
-		}
-		printf("\n\n");
-		--num;
-		sleep(1);
-	}
-}
-
+/*
+ * should command : mknod /dev/wsmmap c 30 0
+ */
 int main(void)
 {
 	int fd;
-	int i=0;
-
-	signal(SIGSEGV, handler);   // install our handler
 
 	fd = open("/dev/wsmmap", O_RDWR);
 	if(fd < 0) {
@@ -130,36 +162,18 @@ int main(void)
 	 	return 0;
 	}
 
-	ring = (RingBuffer *)mmap_addr;
 	
 		
-	int res;
-	pthread_t t_read;
-	
-	res = pthread_create(&t_read, NULL, thread_read, NULL);
-	if (res != 0){
-		perror("join failed");
-		return -1;
-	}
+	/*int res;
+	pthread_t t_read[THREAD_NUM];
+	for (i = 0; i < THREAD_NUM; ++i) {	
+		res = pthread_create(&t_read[i], NULL, thread_read, NULL);
+		if (res != 0){
+			perror("join failed");
+			return -1;
+		}
+	}*/
 
-	void *thread_r_read;
-	res = pthread_join(t_read, &thread_r_read);
-	if (res != 0){
-		perror("Thread join failed");
-		return -1;
-	}
-	
-
-        /*
-	// just test
-	char *a = "aa";
-	printf("length is %d, start is %d, end is %d\n", ring->length, ring->start, ring->end);
-	RingBuffer_write(ring, a, 2); 
-	printf("length is %d, start is %d, end is %d\n", ring->length, ring->start, ring->end);
-	char mem_data[64];
-	RingBuffer_read(ring, mem_data, 2);
-	printf("length is %d, start is %d, end is %d, data is %s\n", ring->length, ring->start, ring->end, mem_data);
-	*/
 	
 	mmap_addr=NULL;
        	close(fd); 
