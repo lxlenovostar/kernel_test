@@ -9,6 +9,26 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include <unistd.h>
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
+#include <string.h>
+
+#define THREAD_NUM 3 
+#define PAGE 4096
+#define SLOT 512
+#define SIZE ((phymem_size - PAGE)/SLOT)
+void *mmap_addr = NULL;
+unsigned long phymem_addr = 0;
+unsigned long phymem_size = PAGE + 100*SLOT;
+pthread_mutex_t read_lock;
+
 #define BITS_PER_LONG (sizeof(unsigned long) * 8)
 #define BIT_WORD(nr)        ((nr) / BITS_PER_LONG)
 #define BITMAP_FIRST_WORD_MASK(start) (~0UL << ((start) % BITS_PER_LONG))
@@ -17,6 +37,9 @@
     ((nbits) % BITS_PER_LONG) ?                 \
         (1UL<<((nbits) % BITS_PER_LONG))-1 : ~0UL       \
 )
+#define BITS_PER_BYTE 8
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+#define BITS_TO_LONGS(nr)   DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
 
 /*
  * __ffs - find first set bit in word
@@ -46,7 +69,6 @@ static inline unsigned long ffz(unsigned long word)
     return word;
 }
 
-
 /*
  * Find the first cleared bit in a memory region.
  */
@@ -62,7 +84,7 @@ unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
         result += BITS_PER_LONG;
         size -= BITS_PER_LONG;
     }
-    if (!size) 
+    if (!size)
         return result;
 
     tmp = (*p) | (~0UL << size);
@@ -80,7 +102,6 @@ unsigned long find_first_bit(const unsigned long *addr, unsigned long size)
     const unsigned long *p = addr;
     unsigned long result = 0;
     unsigned long tmp;
-    
     while (size & ~(BITS_PER_LONG-1)) {
         if ((tmp = *(p++)))
             goto found;
@@ -137,45 +158,131 @@ void bitmap_set(unsigned long *map, int start, int nr)
         }
 }
 
+static inline void bitmap_zero(unsigned long *dst, int nbits)
+{
+	int len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
+        memset(dst, 0, len);
+}
 
-void *mmap_addr = NULL;
-unsigned long phymem_addr = 0;
-unsigned long phymem_size = 4096+4096*512;
+void * thread_read(void *arg)
+{
+	char temp_buf[1000];
+	int index = 0;
 
+	while(1) {
+		again: ;
+			pthread_mutex_lock(&read_lock);
+			index = find_first_zero_bit(mmap_addr, SIZE);
+			if (index == SIZE){
+				printf("no memory slot\n");
+				pthread_mutex_unlock(&read_lock);
+				sleep(0.2);
+				goto again;
+			}
+			bitmap_set(mmap_addr, index, 1);
+			pthread_mutex_unlock(&read_lock);
+			memcpy(temp_buf, mmap_addr + PAGE + index*SLOT, SLOT);
+			printf("index is %d\n", index);
+			sleep(0.1);
+	}
+	return ((void *)0);
+}
+
+
+void handler(int sig)
+{
+#ifndef WIN32
+        void *array[10];
+        size_t size;
+        size = backtrace(array, 10);
+        int file_dump = open("/opt/dump.log", O_APPEND | O_RDWR);
+        char message[7] = "BEGIN ";
+        write(file_dump, message, 7);
+
+        time_t now;
+        struct tm *timenow;
+        char strtemp[255];
+
+        time(&now);
+        timenow = localtime(&now);
+        sprintf(strtemp, "recent time is : %s\n", asctime(timenow));
+
+        int length=strlen(strtemp)+1;
+        write(file_dump, strtemp, length);
+  backtrace_symbols_fd(array, size, file_dump);
+
+        close(file_dump);
+
+        exit(1);
+#endif
+}
 
 /*
  * should command : mknod /dev/wsmmap c 30 0
  */
 int main(void)
 {
-	int fd;
+	int fd, i;
 
+   	signal(SIGSEGV, handler);   // install our handler
 	fd = open("/dev/wsmmap", O_RDWR);
 	if(fd < 0) {
 		perror("open");
-		return 0;
+		return -1;
 	}
 
 	mmap_addr = mmap(NULL, phymem_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	if(mmap_addr == MAP_FAILED) {
 		perror("mmap");
-	 	return 0;
+	 	return -1;
 	}
-
 	
-		
-	/*int res;
+	if (pthread_mutex_init(&read_lock, NULL) != 0){
+		perror("init mutex");
+	 	return -1;
+	}
+	
+
+	//int index = 0;
+	//index = find_first_zero_bit(mmap_addr, (phymem_size-4096)/512);
+	
+	/*
+	mmap_addr = malloc(sizeof(unsigned long));	
+	bitmap_zero(mmap_addr, 8);
+	bitmap_set(mmap_addr, 0, 1);
+	bitmap_set(mmap_addr, 1, 1);
+	find_first_zero_bit(mmap_addr, 8);
+	*/
+	
+	int res, err;
+	void *rret;
 	pthread_t t_read[THREAD_NUM];
 	for (i = 0; i < THREAD_NUM; ++i) {	
+		printf("what0\n");
 		res = pthread_create(&t_read[i], NULL, thread_read, NULL);
 		if (res != 0){
+			perror("create failed");
+			return -1;
+		}
+		printf("what1\n");/*
+		err = pthread_join(t_read[i], &rret);
+		if (err != 0){
 			perror("join failed");
 			return -1;
 		}
-	}*/
-
+		printf("what2\n");*/
+	}
 	
-	mmap_addr=NULL;
+	for (i = 0; i < THREAD_NUM; ++i) {	
+		err = pthread_join(t_read[i], &rret);
+		if (err != 0){
+			perror("join failed");
+			return -1;
+		}
+		printf("what2\n");
+	}
+	
+	mmap_addr = NULL;
        	close(fd); 
     	return 0;    
 }

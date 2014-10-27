@@ -97,7 +97,7 @@ char *dest_addr = "192.168.204.130";
 static int MAJOR_DEVICE = 30;
 void * mmap_buf = 0;
 //unsigned long mmap_size = 4096+4096*4096;
-unsigned long mmap_size = 4096+4096*512;
+unsigned long mmap_size = 4096+100*512;
 #define  BITMAP_SIZE ((mmap_size-4096)/512)
 
 struct net_device *ws_sp_get_dev(__be32 ip)
@@ -227,12 +227,12 @@ static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 			return -EINVAL;
 		}
 
-#ifdef USE_KMALLOC
+//#ifdef USE_KMALLOC
 		pfn  = virt_to_phys(mmap_buf) >> PAGE_SHIFT;
 		return remap_pfn_range(vma, start,  pfn, size, PAGE_SHARED);
-#else
+//#else
 		/* loop over all pages, map it page individually */
-		while (size > 0) {
+		/*while (size > 0) {
 		pfn = vmalloc_to_pfn(ptmp);
 		if ((ret = remap_pfn_range(vma, start, pfn, PAGE_SIZE, PAGE_SHARED)) < 0) {
 			return ret;
@@ -240,9 +240,9 @@ static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 		start += PAGE_SIZE;
 		ptmp += PAGE_SIZE;
 		size -= PAGE_SIZE;
-		}
-#endif
-		return 0;
+		}*/
+//#endif
+		//return 0;
 }
 
 
@@ -528,7 +528,6 @@ free_failed:
 int wsmmap_init(void)
 {
 		int ret;
-		
 		
 		ret = mmap_alloc( );
 		if(ret) {
