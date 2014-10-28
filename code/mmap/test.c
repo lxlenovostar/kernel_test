@@ -20,14 +20,17 @@
 #include <time.h>
 #include <string.h>
 
-#define THREAD_NUM 3 
+#define THREAD_NUM 1 
 #define PAGE 4096
 #define SLOT 512
 #define SIZE ((phymem_size - PAGE)/SLOT)
+#define HEAD 42
 void *mmap_addr = NULL;
+void *mmap_addr_write = NULL;
 unsigned long phymem_addr = 0;
-unsigned long phymem_size = PAGE + 100*SLOT;
+unsigned long phymem_size = PAGE + 128*SLOT;
 pthread_mutex_t read_lock;
+pthread_mutex_t write_lock;
 
 #define BITS_PER_LONG (sizeof(unsigned long) * 8)
 #define BIT_WORD(nr)        ((nr) / BITS_PER_LONG)
@@ -164,7 +167,7 @@ static inline void bitmap_zero(unsigned long *dst, int nbits)
         memset(dst, 0, len);
 }
 
-void * thread_read(void *arg)
+void* thread_read(void *arg)
 {
 	char temp_buf[1000];
 	int index = 0;
@@ -172,22 +175,45 @@ void * thread_read(void *arg)
 	while(1) {
 		again: ;
 			pthread_mutex_lock(&read_lock);
-			index = find_first_zero_bit(mmap_addr, SIZE);
+			index = find_first_bit(mmap_addr, SIZE);
 			if (index == SIZE){
-				printf("no memory slot\n");
+				printf("no memory slot read\n");
 				pthread_mutex_unlock(&read_lock);
 				sleep(0.2);
 				goto again;
 			}
-			bitmap_set(mmap_addr, index, 1);
+			memcpy(temp_buf, mmap_addr + PAGE + index*SLOT, 100);
+			bitmap_clear(mmap_addr, index, 1);
 			pthread_mutex_unlock(&read_lock);
-			memcpy(temp_buf, mmap_addr + PAGE + index*SLOT, SLOT);
-			printf("index is %d\n", index);
+			printf("read index is %d\n", index);
 			sleep(0.1);
 	}
 	return ((void *)0);
 }
 
+void* thread_write(void *arg)
+{
+	char temp_buf[1000];
+	int index = 0;
+
+	while(1) {
+		again: ;
+			pthread_mutex_lock(&write_lock);
+			index = find_first_zero_bit(mmap_addr_write, SIZE);
+			if (index == SIZE){
+				printf("no memory slot write\n");
+				pthread_mutex_unlock(&write_lock);
+				sleep(0.2);
+				goto again;
+			}
+			memcpy(mmap_addr_write + PAGE + index*SLOT + HEAD, temp_buf, 100);
+			bitmap_set(mmap_addr_write, index, 1);
+			pthread_mutex_unlock(&write_lock);
+			printf("write index is %d\n", index);
+			sleep(0.1);
+	}
+	return ((void *)0);
+}
 
 void handler(int sig)
 {
@@ -222,17 +248,29 @@ void handler(int sig)
  */
 int main(void)
 {
-	int fd, i;
+	int fd_read, fd_write, i;
 
    	signal(SIGSEGV, handler);   // install our handler
-	fd = open("/dev/wsmmap", O_RDWR);
-	if(fd < 0) {
+	fd_read = open("/dev/wsmmap", O_RDWR);
+	if(fd_read < 0) {
 		perror("open");
 		return -1;
 	}
 
-	mmap_addr = mmap(NULL, phymem_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	mmap_addr = mmap(NULL, phymem_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd_read, 0);
 	if(mmap_addr == MAP_FAILED) {
+		perror("mmap");
+	 	return -1;
+	}
+	
+	fd_write = open("/dev/wsmmapsend", O_RDWR);
+	if(fd_write < 0) {
+		perror("open");
+		return -1;
+	}
+
+	mmap_addr_write = mmap(NULL, phymem_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd_write, 0);
+	if(mmap_addr_write == MAP_FAILED) {
 		perror("mmap");
 	 	return -1;
 	}
@@ -242,7 +280,10 @@ int main(void)
 	 	return -1;
 	}
 	
-
+	if (pthread_mutex_init(&write_lock, NULL) != 0){
+		perror("init mutex");
+	 	return -1;
+	}
 	//int index = 0;
 	//index = find_first_zero_bit(mmap_addr, (phymem_size-4096)/512);
 	
@@ -254,9 +295,10 @@ int main(void)
 	find_first_zero_bit(mmap_addr, 8);
 	*/
 	
-	int res, err;
+	int res, err_read, err_write;
 	void *rret;
 	pthread_t t_read[THREAD_NUM];
+	pthread_t t_write[THREAD_NUM];
 	for (i = 0; i < THREAD_NUM; ++i) {	
 		printf("what0\n");
 		res = pthread_create(&t_read[i], NULL, thread_read, NULL);
@@ -274,8 +316,23 @@ int main(void)
 	}
 	
 	for (i = 0; i < THREAD_NUM; ++i) {	
-		err = pthread_join(t_read[i], &rret);
-		if (err != 0){
+		printf("what0\n");
+		res = pthread_create(&t_write[i], NULL, thread_write, NULL);
+		if (res != 0){
+			perror("create failed");
+			return -1;
+		}
+	}
+
+	for (i = 0; i < THREAD_NUM; ++i) {	
+		err_read = pthread_join(t_read[i], &rret);
+		if (err_read != 0){
+			perror("join failed");
+			return -1;
+		}
+		
+		err_write = pthread_join(t_write[i], &rret);
+		if (err_write != 0){
 			perror("join failed");
 			return -1;
 		}
@@ -283,6 +340,8 @@ int main(void)
 	}
 	
 	mmap_addr = NULL;
-       	close(fd); 
-    	return 0;    
-}
+	mmap_addr_write = NULL;
+       	close(fd_read);
+       	close(fd_write);
+    	return 0;  
+} 

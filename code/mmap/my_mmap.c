@@ -74,6 +74,7 @@ struct kmem_cache *skbuff_free_cache;
 
 struct free_slab{
 	struct sk_buff *free_mem;
+	int free_index;
 	struct list_head list;
 };
 struct free_slab *tmp_slab;
@@ -92,13 +93,16 @@ struct list_head *pos;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
 char *dest_addr = "192.168.204.130";
 #define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
-#define SOU_MAC {0x00, 0x0c, 0x29, 0xdf, 0xdf, 0xb0}
 
-static int MAJOR_DEVICE = 30;
+static int MAJOR_DEVICE = 50;
+static int MAJOR_DEVICE_SEND = 51;
 void * mmap_buf = 0;
+void * mmap_buf_send = 0;
+void * mmap_buf_pend = 0;
 //unsigned long mmap_size = 4096+4096*4096;
-unsigned long mmap_size = 4096+100*512;
-#define  BITMAP_SIZE ((mmap_size-4096)/512)
+#define SLOT 512
+unsigned long mmap_size = 4096+128*SLOT;
+#define  BITMAP_SIZE ((mmap_size-4096)/SLOT)
 
 struct net_device *ws_sp_get_dev(__be32 ip)
 {
@@ -153,12 +157,6 @@ out:
 	return netdev;
 }
 
-static int ws_open(struct inode *inode, struct file *file)
-{
-	return 0;    
-}
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)	
 #define LIN_IOCTL_NAME	.ioctl
 int ws_ioctl(struct inode *inode, struct file *file, u_int cmd, u_long data)
@@ -174,31 +172,30 @@ long ws_ioctl(struct file *file, u_int cmd, u_long data)
 
 int mmap_alloc(void)
 {
-		mmap_size = PAGE_ALIGN(mmap_size);
-
-#ifdef USE_KMALLOC //for kmalloc
-		mmap_buf = kzalloc(mmap_size, GFP_KERNEL);
-		printk("kmalloc mmap_buf=%p\n", (void *)mmap_buf);
-		if (!mmap_buf) {
-			printk("kmalloc failed!\n");
-			return -1;
-		}
-		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
-			SetPageReserved(page);
-		}
-#else //for vmalloc
-		mmap_buf  = kmalloc(mmap_size, GFP_ATOMIC);
-		printk("kmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
-		if (!mmap_buf) {
-			printk("kmalloc failed!\n");
-			return -1;
-		}
+		printk("where1\n");
 		struct page *page;
+		mmap_size = PAGE_ALIGN(mmap_size);
+		mmap_buf  = kmalloc(mmap_size, GFP_ATOMIC);
+		mmap_buf_send  = kmalloc(mmap_size, GFP_ATOMIC);
+		
+		printk("kmalloc mmap_buf=%p, mmap_buf_send=%p, mmap_size=%ld\n", (void *)mmap_buf, (void *)mmap_buf_send,mmap_size);
+		if (!mmap_buf) {
+			printk("kmalloc failed!\n");
+			return -1;
+		}
+		
+		if (!mmap_buf_send) {
+			printk("kmalloc failed!\n");
+			return -1;
+		}
+
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			SetPageReserved(page);
 		}
 		
-#endif
+		for (page = virt_to_page(mmap_buf_send); page < virt_to_page(mmap_buf_send + mmap_size); page++) {
+			SetPageReserved(page);
+		}
 
 		return 0;
 }
@@ -207,11 +204,21 @@ int mmap_alloc(void)
 int mmap_free(void)
 {
 		struct page *page;
+		
+		printk("where2\n");
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			ClearPageReserved(page);
 		}
+		
+		for (page = virt_to_page(mmap_buf_send); page < virt_to_page(mmap_buf_send + mmap_size); page++) {
+			ClearPageReserved(page);
+		}
+
 		kfree((void *)mmap_buf);
+		kfree((void *)mmap_buf_send);
 		mmap_buf = NULL;
+		mmap_buf_send = NULL;
+		
 		return 0;
 }
 
@@ -227,29 +234,25 @@ static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 			return -EINVAL;
 		}
 
-//#ifdef USE_KMALLOC
 		pfn  = virt_to_phys(mmap_buf) >> PAGE_SHIFT;
 		return remap_pfn_range(vma, start,  pfn, size, PAGE_SHARED);
-//#else
-		/* loop over all pages, map it page individually */
-		/*while (size > 0) {
-		pfn = vmalloc_to_pfn(ptmp);
-		if ((ret = remap_pfn_range(vma, start, pfn, PAGE_SIZE, PAGE_SHARED)) < 0) {
-			return ret;
-		}
-		start += PAGE_SIZE;
-		ptmp += PAGE_SIZE;
-		size -= PAGE_SIZE;
-		}*/
-//#endif
-		//return 0;
 }
 
-
-static int ws_release(struct inode *inode, struct file *file)
+static int ws_mmap_send(struct file *f, struct vm_area_struct *vma)
 {
-    return 0;
+		int ret;
+		unsigned long pfn;
+		unsigned long start = vma->vm_start;
+		unsigned long size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
+		void * ptmp = mmap_buf_send;
+		if (size > mmap_size || !mmap_buf_send) {
+			return -EINVAL;
+		}
+
+		pfn  = virt_to_phys(mmap_buf_send) >> PAGE_SHIFT;
+		return remap_pfn_range(vma, start,  pfn, size, PAGE_SHARED);
 }
+
 
 static const struct file_operations ws_fops ={    
 		.owner = THIS_MODULE,
@@ -260,6 +263,12 @@ static const struct file_operations ws_fops ={
 		//.open = ws_open,
 		//.release = ws_release,
 };
+
+static const struct file_operations ws_fops_send ={    
+		.owner = THIS_MODULE,
+		.mmap = ws_mmap_send,
+};
+
 
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, 
 								const struct net_device *out,int (*okfn)(struct sk_buff *));
@@ -288,7 +297,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		unsigned short sport, dport;
 		unsigned short ulen;
 		//char in_buf[100];
-		int  index;
+		int  index, send_index, next_index;
 		int send_len;
 		//char out_buf[NUM];
 
@@ -312,17 +321,19 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			spin_lock(&rece_lock);
 			index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
 			if (index == BITMAP_SIZE){
-				printk("receive mmap memory is full");
+				printk("receive mmap memory is full\n");
+				spin_unlock(&rece_lock);
+				return NF_DROP;
 				//BUG();
 			}
-			printk("index zero is %d\n", index);
-			memcpy(mmap_buf+ 4096 + index * 512, skb->data, skb->len);
+			printk("index receive is %d\n", index);
+			memcpy(mmap_buf+ 4096 + index * SLOT, skb->data, skb->len);
 			bitmap_set(mmap_buf, index, 1);
 			spin_unlock(&rece_lock);
 
 
 
-			/*
+		       /*
 			* send packet 
 			*/
 			//spin_lock(&lock);
@@ -331,7 +342,8 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			iph_len = sizeof(struct iphdr);
 			udph_len  = sizeof(struct udphdr);
 			len	= eth_len + iph_len + udph_len;
-			send_len = skb->len;
+			printk("len is %d\n", len);
+			send_len = 100;
 			/*
 			 * build a new sk_buff
 			 */
@@ -346,9 +358,50 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			memset(send_skb, 0, offsetof(struct sk_buff, tail));
 			atomic_set(&send_skb->users, 2);
 			send_skb->cloned = 0;
+			
+			//printk("find send index1\n");
+			spin_lock(&send_lock);
+			//printk("find send index2\n");
+			send_index = find_first_bit(mmap_buf_send, BITMAP_SIZE);
+			//printk("find send index3\n");
+			if (send_index == BITMAP_SIZE){
+				printk("send mmap memory is empty\n");
+				//printk("find send index4\n");
+				spin_unlock(&send_lock);
+				return NF_DROP;
+				//BUG();
+			}
+			/*
+ 			 * if this test is true, packet is waiting for send, so find next set bit. 
+ 			 */
+			//printk("find send index5 is %d\n", send_index);
+			//printk("find send index5.1 is %d\n", test_bit(send_index, mmap_buf_pend));
+			while (test_bit(send_index, mmap_buf_pend)){
+				//printk("find send index6.1\n");
+				next_index = find_next_bit(mmap_buf_send, BITMAP_SIZE, send_index + 1);
+				//printk("find send index6.2\n");
+				if (next_index == BITMAP_SIZE){
+					printk("send mmap memory is empty\n");
+					spin_unlock(&send_lock);
+					return NF_DROP;
+				}
+				send_index = next_index;
+				//printk("find send index6.3\n");
+			}
+			//printk("find send index6\n");
+			bitmap_set(mmap_buf_pend, send_index, 1);
+			//printk("find send index7\n");
+			/*
+ 			 * test this bit whether is pending.
+ 			 */
+			spin_unlock(&send_lock);
+			printk("send_index set is %d\n", send_index);
 
-			send_skb->head = mmap_buf + 1024;
-			send_skb->data = mmap_buf + 1024;
+			send_skb->head = mmap_buf_send + 4096 + send_index * SLOT;
+			send_skb->data = mmap_buf_send + 4096 + send_index * SLOT;
+			
+			//send_skb->head = mmap_buf_send + 4096 ;
+			//send_skb->data = mmap_buf_send + 4096 ;
 		
 			//printk("what3\n");
 			skb_reset_tail_pointer(send_skb);
@@ -358,7 +411,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//printk("what4\n");
 
 			send_skb->ip_summed = CHECKSUM_NONE;	
-			
+
 			struct skb_shared_info *shinfo;
 			shinfo = skb_shinfo(send_skb);
 			atomic_set(&shinfo->dataref, 1);
@@ -373,22 +426,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 
 			//printk("what5\n");
 			skb_reserve(send_skb, len + send_len);
-			
-			/*
- 			 * instead of copy data
- 			 */
 			skb_push(send_skb, send_len);
-			memcpy(send_skb->data, mmap_buf+ 4096 + index * 512, skb->len);
-			bitmap_clear(mmap_buf, index, 1);
-			printk("index %d is clear\n", index);
 	
 			skb_push(send_skb, sizeof(struct udphdr));
 			skb_reset_transport_header(send_skb);
-		
-			/*
- 			 * just instead of copy datas.
- 			 */	
-			//send_skb->tail = send_skb->end;
 			
 			//printk("what6\n");
 			udph = udp_hdr(send_skb);
@@ -431,18 +472,20 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
-			//printk("what9\n");
+			printk("what9\n");
 			dev_queue_xmit(send_skb);
-			//printk("what10\n");
+			printk("what10\n");
 			if (atomic_read(&(send_skb->users)) == 1){
-				//printk("what10.5\n");
+				printk("what10.5\n");
 				kmem_cache_free(skbuff_head_cache, send_skb);
+				bitmap_clear(mmap_buf_pend, send_index, 1);
 			}
 			else
 			{
-				//printk("what10.6 users is %d\n", atomic_read(&send_skb->users));
+				printk("what10.6 users is %d\n", atomic_read(&send_skb->users));
 				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC & ~__GFP_DMA);
 				ptr->free_mem = send_skb;
+				ptr->free_index = send_index;
 				spin_lock(&lock);
 				list_add(&ptr->list, &head_free_slab);
 				spin_unlock(&lock);
@@ -485,6 +528,7 @@ void my_function(unsigned long data)
 			struct free_slab *tmp_free = tmp_slab;
 			//printk("what2.0\n");
 			struct sk_buff *tmp_buff = tmp_slab->free_mem;
+			bitmap_clear(mmap_buf_pend, tmp_slab->free_index, 1);
 			//printk("what2.1\n");
 			kmem_cache_free(skbuff_head_cache, tmp_buff);
 			//printk("what2.2\n");
@@ -501,23 +545,24 @@ void my_function(unsigned long data)
 static void wsmmap_exit(void)
 {
 		int ret;
-				
 		struct timeval tv;
+		
+		kfree(mmap_buf_pend);
+		
 		do_gettimeofday(&tv);
 
 		del_timer(&my_timer);
 		
+		unregister_chrdev(MAJOR_DEVICE, "wsmmap");	
+		unregister_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend");	
+		
+		nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
+
 		ret = mmap_free( );
 		if(ret) {
 			printk("wsmmap: mmap free failed!\n");
 			goto free_failed;        
 		}
-
-		unregister_chrdev(MAJOR_DEVICE,"wsmmap");  
-
-		nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));  
-		
-		printk("rmmod wsmmap module!\n");
 		return ;
 
 free_failed:
@@ -529,7 +574,8 @@ int wsmmap_init(void)
 {
 		int ret;
 		
-		ret = mmap_alloc( );
+		printk("where0\n");
+		ret = mmap_alloc();
 		if(ret) {
 			printk("wsmmap: mmap alloc failed!\n");
 			goto alloc_failed;
@@ -547,6 +593,12 @@ int wsmmap_init(void)
 			goto chr_failed;
 		}  	
 
+		ret = register_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend", &ws_fops_send);
+		if(ret) {
+			printk("wsmmap: chrdev register failed\n");
+			goto chr_failed;
+		}
+  	
 		skbuff_head_cache = kmem_cache_create("skbuff_head_cache_temp", sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 		if (skbuff_head_cache == NULL){
 			printk("alloc slab is failed.\n");
@@ -559,7 +611,6 @@ int wsmmap_init(void)
 			return 1;
 		}
 		
-
 		/*
  		 * install a timer which free the slab.
  		 */		
@@ -568,20 +619,23 @@ int wsmmap_init(void)
 		add_timer(&my_timer);
 
 		INIT_LIST_HEAD(&head_free_slab);
-					
-
-		bitmap_zero(mmap_buf, BITMAP_SIZE);	
-		/*printk("size is %d\n", BITMAP_SIZE);	
-		bitmap_set(mmap_buf, 0, 1);
-		bitmap_set(mmap_buf, 1, 1);
-		bitmap_set(mmap_buf, 2, 1);
-		bitmap_set(mmap_buf, 3, 1);
-		bitmap_set(mmap_buf, 4, 1);
-		bitmap_set(mmap_buf, 5, 1);
-		bitmap_set(mmap_buf, 6, 1);
-		bitmap_set(mmap_buf, 7, 1);
-		int index = find_first_bit(mmap_buf, BITMAP_SIZE);	
-		printk("index set is %d\n", index);*/
+		bitmap_zero(mmap_buf, BITMAP_SIZE);
+		bitmap_zero(mmap_buf_send, BITMAP_SIZE);
+		mmap_buf_pend  = kmalloc(1024, GFP_ATOMIC);
+		bitmap_zero(mmap_buf_pend, BITMAP_SIZE);
+	
+		//printk("size is %d\n", BITMAP_SIZE);	
+		/*bitmap_set(mmap_buf_pend, 1, 1);
+		bitmap_set(mmap_buf_pend, 4, 1);
+		bitmap_set(mmap_buf_pend, 7, 1);
+		printk("test set 1 is %d\n", test_bit(1, mmap_buf_pend));
+		printk("test set 2 is %d\n", test_bit(2, mmap_buf_pend));
+		int index = find_first_zero_bit(mmap_buf_pend, BITMAP_SIZE);	
+		printk("index set 1 is %d\n", index);
+		int index1 = find_next_zero_bit(mmap_buf_pend, BITMAP_SIZE, index+1);
+		printk("index set 2 is %d\n", index1);
+		int index2 = find_next_zero_bit(mmap_buf_pend, BITMAP_SIZE, index1+1);
+		printk("index set 3 is %d\n", index2);*/
 		//bitmap_clear(mmai
 		//int index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
 		//printk("index zero is %d\n", index);
