@@ -20,7 +20,7 @@
 #include <time.h>
 #include <string.h>
 
-#define THREAD_NUM 1 
+#define THREAD_NUM 3 
 #define PAGE 4096
 #define SLOT 512
 #define SIZE ((phymem_size - PAGE)/SLOT)
@@ -28,7 +28,7 @@
 void *mmap_addr = NULL;
 void *mmap_addr_write = NULL;
 unsigned long phymem_addr = 0;
-unsigned long phymem_size = PAGE + 128*SLOT;
+unsigned long phymem_size = PAGE + 1024*SLOT;
 pthread_mutex_t read_lock;
 pthread_mutex_t write_lock;
 
