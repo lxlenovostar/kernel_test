@@ -90,10 +90,10 @@ struct list_head *pos;
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //char *dest_addr = "192.168.99.2";
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-//char *dest_addr = "192.168.99.2";
-//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-char *dest_addr = "192.168.204.130";
-#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
+char *dest_addr = "192.168.99.2";
+#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
+//char *dest_addr = "192.168.204.130";
+//#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 
 static int MAJOR_DEVICE = 50;
 static int MAJOR_DEVICE_SEND = 51;
@@ -314,34 +314,29 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		dport = th->dest;
 		
 		if (ntohs(dport) == 80) {
-			//memcpy(mmap_buf, in_buf, COPYNUM);
-			//memcpy(out_buf, mmap_buf, NUM)		
-					
-			if (unlikely((&get_cpu_var(head_free_slab))->next == NULL))
+			if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
 				INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
-			put_cpu_var(head_free_slab);
-			
-			//printk("what\n");
+				put_cpu_var(head_free_slab);
+			}
 
+			/*
 			spin_lock(&rece_lock);
 			index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
 			if (index == BITMAP_SIZE){
 				printk("receive mmap memory is full\n");
 				spin_unlock(&rece_lock);
 				return NF_DROP;
-				//BUG();
 			}
 			//printk("index receive is %d\n", index);
 			memcpy(mmap_buf+ 4096 + index * SLOT, skb->data, skb->len);
 			bitmap_set(mmap_buf, index, 1);
 			spin_unlock(&rece_lock);
-
+			*/
 
 
 		       /*
 			* send packet 
 			*/
-			//spin_lock(&lock);
 			int eth_len, udph_len, iph_len, len;
 			eth_len = sizeof(struct ethhdr);
 			iph_len = sizeof(struct iphdr);
@@ -363,43 +358,29 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			atomic_set(&send_skb->users, 2);
 			send_skb->cloned = 0;
 			
-			//printk("find send index1\n");
+			/*	
 			spin_lock(&send_lock);
-			//printk("find send index2\n");
 			send_index = find_first_bit(mmap_buf_send, BITMAP_SIZE);
-			//printk("find send index3\n");
 			if (send_index == BITMAP_SIZE){
 				printk("send mmap memory is empty\n");
-				//printk("find send index4\n");
 				spin_unlock(&send_lock);
 				return NF_DROP;
-				//BUG();
-			}
+			}*/
 			/*
  			 * if this test is true, packet is waiting for send, so find next set bit. 
  			 */
-			//printk("find send index5 is %d\n", send_index);
-			//printk("find send index5.1 is %d\n", test_bit(send_index, mmap_buf_pend));
-			while (test_bit(send_index, mmap_buf_pend)){
-				//printk("find send index6.1\n");
+			/*while (test_bit(send_index, mmap_buf_pend)){
 				next_index = find_next_bit(mmap_buf_send, BITMAP_SIZE, send_index + 1);
-				//printk("find send index6.2\n");
 				if (next_index == BITMAP_SIZE){
 					printk("send mmap memory is empty\n");
 					spin_unlock(&send_lock);
 					return NF_DROP;
 				}
 				send_index = next_index;
-				//printk("find send index6.3\n");
-			}
-			//printk("find send index6\n");
-			bitmap_set(mmap_buf_pend, send_index, 1);
-			//printk("find send index7\n");
-			/*
- 			 * test this bit whether is pending.
- 			 */
-			spin_unlock(&send_lock);
-			//printk("send_index set is %d\n", send_index);
+			}*/
+			/*bitmap_set(mmap_buf_pend, send_index, 1);
+			//test this bit whether is pending.
+			spin_unlock(&send_lock);*/
 
 			send_skb->head = mmap_buf_send + 4096 + send_index * SLOT;
 			send_skb->data = mmap_buf_send + 4096 + send_index * SLOT;
@@ -407,12 +388,10 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			//send_skb->head = mmap_buf_send + 4096 ;
 			//send_skb->data = mmap_buf_send + 4096 ;
 		
-			//printk("what3\n");
 			skb_reset_tail_pointer(send_skb);
 			send_skb->end = send_skb->tail + len + send_len;
 			kmemcheck_annotate_bitfield(send_skb, flags1);
 			kmemcheck_annotate_bitfield(send_skb, flags2);
-			//printk("what4\n");
 
 			send_skb->ip_summed = CHECKSUM_NONE;	
 
@@ -428,23 +407,17 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			skb_frag_list_init(send_skb);
 			memset(&shinfo->hwtstamps, 0, sizeof(shinfo->hwtstamps));
 
-			//printk("what5\n");
 			skb_reserve(send_skb, len + send_len);
 			skb_push(send_skb, send_len);
-	
 			skb_push(send_skb, sizeof(struct udphdr));
 			skb_reset_transport_header(send_skb);
 			
-			//printk("what6\n");
 			udph = udp_hdr(send_skb);
 			udph->source = dport;
 			udph->dest = htons(ntohs(dport) + 1);
 			udph->len = htons(udph_len);
 			udph->check = 0;
 			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
-				
-			//if (udph->check == 0)
-			//	udph->check = CSUM_MANGLED_0;
 
 			skb_push(send_skb, sizeof(struct iphdr));
 			skb_reset_network_header(send_skb);
@@ -453,7 +426,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			put_unaligned(0x45, (unsigned char *)send_iph);
 			send_iph->tos = 0;
 			put_unaligned(htons(iph_len) + htons(udph_len), &(send_iph->tot_len));
-			//printk("what7\n");
 			send_iph->id = 0;
 			send_iph->frag_off = 0;
 			send_iph->ttl = 64;
@@ -463,45 +435,39 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
 			  
-			struct net_device *dev = ws_sp_get_dev(daddr);
+			//struct net_device *dev = ws_sp_get_dev(daddr);
+			struct net_device *dev = skb->dev;
 			if (!dev){
 				printk("NULL\n");
 				return NF_DROP;
 			}
-			//printk("what8\n");
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
 			skb_reset_mac_header(send_skb);
 			send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
+			//memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 			memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 			u8 dst_mac[ETH_ALEN] = DST_MAC;
 			memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 			send_skb->dev = dev;
-			//printk("what9\n");
 			dev_queue_xmit(send_skb);
-			//printk("what10\n");
 			if (atomic_read(&(send_skb->users)) == 1){
-				//printk("what10.5\n");
 				kmem_cache_free(skbuff_head_cache, send_skb);
 				bitmap_clear(mmap_buf_pend, send_index, 1);
 			}
 			else
 			{
-				//printk("what10.6 users is %d\n", atomic_read(&send_skb->users));
 				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC & ~__GFP_DMA);
 				ptr->free_mem = send_skb;
 				ptr->free_index = send_index;
-				printk("what 1 is %p", &ptr->list);
-				printk("what 2 is %p", &get_cpu_var(head_free_slab));
-				spin_lock(&lock);
+				//printk("add head is %p\n", &ptr->list);
+				//printk("where2 is %p\n", &get_cpu_var(head_free_slab));
+				//spin_lock(&lock);
 				list_add(&ptr->list, &get_cpu_var(head_free_slab));
 				put_cpu_var(head_free_slab);
-				spin_unlock(&lock);
+				//spin_unlock(&lock);
 			}
 
-			//kfree(send_skb);
-			//printk("what11\n");
 			return NF_DROP;
-			//return NF_ACCEPT;
 		}
 
 		return NF_ACCEPT;
@@ -525,16 +491,17 @@ static struct nf_hook_ops hook_ops[] = {
 
 void my_function(unsigned long data)
 {
-	printk("what1 is %p", &get_cpu_var(head_free_slab));
-	printk("what2 is %p", (&get_cpu_var(head_free_slab))->next);
-	printk("what3 is %p", tmp_slab);
-	printk("what4 is %p", next_slab);
+	/*printk("del head is %p\n", &get_cpu_var(head_free_slab));
+	printk("what2 is %p\n", (&get_cpu_var(head_free_slab))->next);
+	printk("what3 is %p\n", tmp_slab);
+	printk("what4 is %p\n", next_slab);*/
 	
 	if ((&get_cpu_var(head_free_slab))->next != NULL){
-		printk("what5 is %d", list_empty(&get_cpu_var(head_free_slab)));
+		//printk("what5 is %d\n", list_empty(&get_cpu_var(head_free_slab)));
 	list_for_each_entry_safe_reverse(tmp_slab, next_slab, &get_cpu_var(head_free_slab), list)
 	{
 		if (atomic_read(&((tmp_slab->free_mem)->users)) == 1){
+			printk("del it\n");
 			list_del(&tmp_slab->list);
 			struct free_slab *tmp_free = tmp_slab;
 			//printk("what2.0\n");
