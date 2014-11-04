@@ -52,7 +52,6 @@
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
-#define SLOT 1024
 #define NUM 3
 #define COPYNUM 140
 
@@ -67,7 +66,6 @@
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
 spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
-struct timer_list my_timer;
 //static struct kmem_cache *skbuff_head_cache __read_mostly;
 struct kmem_cache *skbuff_head_cache;
 struct kmem_cache *skbuff_free_cache;
@@ -80,20 +78,17 @@ struct free_slab{
 struct free_slab *tmp_slab;
 struct free_slab *next_slab;
 static DEFINE_PER_CPU(struct list_head, head_free_slab);
+static DEFINE_PER_CPU(struct timer_list, my_timer);
 //struct list_head head_free_slab;
 struct list_head *pos;
 
 /*
  * The dest addr.
  */
-//char *dest_addr = "192.168.99.1";
-//#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9d, 0xc4}
 //char *dest_addr = "192.168.99.2";
 //#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-char *dest_addr = "192.168.99.2";
-#define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
-//char *dest_addr = "192.168.204.130";
-//#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
+char *dest_addr = "192.168.204.130";
+#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 
 static int MAJOR_DEVICE = 50;
 static int MAJOR_DEVICE_SEND = 51;
@@ -101,7 +96,7 @@ void * mmap_buf = 0;
 void * mmap_buf_send = 0;
 void * mmap_buf_pend = 0;
 //unsigned long mmap_size = 4096+4096*4096;
-#define SLOT 512
+#define SLOT 256
 unsigned long mmap_size = 4096+1024*SLOT;
 #define  BITMAP_SIZE ((mmap_size-4096)/SLOT)
 
@@ -188,7 +183,6 @@ int mmap_alloc(void)
 			printk("kmalloc failed!\n");
 			return -1;
 		}
-
 		for (page = virt_to_page(mmap_buf); page < virt_to_page(mmap_buf + mmap_size); page++) {
 			SetPageReserved(page);
 		}
@@ -279,6 +273,40 @@ unsigned int hook_local_in_p(unsigned int hooknum, struct sk_buff **pskb, const 
 }
 #endif
 
+void my_function(unsigned long data)
+{
+	//printk("del head is %p, and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
+	/*put_cpu_var(head_free_slab);
+	printk("what2 is %p\n", (&get_cpu_var(head_free_slab))->next);
+	put_cpu_var(head_free_slab);
+	printk("what3 is %p\n", tmp_slab);
+	printk("what4 is %p\n", next_slab);*/
+	
+	if ((&get_cpu_var(head_free_slab))->next != NULL){
+		//printk("what5 is %d\n", list_empty(&get_cpu_var(head_free_slab)));
+		put_cpu_var(head_free_slab);
+	list_for_each_entry_safe_reverse(tmp_slab, next_slab, &get_cpu_var(head_free_slab), list)
+	{
+		if (atomic_read(&((tmp_slab->free_mem)->users)) == 1){
+			//printk("del it\n");
+			list_del(&tmp_slab->list);
+			struct free_slab *tmp_free = tmp_slab;
+			struct sk_buff *tmp_buff = tmp_slab->free_mem;
+			bitmap_clear(mmap_buf_pend, tmp_slab->free_index, 1);
+			//printk("del it head is %p\n", tmp_buff);
+			//printk("del it free is %p\n", tmp_free);
+			kmem_cache_free(skbuff_head_cache, tmp_buff);
+			tmp_buff = NULL;
+			kmem_cache_free(skbuff_free_cache, tmp_free);
+			tmp_free = NULL;
+		}
+		put_cpu_var(head_free_slab);
+	}}
+	mod_timer(&get_cpu_var(my_timer), jiffies + 0.1*HZ);
+	put_cpu_var(my_timer);
+}
+
+
 unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const struct net_device *in, const struct net_device *out,int (*okfn)(struct sk_buff *))
 {
 		/*
@@ -312,13 +340,19 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		daddr = iph->daddr;
 		sport = th->source;
 		dport = th->dest;
-		
+	
 		if (ntohs(dport) == 80) {
 			if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
 				INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
 				put_cpu_var(head_free_slab);
+				//printk("init head is %p and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
+				setup_timer(&get_cpu_var(my_timer), my_function, 0);
+				get_cpu_var(my_timer).expires = jiffies + 10*HZ;
+				add_timer(&get_cpu_var(my_timer));
+				put_cpu_var(my_timer);
 			}
 
+			//printk("where\n\n");	
 			/*
 			spin_lock(&rece_lock);
 			index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
@@ -459,8 +493,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 				struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache, GFP_ATOMIC & ~__GFP_DMA);
 				ptr->free_mem = send_skb;
 				ptr->free_index = send_index;
-				//printk("add head is %p\n", &ptr->list);
-				//printk("where2 is %p\n", &get_cpu_var(head_free_slab));
+				//printk("add head is %p and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
 				//spin_lock(&lock);
 				list_add(&ptr->list, &get_cpu_var(head_free_slab));
 				put_cpu_var(head_free_slab);
@@ -489,36 +522,35 @@ static struct nf_hook_ops hook_ops[] = {
 		},
 };
 
-void my_function(unsigned long data)
+/*void my_function(unsigned long data)
 {
-	/*printk("del head is %p\n", &get_cpu_var(head_free_slab));
+	printk("del head is %p, and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
+	put_cpu_var(head_free_slab);
 	printk("what2 is %p\n", (&get_cpu_var(head_free_slab))->next);
+	put_cpu_var(head_free_slab);
 	printk("what3 is %p\n", tmp_slab);
-	printk("what4 is %p\n", next_slab);*/
+	printk("what4 is %p\n", next_slab);
 	
 	if ((&get_cpu_var(head_free_slab))->next != NULL){
 		//printk("what5 is %d\n", list_empty(&get_cpu_var(head_free_slab)));
+		put_cpu_var(head_free_slab);
 	list_for_each_entry_safe_reverse(tmp_slab, next_slab, &get_cpu_var(head_free_slab), list)
 	{
 		if (atomic_read(&((tmp_slab->free_mem)->users)) == 1){
 			printk("del it\n");
 			list_del(&tmp_slab->list);
 			struct free_slab *tmp_free = tmp_slab;
-			//printk("what2.0\n");
 			struct sk_buff *tmp_buff = tmp_slab->free_mem;
 			bitmap_clear(mmap_buf_pend, tmp_slab->free_index, 1);
-			//printk("what2.1\n");
 			kmem_cache_free(skbuff_head_cache, tmp_buff);
-			//printk("what2.2\n");
 			tmp_buff = NULL;
 			kmem_cache_free(skbuff_free_cache, tmp_free);
-			//printk("what2.3\n");
 			tmp_free = NULL;
 		}
 		put_cpu_var(head_free_slab);
 	}}
 	mod_timer(&my_timer, jiffies + 5*HZ);
-}
+}*/
 
 static void wsmmap_exit(void)
 {
@@ -526,11 +558,9 @@ static void wsmmap_exit(void)
 		struct timeval tv;
 			
 		kfree(mmap_buf_pend);
-		
 		do_gettimeofday(&tv);
-
-		del_timer(&my_timer);
-		
+		del_timer(&(get_cpu_var(my_timer)));
+		put_cpu_var(my_timer);
 		unregister_chrdev(MAJOR_DEVICE, "wsmmap");	
 		unregister_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend");	
 		
@@ -592,9 +622,9 @@ int wsmmap_init(void)
 		/*
  		 * install a timer which free the slab.
  		 */		
-		setup_timer(&my_timer, my_function, 0);
+		/*setup_timer(&my_timer, my_function, 0);
 		my_timer.expires = jiffies + 10*HZ;
-		add_timer(&my_timer);
+		add_timer(&my_timer);*/
 
 		bitmap_zero(mmap_buf, BITMAP_SIZE);
 		bitmap_zero(mmap_buf_send, BITMAP_SIZE);
@@ -623,7 +653,7 @@ int wsmmap_init(void)
 		//int index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
 		//printk("index zero is %d\n", index);
 
-		printk("insmod module wsmmap successfully!\n");	
+		 printk("insmod module wsmmap successfully! is %d\n", num_online_cpus());	
 		
 		return 0;
 
