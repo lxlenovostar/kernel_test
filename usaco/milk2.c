@@ -71,7 +71,7 @@ main()
 {
 		int num, i,j, low, high;
 		struct attime *ptr;
-		struct attime *t;
+		struct attime *at;
 		FILE *fin,*fout;
 		struct list_head *tmp_list;
 		int long_distance = 0;
@@ -102,11 +102,22 @@ main()
 				}
 				else{
 					//printf("what3.5\n");
-					t = list_entry(tmp_list, struct attime, list);
+					at = list_entry(tmp_list, struct attime, list);
 					
-					if (ptr->begin <= t->begin){
+					if (ptr->begin <= at->begin){
 						//printf("what3.6\n");
-						list_add(&ptr->list, tmp_list->prev);	
+						if (ptr->end < at->begin){
+							list_add(&ptr->list, tmp_list->prev);
+						}
+						else if (ptr->end >= at->begin && ptr->end < at->end)
+						{
+								at->begin = ptr->begin;
+						}
+						else
+						{
+								at->begin = ptr->begin;
+								at->end = ptr->end;
+						}	
 						break;	
 					}
 					
@@ -129,49 +140,52 @@ main()
 
 		for (tmp_list = (&list)->next; tmp_list != &list; tmp_list = tmp_list->next)
 		{
-			t = list_entry(tmp_list, struct attime, list);
-			//printf("begin is %d and end is %d; last_begin is %d and last_end is %d\n", t->begin, t->end, last_begin, last_end);
+			at = list_entry(tmp_list, struct attime, list);
+			//printf("begin is %d and end is %d; last_begin is %d and last_end is %d\n", at->begin, at->end, last_begin, last_end);
 			if (tmp_list->prev == &list){
-				long_distance  = t->end - t->begin;
+				long_distance  = at->end - at->begin;
 				intevel = 0;
-				last_begin = t->begin;
-				last_end = t->end;
+				last_begin = at->begin;
+				last_end = at->end;
 			}
 			else {
-				if (t->begin >= last_begin && t->end <= last_end){
+				if (at->begin >= last_begin && at->end <= last_end){
 					continue;
                 }
 								
-				if (t->begin == last_begin){
-					if (t->end > last_end){
-						long_distance  = t->end - t->begin;
-						last_end = t->end;
+				if (at->begin == last_begin){
+					if (at->end > last_end){
+						long_distance  = at->end - at->begin;
+						last_end = at->end;
 					}
-				} else if (t->begin > last_begin && t->begin <= last_end){
-					if (t->end > last_end){
-						long_distance += t->end - last_end;
-						last_end = t->end;
+				} else if (at->begin > last_begin && at->begin <= last_end){
+					if (at->end > last_end){
+						long_distance += at->end - last_end;
+						last_end = at->end;
 					}
 				} else {
-					if ((t->begin - prev_end) > intevel){
-						intevel = t->begin - prev_end;
+					if ((at->begin - prev_end) > intevel){
+						intevel = at->begin - prev_end;
 					}
-					if (long_distance <= (t->end - t->begin)){
-						long_distance = t->end - t->begin;
-						last_begin = t->begin;
-						last_end = t->end;
+					if (long_distance <= (at->end - at->begin)){
+						long_distance = at->end - at->begin;
+						last_begin = at->begin;
+						last_end = at->end;
 					}
 				}
-
-				
 			}	
 		
-			prev_end = t->end;	
+			prev_end = at->end;	
 			//last_begin = t->begin;
 			//last_end = t->end;
-			//printf("tmp_long is %d, tmp_intevel is %d\n", long_distance, intevel);
+			/*printf("tmp_long is %d, tmp_intevel is %d\n", long_distance, intevel);
+			if (at->end - at->begin >= 335){
+			<F4>	printf("end - begin is %d\n", (at->end - at->begin));
+				break;
+			}*/
+
 		}
-		printf("long is %d, intevel is %d\n", long_distance, intevel);
-		//printf(fout, "%d %d\n", long_distance, intevel);
+		//printf("long is %d, intevel is %d\n", long_distance, intevel);
+		fprintf(fout, "%d %d\n", long_distance, intevel);
 		exit (0);
 }
