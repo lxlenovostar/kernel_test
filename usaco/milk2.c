@@ -78,6 +78,7 @@ main()
 		int  intevel = 0;
 		int last_begin = 0;
 		int last_end = 0;
+		int prev_end = 0;
 		fin=fopen("milk2.in","r");
 		fout=fopen("milk2.out","w");
 		
@@ -152,8 +153,8 @@ main()
 						last_end = t->end;
 					}
 				} else {
-					if ((t->begin - last_end) > intevel){
-						intevel = t->begin - last_end;
+					if ((t->begin - prev_end) > intevel){
+						intevel = t->begin - prev_end;
 					}
 					if (long_distance <= (t->end - t->begin)){
 						long_distance = t->end - t->begin;
@@ -164,12 +165,13 @@ main()
 
 				
 			}	
-				
+		
+			prev_end = t->end;	
 			//last_begin = t->begin;
 			//last_end = t->end;
 			//printf("tmp_long is %d, tmp_intevel is %d\n", long_distance, intevel);
 		}
-		//printf("long is %d, intevel is %d\n", long_distance, intevel);
-		fprintf(fout, "%d %d\n", long_distance, intevel);
+		printf("long is %d, intevel is %d\n", long_distance, intevel);
+		//printf(fout, "%d %d\n", long_distance, intevel);
 		exit (0);
 }
