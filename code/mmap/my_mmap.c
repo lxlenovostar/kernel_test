@@ -67,8 +67,11 @@ spinlock_t lock = SPIN_LOCK_UNLOCKED;
 spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
 //static struct kmem_cache *skbuff_head_cache __read_mostly;
-struct kmem_cache *skbuff_head_cache;
-struct kmem_cache *skbuff_free_cache;
+//struct kmem_cache *skbuff_head_cache;
+//struct kmem_cache *skbuff_free_cache;
+
+static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_head_cache);
+static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_free_cache);
 
 struct free_slab{
 	struct sk_buff *free_mem;
@@ -78,10 +81,8 @@ struct free_slab{
 struct free_slab *tmp_slab;
 struct free_slab *next_slab;
 static DEFINE_PER_CPU(struct list_head, head_free_slab);
-//static DEFINE_PER_CPU(struct timer_list, my_timer);
-struct timer_list *my_timer;
-int flag_timer = 0;
-int *set_timer_cpu;
+static DEFINE_PER_CPU(struct timer_list, my_timer);
+//struct timer_list *my_timer;
 //struct list_head head_free_slab;
 struct list_head *pos;
 
@@ -286,22 +287,23 @@ void my_function(unsigned long data)
 	printk("what4 is %p\n", next_slab);*/
 	//int cpu_id = get_cpu();
 	//put_cpu();
+	int count = 0;
 	int cpu_id = smp_processor_id();
+	struct list_head *tmp_head_free_slab = &get_cpu_var(head_free_slab);
+	put_cpu_var(head_free_slab);
 	
 	//preempt_disable();	
-	if ((&get_cpu_var(head_free_slab))->next != NULL){
+	if (tmp_head_free_slab->next != NULL){
 		//printk("what5 is %d\n", list_empty(&get_cpu_var(head_free_slab)));
-		put_cpu_var(head_free_slab);
 		struct free_slab *tmp = tmp_slab + cpu_id;
 		struct free_slab *next = next_slab + cpu_id;
-	list_for_each_entry_safe_reverse(tmp, next, &get_cpu_var(head_free_slab), list)
+	list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab, list)
 	{
-		put_cpu_var(head_free_slab);
 		if (atomic_read(&((tmp->free_mem)->users)) == 1){
 			//printk("del it head is %p, and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
-			printk("del1 it and cpu id is %d\n", cpu_id);
+			//printk("del1 it and cpu id is %d\n", cpu_id);
 			list_del(&tmp->list);
-			printk("del2 it and cpu id is %d\n", cpu_id);
+			//printk("del2 it and cpu id is %d\n", cpu_id);
 			struct free_slab *tmp_free = tmp;
 			struct sk_buff *tmp_buff = tmp->free_mem;
 			//bitmap_clear(mmap_buf_pend, tmp->free_index, 1);
@@ -309,15 +311,23 @@ void my_function(unsigned long data)
 			//printk("del it head is %p\n", tmp_buff);
 			//printk("del it free is %p\n", tmp_free);
 			kmem_cache_free(skbuff_head_cache, tmp_buff);
-			printk("del3 it and cpu id is %d\n", cpu_id);
+			//printk("del3 it and cpu id is %d\n", cpu_id);
 			tmp_buff = NULL;
 			kmem_cache_free(skbuff_free_cache, tmp_free);
-			printk("del4 it and cpu id is %d\n", cpu_id);
+			//printk("del4 it and cpu id is %d\n", cpu_id);
 			tmp_free = NULL;
+			++count;
+		}
+
+		if (count >= 5000)
+		{
+			//printk("fuck\n");
+			break;
 		}
 	}
 	}
-	mod_timer(my_timer + cpu_id, jiffies + 0.1*HZ);
+	mod_timer(&get_cpu_var(my_timer), jiffies + 0.1*HZ);
+	put_cpu_var(my_timer);
 	//preempt_enable();
 }
 
@@ -360,18 +370,11 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 	
 		if (ntohs(dport) == 80) {
 			//printk("where2\n");
-			if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
+			/*if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
 				INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
 				put_cpu_var(head_free_slab);
 				//printk("init head is %p and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
-				cpu_id = get_cpu();
-				put_cpu();
-				setup_timer(my_timer + cpu_id, my_function, 0);
-				(my_timer + cpu_id)->expires = jiffies + 6*HZ;
-				add_timer(my_timer + cpu_id);
-				flag_timer = 1;
-				set_timer_cpu[cpu_id] = 1;
-			}
+			}*/
 
 			//printk("where\n\n");	
 			/*
@@ -471,8 +474,9 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			udph->source = dport;
 			udph->dest = htons(ntohs(dport) + 1);
 			udph->len = htons(udph_len);
-			udph->check = 0;
+			//udph->check = 0;
 			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
+			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, 0);
 
 			skb_push(send_skb, sizeof(struct iphdr));
 			skb_reset_network_header(send_skb);
@@ -489,6 +493,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			put_unaligned(daddr, &(send_iph->saddr));
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
 			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
+			//send_iph->check    = 0;
 			  
 			//struct net_device *dev = ws_sp_get_dev(daddr);
 			struct net_device *dev = skb->dev;
@@ -545,27 +550,21 @@ static struct nf_hook_ops hook_ops[] = {
 
 static void wsmmap_exit(void)
 {
-		int ret;
+		int ret, cpu;
 		struct timeval tv;
-	
+		struct timer_list *this;
+
 		kfree(mmap_buf_pend);
 		do_gettimeofday(&tv);
 		
 		//printk("what1\n");
-		if (flag_timer == 1){
-			//printk("del timer  cpu id is %d\n", smp_processor_id());
-			int i;
-			for (i = 0; i < num_online_cpus(); ++i){
-				if (set_timer_cpu[i] == 1){
-					printk("del timer other cpu id is %d\n", i);
-					del_timer_sync(my_timer +i);
-				}
-			}
-		}
 		//printk("what2\n");
+		for_each_online_cpu(cpu){
+			this = &per_cpu(my_timer, cpu);
+			printk("del timer other cpu id is %d\n", cpu);
+			del_timer_sync(this);
+		}		
 		
-		kfree(set_timer_cpu);
-		kfree(my_timer);
 	
 		unregister_chrdev(MAJOR_DEVICE, "wsmmap");	
 		unregister_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend");	
@@ -586,8 +585,10 @@ free_failed:
 
 int wsmmap_init(void)
 {
-		int ret;
-		
+		int ret, cpu;
+		struct timer_list *this;
+		struct list_head *this_list;
+
 		//printk("where0\n");
 		ret = mmap_alloc();
 		if(ret) {
@@ -637,11 +638,20 @@ int wsmmap_init(void)
 		mmap_buf_pend  = kmalloc(1024, GFP_ATOMIC);
 		bitmap_zero(mmap_buf_pend, BITMAP_SIZE);
 	
-		set_timer_cpu = (int*)kmalloc(num_online_cpus(), GFP_ATOMIC);
-		memset(set_timer_cpu, num_online_cpus(), 0);
-		my_timer = (struct timer_list *)kmalloc(num_online_cpus() * sizeof(struct timer_list), GFP_ATOMIC);
 		tmp_slab = (struct free_slab *)kmalloc(num_online_cpus() * sizeof(struct free_slab), GFP_ATOMIC);
 		next_slab = (struct free_slab *)kmalloc(num_online_cpus() * sizeof(struct free_slab), GFP_ATOMIC);
+		
+		for_each_online_cpu(cpu){
+			this = &per_cpu(my_timer, cpu);
+			setup_timer(this, my_function, 0);
+			this->expires = jiffies + 6*HZ;
+			add_timer_on(this, cpu);
+		}		
+
+		for_each_online_cpu(cpu){
+			this_list = &per_cpu(head_free_slab, cpu);
+			INIT_LIST_HEAD(this_list);
+		}
 		//printk("where1\n");
 
 		//printk("head is %p\n", (&get_cpu_var(head_free_slab))->next);
