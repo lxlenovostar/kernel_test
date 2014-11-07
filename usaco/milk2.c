@@ -54,6 +54,63 @@ static inline int list_empty(const struct list_head *head)
 #define list_entry(ptr, type, member) \
          container_of(ptr, type, member)
 
+/**
+ *  * list_for_each_entry  -   iterate over list of given type
+ *   * @pos:    the type * to use as a loop cursor.
+ *    * @head:   the head for your list.
+ *     * @member: the name of the list_struct within the struct.
+ *      */
+#define list_for_each_entry(pos, head, member)              \
+	for (pos = list_entry((head)->next, typeof(*pos), member);  \
+		&pos->member != (head);    \
+		pos = list_entry(pos->member.next, typeof(*pos), member))
+
+/**
+ *list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
+ *@pos:    the type * to use as a loop cursor.
+ *@n:      another type * to use as temporary storage
+ *@head:   the head for your list.
+ *@member: the name of the list_struct within the struct.
+ */
+#define list_for_each_entry_safe(pos, n, head, member)          \
+	for (pos = list_entry((head)->next, typeof(*pos), member),  \
+		n = list_entry(pos->member.next, typeof(*pos), member); \
+		&pos->member != (head);                    \
+		pos = n, n = list_entry(n->member.next, typeof(*n), member))
+
+#define LIST_HEAD(name) \
+	struct list_head name = LIST_HEAD_INIT(name)
+
+# define POISON_POINTER_DELTA 0
+
+/*
+ *These are non-NULL pointers that will result in page faults
+ *under normal circumstances, used to verify that nobody uses
+ *non-initialized list entries.
+ */ 
+#define LIST_POISON1  ((void *) 0x00100100 + POISON_POINTER_DELTA)
+#define LIST_POISON2  ((void *) 0x00200200 + POISON_POINTER_DELTA)
+
+/*
+ *Delete a list entry by making the prev/next entries
+ *point to each other.
+ *
+ *This is only for internal list manipulation where we know
+ *the prev/next entries already!
+ */
+static inline void __list_del(struct list_head * prev, struct list_head * next)
+{
+		next->prev = prev;
+		prev->next = next;
+}
+
+static inline void list_del(struct list_head *entry)
+{
+		__list_del(entry->prev, entry->next);
+		entry->next = LIST_POISON1;
+		entry->prev = LIST_POISON2;
+}
+
 struct attime
 {
 		int begin;
@@ -61,17 +118,16 @@ struct attime
 		struct list_head list;
 };
 
-#define LIST_HEAD(name) \
-	struct list_head name = LIST_HEAD_INIT(name)
 
-struct list_head list;
 
+struct list_head head_list; 
 int 
 main()
 {
 		int num, i,j, low, high;
 		struct attime *ptr;
 		struct attime *at;
+		struct attime *tmp_at;
 		FILE *fin,*fout;
 		struct list_head *tmp_list;
 		int long_distance = 0;
@@ -82,10 +138,9 @@ main()
 		fin=fopen("milk2.in","r");
 		fout=fopen("milk2.out","w");
 		
-		INIT_LIST_HEAD(&list);
+		INIT_LIST_HEAD(&head_list);
 		//scanf("%d", &num);
 		fscanf(fin, "%d", &num);
-		//printf("what1\n");
 		for (i = 0; i < num; ++i){
 			//scanf("%d %d", &low, &high);
 			fscanf(fin, "%d %d", &low, &high);
@@ -93,19 +148,15 @@ main()
 			ptr->begin = low;
 			ptr->end = high;
 
-			//printf("what2\n");
-			tmp_list = (&list)->next;
+			tmp_list = (&head_list)->next;
 			do {
-				if (list_empty(&list)){
-					//printf("what3\n");
-					list_add(&ptr->list, &list);
+				if (list_empty(&head_list)){
+					list_add(&ptr->list, &head_list);
 				}
 				else{
-					//printf("what3.5\n");
 					at = list_entry(tmp_list, struct attime, list);
 					
 					if (ptr->begin <= at->begin){
-						//printf("what3.6\n");
 						if (ptr->end < at->begin){
 							list_add(&ptr->list, tmp_list->prev);
 						}
@@ -121,28 +172,43 @@ main()
 						break;	
 					}
 					
-					if (tmp_list->next == &list){
-						//printf("what3.7\n");
+					if (tmp_list->next == &head_list){
 						list_add(&ptr->list, tmp_list);
 						break;	
 					}
 					tmp_list = tmp_list->next;
 						
 				}
-			} while(tmp_list != &list);
-			//printf("what4\n");
+			} while(tmp_list != &head_list);
 		}
-		/*for (tmp_list = (&list)->next; tmp_list != &list; tmp_list = tmp_list->next)
-		{
-			t = list_entry(tmp_list, struct attime, list);
-			printf("begin is %d and end is %d\n", t->begin, t->end);
-		}*/
-
-		for (tmp_list = (&list)->next; tmp_list != &list; tmp_list = tmp_list->next)
-		{
+		/*
+		list_for_each_entry(at, &head_list, list){
+			printf("begin is %d and end is %d\n", at->begin, at->end);
+			printf("end1\n");
+		}
+		*/	
+		list_for_each_entry_safe(at, tmp_at, &head_list, list){
+				if (&tmp_at->list == &head_list)
+						break;
+				if (at->begin <= tmp_at->begin && at->end >= tmp_at->begin && at->end <= tmp_at->end){
+						tmp_at->begin = at->begin;
+						list_del(&at->list);
+						free(at);
+						continue;
+				}
+				
+				if (at->begin <= tmp_at->begin && at->end > tmp_at->end){
+						tmp_at->end = at->end;
+						tmp_at->begin = at->begin;
+						list_del(&at->list);
+						free(at);
+						continue;
+				}
+		}
+		
+		for (tmp_list = (&head_list)->next; tmp_list != &head_list; tmp_list = tmp_list->next){
 			at = list_entry(tmp_list, struct attime, list);
-			//printf("begin is %d and end is %d; last_begin is %d and last_end is %d\n", at->begin, at->end, last_begin, last_end);
-			if (tmp_list->prev == &list){
+			if (tmp_list->prev == &head_list){
 				long_distance  = at->end - at->begin;
 				intevel = 0;
 				last_begin = at->begin;
@@ -176,13 +242,6 @@ main()
 			}	
 		
 			prev_end = at->end;	
-			//last_begin = t->begin;
-			//last_end = t->end;
-			/*printf("tmp_long is %d, tmp_intevel is %d\n", long_distance, intevel);
-			if (at->end - at->begin >= 335){
-			<F4>	printf("end - begin is %d\n", (at->end - at->begin));
-				break;
-			}*/
 
 		}
 		//printf("long is %d, intevel is %d\n", long_distance, intevel);
