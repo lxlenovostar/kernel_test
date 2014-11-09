@@ -67,11 +67,10 @@ spinlock_t lock = SPIN_LOCK_UNLOCKED;
 spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
 //static struct kmem_cache *skbuff_head_cache __read_mostly;
-//struct kmem_cache *skbuff_head_cache;
-//struct kmem_cache *skbuff_free_cache;
-
-static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_head_cache);
-static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_free_cache);
+struct kmem_cache *skbuff_head_cache;
+struct kmem_cache *skbuff_free_cache;
+//static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_head_cache);
+//static DEFINE_PER_CPU(struct kmem_cache *,  skbuff_free_cache);
 
 struct free_slab{
 	struct sk_buff *free_mem;
@@ -222,11 +221,9 @@ int mmap_free(void)
 
 static int ws_mmap(struct file *f, struct vm_area_struct *vma)
 {
-		int ret;
 		unsigned long pfn;
 		unsigned long start = vma->vm_start;
 		unsigned long size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
-		void * ptmp = mmap_buf;
 		if (size > mmap_size || !mmap_buf) {
 			return -EINVAL;
 		}
@@ -241,7 +238,6 @@ static int ws_mmap_send(struct file *f, struct vm_area_struct *vma)
 		unsigned long pfn;
 		unsigned long start = vma->vm_start;
 		unsigned long size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
-		void * ptmp = mmap_buf_send;
 		if (size > mmap_size || !mmap_buf_send) {
 			return -EINVAL;
 		}
@@ -287,48 +283,33 @@ void my_function(unsigned long data)
 	printk("what4 is %p\n", next_slab);*/
 	//int cpu_id = get_cpu();
 	//put_cpu();
-	int count = 0;
-	int cpu_id = smp_processor_id();
+	int cpu_id = get_cpu();
+	put_cpu();
+
 	struct list_head *tmp_head_free_slab = &get_cpu_var(head_free_slab);
 	put_cpu_var(head_free_slab);
 	
-	//preempt_disable();	
 	if (tmp_head_free_slab->next != NULL){
-		//printk("what5 is %d\n", list_empty(&get_cpu_var(head_free_slab)));
 		struct free_slab *tmp = tmp_slab + cpu_id;
 		struct free_slab *next = next_slab + cpu_id;
-	list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab, list)
-	{
-		if (atomic_read(&((tmp->free_mem)->users)) == 1){
-			//printk("del it head is %p, and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
-			//printk("del1 it and cpu id is %d\n", cpu_id);
-			list_del(&tmp->list);
-			//printk("del2 it and cpu id is %d\n", cpu_id);
-			struct free_slab *tmp_free = tmp;
-			struct sk_buff *tmp_buff = tmp->free_mem;
-			//bitmap_clear(mmap_buf_pend, tmp->free_index, 1);
-			
-			//printk("del it head is %p\n", tmp_buff);
-			//printk("del it free is %p\n", tmp_free);
-			kmem_cache_free(skbuff_head_cache, tmp_buff);
-			//printk("del3 it and cpu id is %d\n", cpu_id);
-			tmp_buff = NULL;
-			kmem_cache_free(skbuff_free_cache, tmp_free);
-			//printk("del4 it and cpu id is %d\n", cpu_id);
-			tmp_free = NULL;
-			++count;
-		}
-
-		if (count >= 5000)
+		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab, list)
 		{
-			//printk("fuck\n");
-			break;
+			//printk("atomic 1\n");
+			if (atomic_read(&((tmp->free_mem)->users)) == 1){
+				struct free_slab *tmp_free = tmp;
+				struct sk_buff *tmp_buff = tmp->free_mem;
+				//bitmap_clear(mmap_buf_pend, tmp->free_index, 1);
+				list_del(&tmp->list);
+				kmem_cache_free(skbuff_head_cache, tmp_buff);
+				tmp_buff = NULL;
+				kmem_cache_free(skbuff_free_cache, tmp_free);
+				tmp_free = NULL;
+				//printk("atomic cpu_id is %d\n", cpu_id);
+			}
 		}
 	}
-	}
-	mod_timer(&get_cpu_var(my_timer), jiffies + 0.1*HZ);
+	mod_timer(&get_cpu_var(my_timer), jiffies + 0.1*HZ*(cpu_id + 1));
 	put_cpu_var(my_timer);
-	//preempt_enable();
 }
 
 
@@ -351,7 +332,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 		//char in_buf[100];
 		int  index, send_index, next_index;
 		int send_len;
-		int cpu_id;
 		//char out_buf[NUM];
 
 		//memset(in_buf, '0', 100);
@@ -405,7 +385,6 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			 * build a new sk_buff
 			 */
 			struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC & ~__GFP_DMA);
-			
 			if (!send_skb) {
 				//spin_unlock(&lock);
 				return NF_DROP;
@@ -476,7 +455,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			udph->len = htons(udph_len);
 			//udph->check = 0;
 			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
-			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, 0);
+			//udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, 0);
 
 			skb_push(send_skb, sizeof(struct iphdr));
 			skb_reset_network_header(send_skb);
@@ -588,8 +567,7 @@ int wsmmap_init(void)
 		int ret, cpu;
 		struct timer_list *this;
 		struct list_head *this_list;
-
-		//printk("where0\n");
+		
 		ret = mmap_alloc();
 		if(ret) {
 			printk("wsmmap: mmap alloc failed!\n");
@@ -613,7 +591,41 @@ int wsmmap_init(void)
 			printk("wsmmap: chrdev register failed\n");
 			goto chr_failed;
 		}
-  	
+		
+		/*	
+		for_each_online_cpu(cpu){
+			sprintf(str, "%d", cpu);
+			printk("will instal is %s\n", str);
+			tmp_skbuff_head_cache  = per_cpu(skbuff_head_cache, cpu);
+			tmp_skbuff_head_cache = kmem_cache_create(strcat(tmp, str), sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+			if (tmp_skbuff_head_cache == NULL){
+				printk("alloc slab is failed.\n");
+				return 1;
+			}
+			printk("have installed is %s\n", tmp);
+			strcpy(tmp, tmp_string);
+		}
+		
+		for_each_online_cpu(cpu){
+			sprintf(str, "%d", cpu);
+			tmp_skbuff_free_cache  = per_cpu(skbuff_free_cache, cpu);
+			tmp_skbuff_free_cache = kmem_cache_create(strcat(tmp_free, str), sizeof(struct free_slab), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
+			if (tmp_skbuff_free_cache == NULL){
+				printk("alloc slab is failed.\n");
+				return 1;
+			}
+			strcpy(tmp_free, tmp_free_string);
+		}
+		*/
+		
+		/* 
+		int num = 100;
+    		//itoa(num, str, 10);
+		sprintf(str, "%d", num);
+    		printk("The number 'num' is %d and the string 'str' is %s. \n" , num, str);
+		*/
+
+  		
 		skbuff_head_cache = kmem_cache_create("skbuff_head_cache_temp", sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 		if (skbuff_head_cache == NULL){
 			printk("alloc slab is failed.\n");
@@ -625,6 +637,7 @@ int wsmmap_init(void)
 			printk("alloc slab is failed.\n");
 			return 1;
 		}
+		
 
 		/*
  		 * install a timer which free the slab.
@@ -644,7 +657,7 @@ int wsmmap_init(void)
 		for_each_online_cpu(cpu){
 			this = &per_cpu(my_timer, cpu);
 			setup_timer(this, my_function, 0);
-			this->expires = jiffies + 6*HZ;
+			this->expires = jiffies + (6 + cpu)*HZ;
 			add_timer_on(this, cpu);
 		}		
 
