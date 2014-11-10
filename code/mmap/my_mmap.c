@@ -298,7 +298,6 @@ void my_function(unsigned long data)
 			if (atomic_read(&((tmp->free_mem)->users)) == 1){
 				struct free_slab *tmp_free = tmp;
 				struct sk_buff *tmp_buff = tmp->free_mem;
-				//bitmap_clear(mmap_buf_pend, tmp->free_index, 1);
 				list_del(&tmp->list);
 				kmem_cache_free(skbuff_head_cache, tmp_buff);
 				tmp_buff = NULL;
@@ -308,7 +307,8 @@ void my_function(unsigned long data)
 			}
 		}
 	}
-	mod_timer(&get_cpu_var(my_timer), jiffies + 0.1*HZ*(cpu_id + 1));
+	//mod_timer(&get_cpu_var(my_timer), jiffies + HZ*(cpu_id + 1));
+	mod_timer(&get_cpu_var(my_timer), jiffies + HZ);
 	put_cpu_var(my_timer);
 }
 
@@ -453,8 +453,8 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			udph->source = dport;
 			udph->dest = htons(ntohs(dport) + 1);
 			udph->len = htons(udph_len);
-			//udph->check = 0;
-			udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
+			udph->check = 0;
+			//udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
 			//udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, 0);
 
 			skb_push(send_skb, sizeof(struct iphdr));
@@ -471,13 +471,12 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 			send_iph->check = 0;
 			put_unaligned(daddr, &(send_iph->saddr));
 			put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
-			send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
-			//send_iph->check    = 0;
+			//send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
+			send_iph->check    = 0;
 			  
 			//struct net_device *dev = ws_sp_get_dev(daddr);
 			struct net_device *dev = skb->dev;
 			if (!dev){
-				printk("NULL\n");
 				return NF_DROP;
 			}
 			eth = (struct ethhdr *)skb_push(send_skb, ETH_HLEN);
@@ -504,7 +503,7 @@ unsigned int hook_local_in(unsigned int hooknum, struct sk_buff *skb, const stru
 				put_cpu_var(head_free_slab);
 				//spin_unlock(&lock);
 			}
-
+			//return NF_ACCEPT;
 			return NF_DROP;
 		}
 
