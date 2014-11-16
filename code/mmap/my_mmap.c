@@ -78,8 +78,6 @@ struct free_slab {
 	int free_index;
 	struct list_head list;
 };
-struct free_slab *tmp_slab;
-struct free_slab *next_slab;
 static DEFINE_PER_CPU(struct list_head, head_free_slab);
 static DEFINE_PER_CPU(struct timer_list, my_timer);
 //struct timer_list *my_timer;
@@ -92,8 +90,8 @@ long int end;
 /*
  * The dest addr.
  */
-char *dest_addr = "192.168.99.2";
-static __be32 dest;
+const char *dest_addr = "192.168.99.2";
+__be32 dest = 0;
 #define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
 static u8 dst_mac[ETH_ALEN] = DST_MAC;
 //char *dest_addr = "192.168.204.130";
@@ -209,7 +207,20 @@ mmap_alloc(void)
 	     page < virt_to_page(mmap_buf_send + mmap_size); page++) {
 		SetPageReserved(page);
 	}
-
+	
+	/*	int i;
+	        mmap_buf  = vmalloc(mmap_size);
+		mmap_buf_send = vmalloc(mmap_size);
+                printk("vmalloc mmap_buf=%p  mmap_size=%ld\n", (void *)mmap_buf, mmap_size);
+                if (!mmap_buf ) {
+                        printk("vmalloc failed!\n");
+                        return -1;
+                }
+                for (i = 0; i < mmap_size; i += PAGE_SIZE) {
+                        SetPageReserved(vmalloc_to_page(mmap_buf + i));
+                        SetPageReserved(vmalloc_to_page(mmap_buf_send + i));
+                }
+	*/
 	return 0;
 }
 
@@ -232,6 +243,13 @@ mmap_free(void)
 	kfree((void *) mmap_buf_send);
 	mmap_buf = NULL;
 	mmap_buf_send = NULL;
+
+	 /*int i;
+         for (i = 0; i < mmap_size; i += PAGE_SIZE) {
+                       ClearPageReserved(vmalloc_to_page(mmap_buf + i));
+                       ClearPageReserved(vmalloc_to_page(mmap_buf_send + i));
+         }
+         vfree((void *)mmap_buf);*/
 
 	return 0;
 }
@@ -305,15 +323,19 @@ my_function(unsigned long data)
 	   printk("what4 is %p\n", next_slab); */
 	//int cpu_id = get_cpu();
 	//put_cpu();
-	int cpu_id = get_cpu();
-	put_cpu();
+	/*int cpu_id = get_cpu();
+	put_cpu();*/
+	//int count = 0;
 
-	struct list_head *tmp_head_free_slab = &get_cpu_var(head_free_slab);
-	put_cpu_var(head_free_slab);
+	struct list_head *tmp_head_free_slab = (struct listhead *)data;
+	//struct list_head *tmp_head_free_slab = &get_cpu_var(head_free_slab);
+	//put_cpu_var(head_free_slab);
 
 	if (tmp_head_free_slab->next != NULL) {
-		struct free_slab *tmp = tmp_slab + cpu_id;
-		struct free_slab *next = next_slab + cpu_id;
+		//struct free_slab *tmp = tmp_slab + cpu_id;
+		//struct free_slab *next = next_slab + cpu_id;
+		struct free_slab *tmp;
+		struct free_slab *next;
 		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
 						 list) {
 			//printk("atomic 1\n");
@@ -322,15 +344,18 @@ my_function(unsigned long data)
 				struct sk_buff *tmp_buff = tmp->free_mem;
 				list_del(&tmp->list);
 				kmem_cache_free(skbuff_head_cache, tmp_buff);
-				tmp_buff = NULL;
 				kmem_cache_free(skbuff_free_cache, tmp_free);
-				tmp_free = NULL;
 				//printk("atomic cpu_id is %d\n", cpu_id);
+
+				//++count;
 			}
+			//if (count >= 5000)
+			//	break;
 		}
 	}
 	//mod_timer(&get_cpu_var(my_timer), jiffies + HZ*(cpu_id + 1));
-	mod_timer(&get_cpu_var(my_timer), jiffies + HZ);
+	//mod_timer(&get_cpu_var(my_timer), jiffies + HZ);
+	mod_timer(&get_cpu_var(my_timer), jiffies + 10);
 	put_cpu_var(my_timer);
 }
 
@@ -354,8 +379,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	unsigned short sport, dport;
 	unsigned short ulen;
 	//char in_buf[100];
-	int index, send_index, next_index;
+	int index, next_index;
 	int send_len;
+	struct net_device *dev;
+	//int send_index = 0;
+	int send_index = get_cpu();
+	put_cpu();
+	
 	//char out_buf[NUM];
 
 	//memset(in_buf, '0', 100);
@@ -373,6 +403,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 	if (ntohs(dport) == 80) {
 		percpu_counter_inc(&packets);
+		memcpy(mmap_buf+ 4096 + index * SLOT, skb->data, skb->len);
 		//printk("where2\n");
 		/*if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
 		   INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
@@ -404,6 +435,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		udph_len = sizeof (struct udphdr);
 		len = eth_len + iph_len + udph_len;
 		send_len = 0;
+		dev = skb->dev;
 		/*
 		 * build a new sk_buff
 		 */
@@ -417,7 +449,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//printk("what2\n");
 		memset(send_skb, 0, offsetof(struct sk_buff, tail));
 		atomic_set(&send_skb->users, 2);
-		send_skb->cloned = 0;
+		//send_skb->cloned = 0;
 
 		/*      
 		   spin_lock(&send_lock);
@@ -438,8 +470,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		   return NF_DROP;
 		   }
 		   send_index = next_index;
-		   } */
-		/*bitmap_set(mmap_buf_pend, send_index, 1);
+		   } 
+		bitmap_set(mmap_buf_pend, send_index, 1);
 		   //test this bit whether is pending.
 		   spin_unlock(&send_lock); */
 
@@ -448,13 +480,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 		//send_skb->head = mmap_buf_send + 4096 ;
 		//send_skb->data = mmap_buf_send + 4096 ;
-
+		
+		send_skb->ip_summed = CHECKSUM_NONE;
 		skb_reset_tail_pointer(send_skb);
 		send_skb->end = send_skb->tail + len + send_len;
 		kmemcheck_annotate_bitfield(send_skb, flags1);
 		kmemcheck_annotate_bitfield(send_skb, flags2);
 
-		send_skb->ip_summed = CHECKSUM_NONE;
 
 		struct skb_shared_info *shinfo;
 		shinfo = skb_shinfo(send_skb);
@@ -474,10 +506,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		skb_reset_transport_header(send_skb);
 
 		udph = udp_hdr(send_skb);
+		udph->check = 0;
 		udph->source = dport;
 		udph->dest = htons(ntohs(dport) + 1);
 		udph->len = htons(udph_len);
-		udph->check = 0;
 		//udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
 		//udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, 0);
 
@@ -487,27 +519,37 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 		put_unaligned(0x45, (unsigned char *) send_iph);
 		send_iph->tos = 0;
-		put_unaligned(htons(iph_len) + htons(udph_len),
-			      &(send_iph->tot_len));
+		//put_unaligned(htons(iph_len) + htons(udph_len),&(send_iph->tot_len));
+		send_iph->tot_len = htons(iph_len) + htons(udph_len);
 		send_iph->id = 0;
 		send_iph->frag_off = 0;
 		send_iph->ttl = 64;
 		send_iph->protocol = IPPROTO_UDP;
+		//put_unaligned(daddr, &(send_iph->saddr));
+		//put_unaligned(dest, &(send_iph->daddr));
+		
 		send_iph->check = 0;
-		put_unaligned(daddr, &(send_iph->saddr));
-		put_unaligned(dest, &(send_iph->daddr));
-		//send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
-		send_iph->check = 0;
+		send_iph->daddr = daddr;
+		//send_iph->saddr = in_aton(dest_addr);
+		send_iph->saddr = dest;
+		
 
-		struct net_device *dev = ws_sp_get_dev(daddr);
-		//struct net_device *dev = skb->dev;
-		if (!dev) {
+		//send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
+
+		//struct net_device *dev = ws_sp_get_dev(daddr);
+		/*if (!dev) {
 			return NF_DROP;
-		}
+		}*/
+		
+
 		eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);
+		/*send_skb->len = send_skb->len +  ETH_HLEN;
+		send_skb->data = send_skb->data - ETH_HLEN;		
+		eth = (struct ethhdr *)send_skb->data;*/
+
 		skb_reset_mac_header(send_skb);
-		send_skb->protocol = eth->h_proto = htons(ETH_P_IP);
-		//memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
+		eth->h_proto = htons(ETH_P_IP);
+		send_skb->protocol = eth->h_proto;
 		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 		//u8 dst_mac[ETH_ALEN] = DST_MAC;
 		memcpy(eth->h_dest, dst_mac, ETH_ALEN);
@@ -522,13 +564,15 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		struct free_slab *ptr =
 		    kmem_cache_alloc(skbuff_free_cache,
 				     GFP_ATOMIC & ~__GFP_DMA);
+		if (!ptr) {
+			//spin_unlock(&lock);
+			return NF_DROP;
+		}
 		ptr->free_mem = send_skb;
 		ptr->free_index = send_index;
 		//printk("add head is %p and cpu id is %d and free is %p\n", &get_cpu_var(head_free_slab), smp_processor_id(), send_skb);
-		//spin_lock(&lock);
 		list_add(&ptr->list, &get_cpu_var(head_free_slab));
 		put_cpu_var(head_free_slab);
-		//spin_unlock(&lock);
 		//}
 		//return NF_ACCEPT;
 		return NF_DROP;
@@ -565,6 +609,7 @@ wsmmap_exit(void)
 	kfree(mmap_buf_pend);
 	//printk("what1\n");
 	//printk("what2\n");
+	
 	for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
 		printk("del timer other cpu id is %d\n", cpu);
@@ -674,35 +719,31 @@ wsmmap_init(void)
 		return 1;
 	}
 
-	/*
-	 * install a timer which free the slab.
-	 */
-	/*setup_timer(&my_timer, my_function, 0);
-	   my_timer.expires = jiffies + 10*HZ;
-	   add_timer(&my_timer); */
 
 	bitmap_zero(mmap_buf, BITMAP_SIZE);
 	bitmap_zero(mmap_buf_send, BITMAP_SIZE);
 	mmap_buf_pend = kmalloc(1024, GFP_ATOMIC);
 	bitmap_zero(mmap_buf_pend, BITMAP_SIZE);
 
-	tmp_slab =
-	    (struct free_slab *) kmalloc(num_online_cpus() *
-					 sizeof (struct free_slab), GFP_ATOMIC);
-	next_slab =
-	    (struct free_slab *) kmalloc(num_online_cpus() *
-					 sizeof (struct free_slab), GFP_ATOMIC);
-
-	for_each_online_cpu(cpu) {
+	
+	/*for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
 		setup_timer(this, my_function, 0);
 		this->expires = jiffies + (6 + cpu) * HZ;
 		add_timer_on(this, cpu);
-	}
-
+	}*/
+	
 	for_each_online_cpu(cpu) {
 		this_list = &per_cpu(head_free_slab, cpu);
 		INIT_LIST_HEAD(this_list);
+	}
+	
+	for_each_online_cpu(cpu) {
+		this = &per_cpu(my_timer, cpu);
+		this_list = &per_cpu(head_free_slab, cpu);
+		setup_timer(this, my_function, (unsigned long)this_list);
+		this->expires = jiffies + (6 + cpu) * HZ;
+		add_timer_on(this, cpu);
 	}
 
 	percpu_counter_init(&packets, 0);
