@@ -325,17 +325,19 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	__be32 saddr, daddr;
 	unsigned short sport, dport;
 	unsigned short ulen;
-	//char in_buf[100];
 	int index, next_index;
 	int send_len;
 	struct net_device *dev;
 	//int send_index = 0;
 	int send_index = get_cpu();
 	put_cpu();
+	index = send_index;
 
 	//char out_buf[NUM];
-
-	//memset(in_buf, '0', 100);
+	send_len = 240;
+	int test_len = 240;
+	char in_buf[240];
+	memset(in_buf, '0', test_len);
 
 	if (iph->protocol != IPPROTO_TCP) {
 		return NF_ACCEPT;
@@ -349,7 +351,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 	if (ntohs(dport) == 80) {
 		percpu_counter_inc(&packets);
-		memcpy(mmap_buf + 4096 + index * SLOT, skb->data, skb->len);
+		memcpy(mmap_buf + 4096 + index * SLOT, in_buf, test_len);
 		//printk("where2\n");
 		/*if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
 		   INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
@@ -380,7 +382,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		iph_len = sizeof (struct iphdr);
 		udph_len = sizeof (struct udphdr);
 		len = eth_len + iph_len + udph_len;
-		send_len = 0;
 		/*
 		 * build a new sk_buff
 		 */
@@ -421,7 +422,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		   spin_unlock(&send_lock); */
 
 		send_skb->head = mmap_buf_send + 4096 + send_index * SLOT;
-		send_skb->data = mmap_buf_send + 4096 + send_index * SLOT;
+		send_skb->data = send_skb->head;
+		
+		//send_skb->head = mmap_buf_send + 4096 ;
+		//send_skb->data = mmap_buf_send + 4096 ;
 
 		send_skb->ip_summed = CHECKSUM_NONE;
 		skb_reset_tail_pointer(send_skb);
