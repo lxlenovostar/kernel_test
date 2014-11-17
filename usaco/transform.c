@@ -20,20 +20,29 @@ void transform_90(char (*t_src)[10])
 		char tmp[10][10];
 
 		for (i = 0; i < num; ++i){
-			printf("tmp is %s\n", (t_src + i));
-			//strncpy(tmp[0] + i, (const char *)(t_src + i), num);
-			//printf("tmp is %s\n", tmp[0] + i);
+			printf("src is %s\n", (t_src + i));
+			strncpy(tmp[0] + i, (const char *)(t_src + i), num);
+			printf("tmp is %s\n", tmp[0] + i);
 		}	
 
 		for (i = 0; i < num; ++i)
-				for (j = num; j > 0; --j){
-					test[i][j] = tmp[j][i];
+			for (j = 0; i < num; ++j){
+				printf("%c ", tmp[i][j]);
+
+				if (j == (num - 1))
+						printf("\n");
+			}
+
+		/*for (i = 0; i < num; ++i)
+				for (j = num - 1; j > 0; --j){
+					printf("char is %c and j is %d, i is %d\n", tmp[j][i], j, i);
+					test[j][i] = tmp[j][i];
 				}
 		
 		for (i = 0; i < num; ++i){
-			strncpy(tmp[0] + i, (test[0] + i), num);
-			printf("tmp is %s\n", tmp[0] + i);
-		}	
+			//strncpy((test[0] + i), (const char *)(tmp[0] + i), num);
+			printf("dst_90 is %s\n", test[0] + i);
+		}	*/
 }
 
 
@@ -58,22 +67,22 @@ main()
 		
 		for(i = 0; i < num; ++i){
 			fscanf(fin, "%s", &tmp_in);
-			strcpy((char*)(src + num), tmp_in);
-			printf("tmp_in is %s\n", tmp_in);		
-			printf("src num is %s\n", src + num);		
+			strcpy((char*)(src + i), tmp_in);
+			//printf("tmp_in is %s\n", tmp_in);		
+			//printf("src num is %s\n", src + i);		
 		}
 		
 		for(i = 0; i < num; ++i){
 			fscanf(fin, "%s", &tmp_in);
-			strcpy((char*)(dst + num), tmp_in);
-			printf("tmp_in is %s\n", tmp_in);		
-			printf("src num is %s\n", dst + num);		
+			strcpy((char*)(dst + i), tmp_in);
+			//printf("tmp_in is %s\n", tmp_in);		
+			//printf("src num is %s\n", dst + i);		
 		}
 
 		for(i = 0; i < 7; ++i){
 				switch(i){
 						case 0:
-							transform_90(src);
+							transform_90(&src[0]);
 							break;
 						case 1:
 							//transform_180();
