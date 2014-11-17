@@ -6,22 +6,39 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <string.h>
 
 int num;
+char test[10][10];
 
-int transform_90(char (*t_src)[10], char (*t_dst)[10])
+/*
+ * 返回选择90度的图形
+ **/
+void transform_90(char (*t_src)[10])
 {
-		int i;
+		int i, j;
 		char tmp[10][10];
 
 		for (i = 0; i < num; ++i){
-			strnpy(tmp[0] + i, (t_sec + i), num);
-			printf("tmp is %s\n", tmp[0] + i);
+			printf("tmp is %s\n", (t_src + i));
+			//strncpy(tmp[0] + i, (const char *)(t_src + i), num);
+			//printf("tmp is %s\n", tmp[0] + i);
 		}	
 
+		for (i = 0; i < num; ++i)
+				for (j = num; j > 0; --j){
+					test[i][j] = tmp[j][i];
+				}
+		
+		for (i = 0; i < num; ++i){
+			strncpy(tmp[0] + i, (test[0] + i), num);
+			printf("tmp is %s\n", tmp[0] + i);
+		}	
+}
 
 
-
+int cmp(char (*cmp_a)[10], char (*cmp_b)[10])
+{
 		return 0;
 }
 
@@ -56,24 +73,22 @@ main()
 		for(i = 0; i < 7; ++i){
 				switch(i){
 						case 0:
-							if (transform_90(src, dst) == 0){
-								
-							}
+							transform_90(src);
 							break;
 						case 1:
-							transform_180();
+							//transform_180();
 							break;
 						case 2:
-							transform_270();
+							//transform_270();
 							break;
 						case 3:
-							transform_inver();
+							//transform_inver();
 							break;
 						case 4:
-							transform_comb();
+							//transform_comb();
 							break;
 						case 5:
-							transform_nothing();
+							//transform_nothing();
 							break;
 						default:
 							break;
