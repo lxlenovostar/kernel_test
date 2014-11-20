@@ -19,19 +19,27 @@ void transform_90(char (*t_src)[10])
 		int i, j;
 		char tmp[10][10];
 
+		
+		//printf("type is %s\n", typeof(tmp[10]));
 		for (i = 0; i < num; ++i){
 			printf("src is %s\n", (t_src + i));
-			strncpy(tmp[0] + i, (const char *)(t_src + i), num);
-			printf("tmp is %s\n", tmp[0] + i);
+			strncpy((char*)(tmp[i]), (const char *)(t_src + i), num);
+			printf("tmp is %s\n", (char*)(tmp[i]));
+			printf("address is %p, and %p\n", (char*)tmp[i], (char*)(tmp[0] + i));
 		}	
-
+		
+		printf("what\n");
+		
 		for (i = 0; i < num; ++i)
-			for (j = 0; i < num; ++j){
-				printf("%c ", tmp[i][j]);
+				for (j = 0; j < num; ++j)
+				{
+						printf("%c", tmp[i][j]);
 
-				if (j == (num - 1))
-						printf("\n");
-			}
+						if (j == num - 1)
+								printf("\n");
+				}
+
+
 
 		/*for (i = 0; i < num; ++i)
 				for (j = num - 1; j > 0; --j){
