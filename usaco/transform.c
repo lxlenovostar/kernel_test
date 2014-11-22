@@ -16,20 +16,14 @@ char test[10][10];
  **/
 void transform_90(char (*t_src)[10])
 {
-		int i, j;
+		int i, j, k;
 		char tmp[10][10];
-
 		
-		//printf("type is %s\n", typeof(tmp[10]));
 		for (i = 0; i < num; ++i){
-			printf("src is %s\n", (t_src + i));
 			strncpy((char*)(tmp[i]), (const char *)(t_src + i), num);
-			printf("tmp is %s\n", (char*)(tmp[i]));
-			printf("address is %p, and %p\n", (char*)tmp[i], (char*)(tmp[0] + i));
 		}	
-		
-		printf("what\n");
-		
+
+		/*	
 		for (i = 0; i < num; ++i)
 				for (j = 0; j < num; ++j)
 				{
@@ -38,24 +32,41 @@ void transform_90(char (*t_src)[10])
 						if (j == num - 1)
 								printf("\n");
 				}
+		*/
 
-
-
-		/*for (i = 0; i < num; ++i)
-				for (j = num - 1; j > 0; --j){
-					printf("char is %c and j is %d, i is %d\n", tmp[j][i], j, i);
-					test[j][i] = tmp[j][i];
-				}
-		
 		for (i = 0; i < num; ++i){
-			//strncpy((test[0] + i), (const char *)(tmp[0] + i), num);
-			printf("dst_90 is %s\n", test[0] + i);
-		}	*/
+				k = num - 1;
+				for (j = 0; j < num; ++j){
+					test[i][j] = tmp[k][i];
+					--k;
+				}
+		}
+		
+		/*
+		printf("end\n");
+		for (i = 0; i < num; ++i)
+				for (j = 0; j < num; ++j)
+				{
+						printf("%c", test[i][j]);
+
+						if (j == num - 1)
+								printf("\n");
+				}
+		*/
 }
 
-
-int cmp(char (*cmp_a)[10], char (*cmp_b)[10])
+/*
+ * return 1 strand for not equal.
+ * **/
+int cmp(char (*cmp)[10], int num)
 {
+		int i;
+		for (i = 0; i < num; ++i){
+			if (strcmp(cmp[i], test[i]) != 0){
+					return 1;
+			}	
+		}
+
 		return 0;
 }
 
@@ -90,7 +101,9 @@ main()
 		for(i = 0; i < 7; ++i){
 				switch(i){
 						case 0:
-							transform_90(&src[0]);
+							transform_90(src);
+							if (cmp(dst, num) == 0)
+									printf("1\n");
 							break;
 						case 1:
 							//transform_180();
