@@ -53,7 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1024
-#define NUM 240
+#define NUM 140
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -278,11 +278,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		iph_len = sizeof (struct iphdr);
 		udph_len = sizeof (struct udphdr);
 		len = eth_len + iph_len + udph_len;
-		struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
+		//struct sk_buff *send_skb = alloc_skb(len, GFP_ATOMIC);
+		struct sk_buff *send_skb = alloc_skb(len + NUM, GFP_ATOMIC);
 		if (!send_skb)
 			return NF_DROP;
 
-		skb_reserve(send_skb, len);
+		skb_reserve(send_skb, len + NUM);
+		skb_push(send_skb, NUM);
 		skb_push(send_skb, sizeof (struct udphdr));
 		skb_reset_transport_header(send_skb);
 

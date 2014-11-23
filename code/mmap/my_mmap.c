@@ -52,8 +52,7 @@
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
-#define NUM 3
-#define COPYNUM 140
+#define PACKET_LEN 640
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -96,7 +95,7 @@ static int MAJOR_DEVICE_SEND = 51;
 void *mmap_buf = 0;
 void *mmap_buf_send = 0;
 void *mmap_buf_pend = 0;
-#define SLOT 256
+#define SLOT 700
 unsigned long mmap_size = 4096 + 1024 * SLOT;
 #define  BITMAP_SIZE ((mmap_size-4096)/SLOT)
 
@@ -199,6 +198,7 @@ mmap_alloc(void)
 	     page < virt_to_page(mmap_buf_send + mmap_size); page++) {
 		SetPageReserved(page);
 	}
+
 	return 0;
 }
 
@@ -326,7 +326,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	unsigned short sport, dport;
 	unsigned short ulen;
 	int index, next_index;
-	int send_len;
+	int send_len, test_len;
+	char in_buf[PACKET_LEN];
 	struct net_device *dev;
 	//int send_index = 0;
 	int send_index = get_cpu();
@@ -334,9 +335,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	index = send_index;
 
 	//char out_buf[NUM];
-	send_len = 240;
-	int test_len = 240;
-	char in_buf[240];
+	send_len = PACKET_LEN;
+	test_len = PACKET_LEN;
 	memset(in_buf, '0', test_len);
 
 	if (iph->protocol != IPPROTO_TCP) {
@@ -423,25 +423,31 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 		send_skb->head = mmap_buf_send + 4096 + send_index * SLOT;
 		send_skb->data = send_skb->head;
-		
+
 		//send_skb->head = mmap_buf_send + 4096 ;
 		//send_skb->data = mmap_buf_send + 4096 ;
 
 		send_skb->ip_summed = CHECKSUM_NONE;
+		//send_skb->ip_summed = CHECKSUM_PARTIAL;
 		skb_reset_tail_pointer(send_skb);
+		//send_skb->tail = send_skb->data;
 		send_skb->end = send_skb->tail + len + send_len;
-		kmemcheck_annotate_bitfield(send_skb, flags1);
-		kmemcheck_annotate_bitfield(send_skb, flags2);
+		//kmemcheck_annotate_bitfield(send_skb, flags1);
+		//kmemcheck_annotate_bitfield(send_skb, flags2);
 
 		struct skb_shared_info *shinfo;
 		shinfo = skb_shinfo(send_skb);
-		atomic_set(&shinfo->dataref, 1);
+		/*memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
+		   atomic_set(&shinfo->dataref, 1);
+		   kmemcheck_annotate_variable(shinfo->destructor_arg);
+		   shinfo->gso_segs = 0; */
 		shinfo->nr_frags = 0;
 		shinfo->gso_size = 0;
 		shinfo->gso_segs = 0;
 		shinfo->gso_type = 0;
 		shinfo->ip6_frag_id = 0;
 		shinfo->tx_flags.flags = 0;
+		atomic_set(&shinfo->dataref, 1);
 		skb_frag_list_init(send_skb);
 		memset(&shinfo->hwtstamps, 0, sizeof (shinfo->hwtstamps));
 
@@ -455,7 +461,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		udph->dest = htons(ntohs(dport) + 1);
 		udph->len = htons(udph_len);
 		//udph->check = 0;
-		udph->check = csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len, IPPROTO_UDP, csum_partial(udph, udph_len, 0));
+		udph->check =
+		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
+				      IPPROTO_UDP, csum_partial(udph, udph_len,
+								0));
 
 		skb_push(send_skb, sizeof (struct iphdr));
 		skb_reset_network_header(send_skb);
@@ -475,14 +484,14 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//send_iph->saddr = in_aton(dest_addr);
 		send_iph->saddr = dest;
 		//send_iph->check = 0;
-		send_iph->check    = ip_fast_csum((unsigned char *)send_iph, send_iph->ihl);
-
+		send_iph->check =
+		    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
 
 		dev = ws_sp_get_dev(daddr);
 		//dev = skb->dev;
 		if (!dev) {
-		   return NF_DROP;
-		   }
+			return NF_DROP;
+		}
 
 		eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);
 		skb_reset_mac_header(send_skb);
@@ -491,8 +500,16 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 		//u8 dst_mac[ETH_ALEN] = DST_MAC;
 		memcpy(eth->h_dest, dst_mac, ETH_ALEN);
+		//printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
 		send_skb->dev = dev;
-		dev_queue_xmit(send_skb);
+
+		if (skb_shinfo(skb)->gso_size == 0)
+			dev_queue_xmit(send_skb);
+		else {
+			printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
+			return NF_DROP;
+		}
+		//printk("gsize2 is %d\n", skb_shinfo(skb)->gso_size);
 		/*if (atomic_read(&(send_skb->users)) == 1){
 		   kmem_cache_free(skbuff_head_cache, send_skb);
 		   bitmap_clear(mmap_buf_pend, send_index, 1);
