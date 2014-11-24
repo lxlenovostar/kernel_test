@@ -52,7 +52,7 @@
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
-#define PACKET_LEN 640
+#define PACKET_LEN 140
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -65,12 +65,13 @@
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
 spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
-struct kmem_cache *skbuff_head_cache;
+//struct kmem_cache *skbuff_head_cache;
 struct kmem_cache *skbuff_free_cache;
 struct percpu_counter packets;
 
 struct free_slab {
-	struct sk_buff *free_mem;
+	//struct sk_buff *free_mem;
+	struct sk_buff free_mem;
 	int free_index;
 	struct list_head list;
 };
@@ -83,8 +84,10 @@ long int end;
 /*
  * The dest addr.
  */
+//const char *dest_addr = "192.168.204.130";
 const char *dest_addr = "192.168.99.2";
 __be32 dest = 0;
+//#define DST_MAC {0x00, 0x0c, 0x29, 0x45, 0x0a, 0x46}
 #define DST_MAC {0x00, 0x16, 0x31, 0xf0, 0x9e, 0x9e}
 static u8 dst_mac[ETH_ALEN] = DST_MAC;
 //char *dest_addr = "192.168.204.130";
@@ -293,11 +296,11 @@ my_function(unsigned long data)
 	if (tmp_head_free_slab->next != NULL) {
 		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
 						 list) {
-			if (atomic_read(&((tmp->free_mem)->users)) == 1) {
+			if (atomic_read(&((tmp->free_mem).users)) == 1) {
 				struct free_slab *tmp_free = tmp;
-				struct sk_buff *tmp_buff = tmp->free_mem;
+				//struct sk_buff *tmp_buff = tmp->free_mem;
 				list_del(&tmp->list);
-				kmem_cache_free(skbuff_head_cache, tmp_buff);
+				//kmem_cache_free(skbuff_head_cache, tmp_buff);
 				kmem_cache_free(skbuff_free_cache, tmp_free);
 			}
 		}
@@ -385,13 +388,22 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		/*
 		 * build a new sk_buff
 		 */
-		struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache,
+		struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache,
 							    GFP_ATOMIC &
 							    ~__GFP_DMA);
-		if (!send_skb) {
-			//spin_unlock(&lock);
+		if (!ptr){
 			return NF_DROP;
 		}
+		
+		struct sk_buff *send_skb = &(ptr->free_mem);
+		/*struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache,
+							    GFP_ATOMIC &
+							    ~__GFP_DMA);
+		*/
+		/*if (!send_skb) {
+			//spin_unlock(&lock);
+			return NF_DROP;
+		}*/
 		//printk("what2\n");
 		memset(send_skb, 0, offsetof(struct sk_buff, tail));
 		atomic_set(&send_skb->users, 2);
@@ -465,7 +477,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
 				      IPPROTO_UDP, csum_partial(udph, udph_len,
 								0));
-
+		
 		skb_push(send_skb, sizeof (struct iphdr));
 		skb_reset_network_header(send_skb);
 		send_iph = ip_hdr(send_skb);
@@ -486,12 +498,12 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//send_iph->check = 0;
 		send_iph->check =
 		    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
-
-		dev = ws_sp_get_dev(daddr);
-		//dev = skb->dev;
-		if (!dev) {
+		
+		//dev = ws_sp_get_dev(daddr);
+		dev = skb->dev;
+		/*if (!dev) {
 			return NF_DROP;
-		}
+		}*/
 
 		eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);
 		skb_reset_mac_header(send_skb);
@@ -503,12 +515,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
 		send_skb->dev = dev;
 
-		if (skb_shinfo(skb)->gso_size == 0)
-			dev_queue_xmit(send_skb);
-		else {
-			printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
-			return NF_DROP;
-		}
+		dev_queue_xmit(send_skb);
 		//printk("gsize2 is %d\n", skb_shinfo(skb)->gso_size);
 		/*if (atomic_read(&(send_skb->users)) == 1){
 		   kmem_cache_free(skbuff_head_cache, send_skb);
@@ -516,13 +523,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		   }
 		   else
 		   { */
-		struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache,
+		/*struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache,
 							 GFP_ATOMIC &
 							 ~__GFP_DMA);
 		if (!ptr) {
 			return NF_DROP;
 		}
-		ptr->free_mem = send_skb;
+		ptr->free_mem = send_skb;*/
 		ptr->free_index = send_index;
 		list_add(&ptr->list, &get_cpu_var(head_free_slab));
 		put_cpu_var(head_free_slab);
@@ -576,6 +583,8 @@ wsmmap_exit(void)
 	unregister_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend");
 
 	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
+
+	kmem_cache_destroy(skbuff_free_cache);
 
 	ret = mmap_free();
 	if (ret) {
@@ -653,13 +662,13 @@ wsmmap_init(void)
 	   printk("The number 'num' is %d and the string 'str' is %s. \n" , num, str);
 	 */
 
-	skbuff_head_cache =
+	/*skbuff_head_cache =
 	    kmem_cache_create("skbuff_head_cache_temp", sizeof (struct sk_buff),
 			      0, SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
 	if (skbuff_head_cache == NULL) {
 		printk("alloc slab is failed.\n");
 		return 1;
-	}
+	}*/
 
 	skbuff_free_cache =
 	    kmem_cache_create("skbuff_free_cache_temp",
