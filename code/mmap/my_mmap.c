@@ -291,17 +291,18 @@ my_function(unsigned long data)
 {
 	struct free_slab *tmp;
 	struct free_slab *next;
+	//struct free_slab *tmp_free;
 	struct list_head *tmp_head_free_slab = (struct listhead *) data;
 
-	if (tmp_head_free_slab->next != NULL) {
-		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
+	if (likely(tmp_head_free_slab->next != NULL)) {
+		list_for_each_entry_safe(tmp, next, tmp_head_free_slab,
 						 list) {
-			if (atomic_read(&((tmp->free_mem).users)) == 1) {
-				struct free_slab *tmp_free = tmp;
+			if (likely(atomic_read(&((tmp->free_mem).users)) == 1)) {
+				//tmp_free = tmp;
 				//struct sk_buff *tmp_buff = tmp->free_mem;
 				list_del(&tmp->list);
 				//kmem_cache_free(skbuff_head_cache, tmp_buff);
-				kmem_cache_free(skbuff_free_cache, tmp_free);
+				kmem_cache_free(skbuff_free_cache, tmp);
 			}
 		}
 	}
@@ -340,20 +341,21 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	//char out_buf[NUM];
 	send_len = PACKET_LEN;
 	test_len = PACKET_LEN;
-	memset(in_buf, '0', test_len);
+	//memset(in_buf, '0', test_len);
 
 	if (iph->protocol != IPPROTO_TCP) {
 		return NF_ACCEPT;
 	}
 	th = (struct tcphdr *) (skb->data + iph->ihl * 4);
-	ulen = ntohs(iph->tot_len);
+	//ulen = ntohs(iph->tot_len);
 	saddr = iph->saddr;
 	daddr = iph->daddr;
 	sport = th->source;
 	dport = th->dest;
 
-	if (ntohs(dport) == 80) {
-		percpu_counter_inc(&packets);
+	if (likely(ntohs(dport) == 80)) {
+		//percpu_counter_inc(&packets);
+		//memcpy(mmap_buf, in_buf, test_len);
 		memcpy(mmap_buf + 4096 + index * SLOT, in_buf, test_len);
 		//printk("where2\n");
 		/*if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
@@ -388,10 +390,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		/*
 		 * build a new sk_buff
 		 */
-		struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache,
+		struct free_slab *ptr = kmem_cache_zalloc(skbuff_free_cache,
 							    GFP_ATOMIC &
 							    ~__GFP_DMA);
-		if (!ptr){
+		if (unlikely(!ptr)){
 			return NF_DROP;
 		}
 		
@@ -405,7 +407,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 			return NF_DROP;
 		}*/
 		//printk("what2\n");
-		memset(send_skb, 0, offsetof(struct sk_buff, tail));
+		
+		//memset(send_skb, 0, offsetof(struct sk_buff, tail));
 		atomic_set(&send_skb->users, 2);
 		//send_skb->cloned = 0;
 
@@ -464,8 +467,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		memset(&shinfo->hwtstamps, 0, sizeof (shinfo->hwtstamps));
 
 		skb_reserve(send_skb, len + send_len);
-		skb_push(send_skb, send_len);
-		skb_push(send_skb, sizeof (struct udphdr));
+		//skb_push(send_skb, send_len);
+		skb_push(send_skb, send_len + sizeof (struct udphdr));
 		skb_reset_transport_header(send_skb);
 
 		udph = udp_hdr(send_skb);
@@ -483,9 +486,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		send_iph = ip_hdr(send_skb);
 
 		put_unaligned(0x45, (unsigned char *) send_iph);
+
 		send_iph->tos = 0;
 		//put_unaligned(htons(iph_len) + htons(udph_len),&(send_iph->tot_len));
-		send_iph->tot_len = htons(iph_len) + htons(udph_len);
+		send_iph->tot_len = htons(iph_len + udph_len);
 		send_iph->id = 0;
 		send_iph->frag_off = 0;
 		send_iph->ttl = 64;
@@ -695,7 +699,7 @@ wsmmap_init(void)
 		this_list = &per_cpu(head_free_slab, cpu);
 		INIT_LIST_HEAD(this_list);
 	}
-
+	
 	for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
 		this_list = &per_cpu(head_free_slab, cpu);
@@ -703,7 +707,7 @@ wsmmap_init(void)
 		this->expires = jiffies + (6 + cpu) * HZ;
 		add_timer_on(this, cpu);
 	}
-
+	
 	percpu_counter_init(&packets, 0);
 
 	//printk("where1\n");
