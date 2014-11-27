@@ -52,7 +52,7 @@
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
-#define SLOT 1024
+#define SLOT 1046
 #define NUM 140
 
 #ifndef NIPQUAD
@@ -285,6 +285,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 		skb_reserve(send_skb, len + NUM);
 		skb_push(send_skb, NUM);
+		//skb_reserve(send_skb, len + 0);
+		//skb_push(send_skb, 0);
 		skb_push(send_skb, sizeof (struct udphdr));
 		skb_reset_transport_header(send_skb);
 
@@ -292,11 +294,14 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		udph->source = dport;
 		udph->dest = htons(ntohs(dport) + 1);
 		udph->len = htons(udph_len);
-		udph->check = 0;
-		udph->check =
+		//udph->check = 0;
+		/*udph->check =
 		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
 				      IPPROTO_UDP, csum_partial(udph, udph_len,
 								0));
+		*/udph->check =
+		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
+				      IPPROTO_UDP, 0);
 
 		//if (udph->check == 0)
 		//      udph->check = CSUM_MANGLED_0;
@@ -315,11 +320,11 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		send_iph->frag_off = 0;
 		send_iph->ttl = 64;
 		send_iph->protocol = IPPROTO_UDP;
-		send_iph->check = 0;
+		//send_iph->check = 0;
 		put_unaligned(daddr, &(send_iph->saddr));
 		put_unaligned(in_aton(dest_addr), &(send_iph->daddr));
-		send_iph->check =
-		    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
+		//send_iph->check =
+		//    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
 
 		struct net_device *dev = skb->dev;
 		eth = (struct ethhdr *) skb_push(send_skb, ETH_HLEN);

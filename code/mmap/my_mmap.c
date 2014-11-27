@@ -291,17 +291,12 @@ my_function(unsigned long data)
 {
 	struct free_slab *tmp;
 	struct free_slab *next;
-	//struct free_slab *tmp_free;
 	struct list_head *tmp_head_free_slab = (struct listhead *) data;
-
 	if (likely(tmp_head_free_slab->next != NULL)) {
-		list_for_each_entry_safe(tmp, next, tmp_head_free_slab,
+		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
 						 list) {
 			if (likely(atomic_read(&((tmp->free_mem).users)) == 1)) {
-				//tmp_free = tmp;
-				//struct sk_buff *tmp_buff = tmp->free_mem;
 				list_del(&tmp->list);
-				//kmem_cache_free(skbuff_head_cache, tmp_buff);
 				kmem_cache_free(skbuff_free_cache, tmp);
 			}
 		}
@@ -333,9 +328,11 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	int send_len, test_len;
 	char in_buf[PACKET_LEN];
 	struct net_device *dev;
+	int eth_len, udph_len, iph_len, len;
 	//int send_index = 0;
-	int send_index = get_cpu();
-	put_cpu();
+	int send_index = smp_processor_id();
+	//int send_index = get_cpu();
+	//put_cpu();
 	index = send_index;
 
 	//char out_buf[NUM];
@@ -379,10 +376,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		   spin_unlock(&rece_lock);
 		 */
 
-		/*
-		 * send packet 
-		 */
-		int eth_len, udph_len, iph_len, len;
 		eth_len = sizeof (struct ethhdr);
 		iph_len = sizeof (struct iphdr);
 		udph_len = sizeof (struct udphdr);
@@ -397,7 +390,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 			return NF_DROP;
 		}
 		
-		struct sk_buff *send_skb = &(ptr->free_mem);
+		struct sk_buff *send_skb = (struct sk_buff*)(&(ptr->free_mem));
 		/*struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache,
 							    GFP_ATOMIC &
 							    ~__GFP_DMA);
@@ -476,10 +469,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		udph->dest = htons(ntohs(dport) + 1);
 		udph->len = htons(udph_len);
 		//udph->check = 0;
-		udph->check =
+		/*udph->check =
 		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
 				      IPPROTO_UDP, csum_partial(udph, udph_len,
 								0));
+		*/udph->check =
+		    csum_tcpudp_magic(daddr, dest, udph_len,
+				      IPPROTO_UDP, 0);
 		
 		skb_push(send_skb, sizeof (struct iphdr));
 		skb_reset_network_header(send_skb);
@@ -498,14 +494,15 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//put_unaligned(dest, &(send_iph->daddr));
 		send_iph->daddr = daddr;
 		//send_iph->saddr = in_aton(dest_addr);
-		send_iph->saddr = dest;
+		//send_iph->saddr = dest;
+		send_iph->saddr = 0;
 		//send_iph->check = 0;
-		send_iph->check =
-		    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
+		//send_iph->check =
+		//    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
 		
 		//dev = ws_sp_get_dev(daddr);
 		dev = skb->dev;
-		/*if (!dev) {
+		/*if (unlikely(!dev)) {
 			return NF_DROP;
 		}*/
 
@@ -534,9 +531,14 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 			return NF_DROP;
 		}
 		ptr->free_mem = send_skb;*/
-		ptr->free_index = send_index;
-		list_add(&ptr->list, &get_cpu_var(head_free_slab));
-		put_cpu_var(head_free_slab);
+		if (unlikely(atomic_read(&(send_skb->users)) == 1)){
+			kmem_cache_free(skbuff_free_cache, ptr);
+		}
+		else{
+			ptr->free_index = send_index;
+			list_add(&ptr->list, &get_cpu_var(head_free_slab));
+			put_cpu_var(head_free_slab);
+		}
 		return NF_DROP;
 	}
 
