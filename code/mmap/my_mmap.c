@@ -48,7 +48,6 @@
 #include <linux/timer.h>
 #include <linux/pid.h>
 #include <linux/sched.h>
-//#define USE_KMALLOC 
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
@@ -65,14 +64,12 @@
 spinlock_t lock = SPIN_LOCK_UNLOCKED;
 spinlock_t rece_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
-//struct kmem_cache *skbuff_head_cache;
 struct kmem_cache *skbuff_free_cache;
 struct percpu_counter packets;
 struct percpu_counter xmit_packets;
 struct percpu_counter free_packets;
 
 struct free_slab {
-	//struct sk_buff *free_mem;
 	struct sk_buff free_mem;
 	int free_index;
 	struct list_head list;
@@ -347,7 +344,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		return NF_ACCEPT;
 	}
 	th = (struct tcphdr *) (skb->data + iph->ihl * 4);
-	//ulen = ntohs(iph->tot_len);
 	saddr = iph->saddr;
 	daddr = iph->daddr;
 	sport = th->source;
@@ -357,28 +353,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//percpu_counter_inc(&packets);
 		//memcpy(mmap_buf, in_buf, test_len);
 		memcpy(mmap_buf + 4096 + index * SLOT, in_buf, test_len);
-		//printk("where2\n");
-		/*if (unlikely((&get_cpu_var(head_free_slab))->next == NULL)){
-		   INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
-		   put_cpu_var(head_free_slab);
-		   //printk("init head is %p and cpu id is %d\n", &get_cpu_var(head_free_slab), smp_processor_id());
-		   } */
-
-		//printk("where\n\n");  
-		/*
-		   spin_lock(&rece_lock);
-		   index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
-		   if (index == BITMAP_SIZE){
-		   printk("receive mmap memory is full\n");
-		   spin_unlock(&rece_lock);
-		   return NF_DROP;
-		   }
-		   //printk("index receive is %d\n", index);
-		   memcpy(mmap_buf+ 4096 + index * SLOT, skb->data, skb->len);
-		   bitmap_set(mmap_buf, index, 1);
-		   spin_unlock(&rece_lock);
-		 */
-
 		eth_len = sizeof (struct ethhdr);
 		iph_len = sizeof (struct iphdr);
 		udph_len = sizeof (struct udphdr);
@@ -394,67 +368,17 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		}
 		
 		struct sk_buff *send_skb = (struct sk_buff*)(&(ptr->free_mem));
-		/*struct sk_buff *send_skb = kmem_cache_alloc(skbuff_head_cache,
-							    GFP_ATOMIC &
-							    ~__GFP_DMA);
-		*/
-		/*if (!send_skb) {
-			//spin_unlock(&lock);
-			return NF_DROP;
-		}*/
-		//printk("what2\n");
-		
-		//memset(send_skb, 0, offsetof(struct sk_buff, tail));
-		//printk("what0 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		atomic_set(&send_skb->users, 2);
-		//printk("what00 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
-		//send_skb->cloned = 0;
-
-		/*      
-		   spin_lock(&send_lock);
-		   send_index = find_first_bit(mmap_buf_send, BITMAP_SIZE);
-		   if (send_index == BITMAP_SIZE){
-		   printk("send mmap memory is empty\n");
-		   spin_unlock(&send_lock);
-		   return NF_DROP;
-		   } */
-		/*
-		 * if this test is true, packet is waiting for send, so find next set bit. 
-		 */
-		/*while (test_bit(send_index, mmap_buf_pend)){
-		   next_index = find_next_bit(mmap_buf_send, BITMAP_SIZE, send_index + 1);
-		   if (next_index == BITMAP_SIZE){
-		   printk("send mmap memory is empty\n");
-		   spin_unlock(&send_lock);
-		   return NF_DROP;
-		   }
-		   send_index = next_index;
-		   } 
-		   bitmap_set(mmap_buf_pend, send_index, 1);
-		   //test this bit whether is pending.
-		   spin_unlock(&send_lock); */
 
 		send_skb->head = mmap_buf_send + 4096 + send_index * SLOT;
 		send_skb->data = send_skb->head;
 
-		//send_skb->head = mmap_buf_send + 4096 ;
-		//send_skb->data = mmap_buf_send + 4096 ;
-
-		//printk("what1 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		send_skb->ip_summed = CHECKSUM_NONE;
-		//send_skb->ip_summed = CHECKSUM_PARTIAL;
 		skb_reset_tail_pointer(send_skb);
-		//send_skb->tail = send_skb->data;
 		send_skb->end = send_skb->tail + len + send_len;
-		//kmemcheck_annotate_bitfield(send_skb, flags1);
-		//kmemcheck_annotate_bitfield(send_skb, flags2);
 
 		struct skb_shared_info *shinfo;
 		shinfo = skb_shinfo(send_skb);
-		/*memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
-		   atomic_set(&shinfo->dataref, 1);
-		   kmemcheck_annotate_variable(shinfo->destructor_arg);
-		   shinfo->gso_segs = 0; */
 		shinfo->nr_frags = 0;
 		shinfo->gso_size = 0;
 		shinfo->gso_segs = 0;
@@ -465,19 +389,14 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		skb_frag_list_init(send_skb);
 		//memset(&shinfo->hwtstamps, 0, sizeof (shinfo->hwtstamps));
 
-		//printk("what2 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		skb_reserve(send_skb, len + send_len);
-		//skb_push(send_skb, send_len);
-		//printk("what3 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		skb_push(send_skb, send_len + udph_len);
-		//printk("what4 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		skb_reset_transport_header(send_skb);
 
 		udph = udp_hdr(send_skb);
 		udph->source = dport;
 		udph->dest = htons(ntohs(dport) + 1);
 		udph->len = htons(udph_len);
-		//udph->check = 0;
 		/*udph->check =
 		    csum_tcpudp_magic(daddr, in_aton(dest_addr), udph_len,
 				      IPPROTO_UDP, csum_partial(udph, udph_len,
@@ -506,7 +425,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//send_iph->saddr = in_aton(dest_addr);
 		//send_iph->saddr = dest;
 		send_iph->saddr = 0;
-		//send_iph->check = 0;
 		//send_iph->check =
 		//    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
 		
@@ -521,31 +439,9 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		eth->h_proto = htons(ETH_P_IP);
 		send_skb->protocol = eth->h_proto;
 		memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-		//u8 dst_mac[ETH_ALEN] = DST_MAC;
 		memcpy(eth->h_dest, dst_mac, ETH_ALEN);
-		//printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
 		send_skb->dev = dev;
-		//skb->len = len + send_len;
-		//printk("what send len is %d , len is %d\n", send_skb->len, skb->len);
-		//int rt;
 		dev_queue_xmit(send_skb);
-		//if (rt != 0)
-		//	printk("what rt is %d\n", rt);
-		//percpu_counter_inc(&xmit_packets);
-		//printk("gsize2 is %d\n", skb_shinfo(skb)->gso_size);
-		/*if (atomic_read(&(send_skb->users)) == 1){
-		   kmem_cache_free(skbuff_head_cache, send_skb);
-		   bitmap_clear(mmap_buf_pend, send_index, 1);
-		   }
-		   else
-		   { */
-		/*struct free_slab *ptr = kmem_cache_alloc(skbuff_free_cache,
-							 GFP_ATOMIC &
-							 ~__GFP_DMA);
-		if (!ptr) {
-			return NF_DROP;
-		}
-		ptr->free_mem = send_skb;*/
 		if (unlikely(atomic_read(&(send_skb->users)) == 1)){
 			kmem_cache_free(skbuff_free_cache, ptr);
 			//percpu_counter_inc(&free_packets);
@@ -587,8 +483,6 @@ wsmmap_exit(void)
 	end = tv.tv_sec;
 
 	kfree(mmap_buf_pend);
-	//printk("what1\n");
-	//printk("what2\n");
 
 	for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
@@ -660,47 +554,6 @@ wsmmap_init(void)
 		goto chr_failed;
 	}
 
-	/*      
-	   for_each_online_cpu(cpu){
-	   sprintf(str, "%d", cpu);
-	   printk("will instal is %s\n", str);
-	   tmp_skbuff_head_cache  = per_cpu(skbuff_head_cache, cpu);
-	   tmp_skbuff_head_cache = kmem_cache_create(strcat(tmp, str), sizeof(struct sk_buff), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
-	   if (tmp_skbuff_head_cache == NULL){
-	   printk("alloc slab is failed.\n");
-	   return 1;
-	   }
-	   printk("have installed is %s\n", tmp);
-	   strcpy(tmp, tmp_string);
-	   }
-
-	   for_each_online_cpu(cpu){
-	   sprintf(str, "%d", cpu);
-	   tmp_skbuff_free_cache  = per_cpu(skbuff_free_cache, cpu);
-	   tmp_skbuff_free_cache = kmem_cache_create(strcat(tmp_free, str), sizeof(struct free_slab), 0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
-	   if (tmp_skbuff_free_cache == NULL){
-	   printk("alloc slab is failed.\n");
-	   return 1;
-	   }
-	   strcpy(tmp_free, tmp_free_string);
-	   }
-	 */
-
-	/* 
-	   int num = 100;
-	   //itoa(num, str, 10);
-	   sprintf(str, "%d", num);
-	   printk("The number 'num' is %d and the string 'str' is %s. \n" , num, str);
-	 */
-
-	/*skbuff_head_cache =
-	    kmem_cache_create("skbuff_head_cache_temp", sizeof (struct sk_buff),
-			      0, SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
-	if (skbuff_head_cache == NULL) {
-		printk("alloc slab is failed.\n");
-		return 1;
-	}*/
-
 	skbuff_free_cache =
 	    kmem_cache_create("skbuff_free_cache_temp",
 			      sizeof (struct free_slab), 0,
@@ -714,13 +567,6 @@ wsmmap_init(void)
 	bitmap_zero(mmap_buf_send, BITMAP_SIZE);
 	mmap_buf_pend = kmalloc(1024, GFP_ATOMIC);
 	bitmap_zero(mmap_buf_pend, BITMAP_SIZE);
-
-	/*for_each_online_cpu(cpu) {
-	   this = &per_cpu(my_timer, cpu);
-	   setup_timer(this, my_function, 0);
-	   this->expires = jiffies + (6 + cpu) * HZ;
-	   add_timer_on(this, cpu);
-	   } */
 
 	for_each_online_cpu(cpu) {
 		this_list = &per_cpu(head_free_slab, cpu);
@@ -738,29 +584,6 @@ wsmmap_init(void)
 	percpu_counter_init(&packets, 0);
 	percpu_counter_init(&xmit_packets, 0);
 	percpu_counter_init(&free_packets, 0);
-
-	//printk("where1\n");
-
-	//printk("head is %p\n", (&get_cpu_var(head_free_slab))->next);
-	//printk("what\n");
-	//INIT_LIST_HEAD(&get_cpu_var(head_free_slab));
-	//put_cpu_var(head_free_slab);
-	//printk("head is %p\n", (&get_cpu_var(head_free_slab))->next);
-	//printk("size is %d\n", BITMAP_SIZE);  
-	/*bitmap_set(mmap_buf_pend, 1, 1);
-	   bitmap_set(mmap_buf_pend, 4, 1);
-	   bitmap_set(mmap_buf_pend, 7, 1);
-	   printk("test set 1 is %d\n", test_bit(1, mmap_buf_pend));
-	   printk("test set 2 is %d\n", test_bit(2, mmap_buf_pend));
-	   int index = find_first_zero_bit(mmap_buf_pend, BITMAP_SIZE); 
-	   printk("index set 1 is %d\n", index);
-	   int index1 = find_next_zero_bit(mmap_buf_pend, BITMAP_SIZE, index+1);
-	   printk("index set 2 is %d\n", index1);
-	   int index2 = find_next_zero_bit(mmap_buf_pend, BITMAP_SIZE, index1+1);
-	   printk("index set 3 is %d\n", index2); */
-	//bitmap_clear(mmai
-	//int index = find_first_zero_bit(mmap_buf, BITMAP_SIZE);
-	//printk("index zero is %d\n", index);
 
 	printk("insmod module wsmmap successfully!\n");
 	do_gettimeofday(&tv);
