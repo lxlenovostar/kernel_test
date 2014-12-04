@@ -53,7 +53,7 @@
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
 #define SLOT 1046
-#define NUM 140
+#define NUM 600
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \

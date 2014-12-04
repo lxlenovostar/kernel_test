@@ -52,7 +52,7 @@
 
 #define PAGE_ORDER   0
 #define PAGES_NUMBER 1
-#define PACKET_LEN 140
+#define PACKET_LEN 20
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
@@ -68,6 +68,8 @@ spinlock_t send_lock = SPIN_LOCK_UNLOCKED;
 //struct kmem_cache *skbuff_head_cache;
 struct kmem_cache *skbuff_free_cache;
 struct percpu_counter packets;
+struct percpu_counter xmit_packets;
+struct percpu_counter free_packets;
 
 struct free_slab {
 	//struct sk_buff *free_mem;
@@ -98,7 +100,7 @@ static int MAJOR_DEVICE_SEND = 51;
 void *mmap_buf = 0;
 void *mmap_buf_send = 0;
 void *mmap_buf_pend = 0;
-#define SLOT 700
+#define SLOT 1500
 unsigned long mmap_size = 4096 + 1024 * SLOT;
 #define  BITMAP_SIZE ((mmap_size-4096)/SLOT)
 
@@ -298,6 +300,7 @@ my_function(unsigned long data)
 			if (likely(atomic_read(&((tmp->free_mem).users)) == 1)) {
 				list_del(&tmp->list);
 				kmem_cache_free(skbuff_free_cache, tmp);
+				//percpu_counter_inc(&free_packets);
 			}
 		}
 	}
@@ -402,7 +405,9 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//printk("what2\n");
 		
 		//memset(send_skb, 0, offsetof(struct sk_buff, tail));
+		//printk("what0 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		atomic_set(&send_skb->users, 2);
+		//printk("what00 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		//send_skb->cloned = 0;
 
 		/*      
@@ -435,6 +440,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//send_skb->head = mmap_buf_send + 4096 ;
 		//send_skb->data = mmap_buf_send + 4096 ;
 
+		//printk("what1 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		send_skb->ip_summed = CHECKSUM_NONE;
 		//send_skb->ip_summed = CHECKSUM_PARTIAL;
 		skb_reset_tail_pointer(send_skb);
@@ -457,11 +463,14 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		shinfo->tx_flags.flags = 0;
 		atomic_set(&shinfo->dataref, 1);
 		skb_frag_list_init(send_skb);
-		memset(&shinfo->hwtstamps, 0, sizeof (shinfo->hwtstamps));
+		//memset(&shinfo->hwtstamps, 0, sizeof (shinfo->hwtstamps));
 
+		//printk("what2 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		skb_reserve(send_skb, len + send_len);
 		//skb_push(send_skb, send_len);
-		skb_push(send_skb, send_len + sizeof (struct udphdr));
+		//printk("what3 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
+		skb_push(send_skb, send_len + udph_len);
+		//printk("what4 len is %d , len is %d, send_len is %d\n", send_skb->len, len, send_len);
 		skb_reset_transport_header(send_skb);
 
 		udph = udp_hdr(send_skb);
@@ -485,7 +494,8 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 
 		send_iph->tos = 0;
 		//put_unaligned(htons(iph_len) + htons(udph_len),&(send_iph->tot_len));
-		send_iph->tot_len = htons(iph_len + udph_len);
+		//send_iph->tot_len = htons(iph_len + udph_len);
+		send_iph->tot_len = htons(skb->len);
 		send_iph->id = 0;
 		send_iph->frag_off = 0;
 		send_iph->ttl = 64;
@@ -500,9 +510,9 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		//send_iph->check =
 		//    ip_fast_csum((unsigned char *) send_iph, send_iph->ihl);
 		
-		//dev = ws_sp_get_dev(daddr);
 		dev = skb->dev;
-		/*if (unlikely(!dev)) {
+		/*dev = ws_sp_get_dev(daddr);
+		if (unlikely(!dev)) {
 			return NF_DROP;
 		}*/
 
@@ -515,8 +525,13 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 		//printk("shinfo is %d\n", skb_shinfo(skb)->gso_size);
 		send_skb->dev = dev;
-
+		//skb->len = len + send_len;
+		//printk("what send len is %d , len is %d\n", send_skb->len, skb->len);
+		//int rt;
 		dev_queue_xmit(send_skb);
+		//if (rt != 0)
+		//	printk("what rt is %d\n", rt);
+		//percpu_counter_inc(&xmit_packets);
 		//printk("gsize2 is %d\n", skb_shinfo(skb)->gso_size);
 		/*if (atomic_read(&(send_skb->users)) == 1){
 		   kmem_cache_free(skbuff_head_cache, send_skb);
@@ -533,6 +548,7 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		ptr->free_mem = send_skb;*/
 		if (unlikely(atomic_read(&(send_skb->users)) == 1)){
 			kmem_cache_free(skbuff_free_cache, ptr);
+			//percpu_counter_inc(&free_packets);
 		}
 		else{
 			ptr->free_index = send_index;
@@ -583,7 +599,16 @@ wsmmap_exit(void)
 	packet_num = percpu_counter_sum(&packets);
 	printk("rece all packets is %d and flow is %d\n", packet_num,
 	       packet_num * 42 * 8 / 1024 / 1024 / (end - begin));
+	
+	packet_num = percpu_counter_sum(&xmit_packets);
+	printk("send all packets is %d\n", packet_num);
+	
+	packet_num = percpu_counter_sum(&free_packets);
+	printk("send all packets is %d\n", packet_num);
+
 	percpu_counter_destroy(&packets);
+	percpu_counter_destroy(&free_packets);
+	percpu_counter_destroy(&xmit_packets);
 
 	unregister_chrdev(MAJOR_DEVICE, "wsmmap");
 	unregister_chrdev(MAJOR_DEVICE_SEND, "wsmmapsend");
@@ -711,6 +736,8 @@ wsmmap_init(void)
 	}
 	
 	percpu_counter_init(&packets, 0);
+	percpu_counter_init(&xmit_packets, 0);
+	percpu_counter_init(&free_packets, 0);
 
 	//printk("where1\n");
 
