@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#define NUM 12
+#define NUM 13
 struct list_head {
 	struct list_head *next, *prev;
 };
@@ -130,7 +130,7 @@ int
 	int index;
 	char result[3 * NUM][NUM];
 	int j = 0;
-
+	
 	for (i = 0; i < NUM; ++i)
 		INIT_LIST_HEAD(&head_list[i]);
 
@@ -144,15 +144,15 @@ int
 			continue;
 			printf("error\n");
 		}
-		//printf("%s, %d\n", temp, (int)strlen(temp));
-		len = (int) strlen(temp);
+		//printf("%s, %d and %d\n", temp, sizeof(temp), strlen(temp));
+		len = (int) strlen(temp) - 1;
 		struct inode *ptr =
 		    (struct inode *) malloc(sizeof (struct inode));
 		strcpy(ptr->name, temp);
 		list_add(&ptr->list, &head_list[len]);
 	}
 
-	index = strlen(num);
+	index = strlen(num) - 1;
 
 	//printf("num is %s\n", num);   
 	//printf("index is %d\n", index);
@@ -175,7 +175,7 @@ int
 		//printf("next %d\n", i);
 	}
 
-	printf("%d\n", j);
+	//printf("%d\n", j);
 	if (j == 0) {
 		fprintf(fout, "%s\n", "NONE");
 	} else {
