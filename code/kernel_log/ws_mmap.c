@@ -6,7 +6,8 @@
 #include <linux/uaccess.h>
 #include <linux/miscdevice.h>
 #include <linux/mm.h>
-#include <asm/io.h>
+#include <linux/io.h>
+#include <linux/bitmap.h>
 
 MODULE_AUTHOR("author");
 MODULE_DESCRIPTION("lx module\n");
@@ -14,8 +15,9 @@ MODULE_LICENSE("GPL");
 
 void *mmap_buf = 0;
 void *mmap_buf_pend = 0;
-#define SLOT 4
+#define SLOT 512
 unsigned long mmap_size = 4096 + 1024 * SLOT;
+#define  BITMAP_SIZE ((mmap_size - 4096)/SLOT)
 
 int
 mmap_free(void)
@@ -112,6 +114,7 @@ lx_init(void)
 		memset(mmap_buf + i + PAGE_SIZE - 1, '\0', 1);
 	}
 
+	bitmap_zero(mmap_buf, BITMAP_SIZE);
 	return result;
 }
 
