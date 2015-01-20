@@ -160,8 +160,8 @@ main()
 				}
 
 				/*
-				 * 这个代码不是很明白，需要再理解
-				 * **/
+				 * list_add 插入第二个参数的后面
+				 * */
 				if (tmp_list->next == &head_list) {
 					list_add(&ptr->list, tmp_list);
 					break;
@@ -172,27 +172,21 @@ main()
 			}
 		} while (tmp_list != &head_list);
 	}
-	/*
-	   list_for_each_entry(at, &head_list, list){
-	   printf("begin is %d and end is %d\n", at->begin, at->end);
-	   printf("end1\n");
-	   }
-	 */
 
 	list_for_each_entry(ptr, &head_list, list) {
-		if (milk_num - ptr->num > 0) {
-			milk_num -= ptr->num;
-			total_price += ptr->num * ptr->price;
-		} else if (milk_num - ptr->num == 0) {
-			milk_num -= ptr->num;
-			total_price += ptr->num * ptr->price;
-			break;
-		} else {
-			total_price += milk_num * ptr->price;
-			break;
+		if ((&ptr->list)->next == &head_list) {
+			ptr->distance = 10000; 
+		}
+		else
+		{
+			at = list_entry((&ptr->list)->next, struct cow_home, list);
+			ptr->distance = at->num - ptr->num;
 		}
 	}
-
-	fprintf(fout, "%d\n", total_price);
+	
+	list_for_each_entry(ptr, &head_list, list) {
+		printf("num is %d, dis is %d\n", ptr->num, ptr->distance);
+	}
+	//fprintf(fout, "%d\n", total_price);
 	exit(0);
 }
