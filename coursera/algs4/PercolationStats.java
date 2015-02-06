@@ -6,6 +6,9 @@ public class PercolationStats
 
     public PercolationStats(int N, int T)
     {
+        if (N <= 0 || T <= 0)
+            throw new java.lang.IllegalArgumentException("N or T is not a fit value");
+
         this.N = N;
         this.T = T;
 
