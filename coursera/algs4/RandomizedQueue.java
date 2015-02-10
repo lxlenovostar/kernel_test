@@ -1,8 +1,9 @@
-import java.util.Iterator; 
+import java.util.*;
+
 public class RandomizedQueue<Item> implements Iterable<Item> {
     private Item[] a;
     private int N;
-    
+
     public RandomizedQueue()                 // construct an empty randomized queue
     {
         a = (Item[]) new Object[1];
@@ -29,22 +30,22 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
 
     private void checknull(Item item)
     {
-            if (item == null)
-                   throw new  NullPointerException("null value to add or remove");
+        if (item == null)
+            throw new  NullPointerException("null value to add or remove");
     }
 
     public void enqueue(Item item)           // add the item
     {
-        checknull();
+        checknull(item);
 
         if (N == a.length) resize(2*a.length);
         a[N++] = item;
     }
-    
+
     public Item dequeue()                    // delete and return a random item
     {
         if (isEmpty())
-                throw new NoSuchElementException("dequeue underflow");
+            throw new NoSuchElementException("dequeue underflow");
 
         //待修改
         int r = StdRandom.uniform(a.length + 1);
@@ -55,16 +56,16 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
         if (N > 0 && N == a.length/4) resize(a.length/2);
         return item;
     }
-    
+
     public Item sample()                     // return (but do not delete) a random item
     {
         if (isEmpty())
-                throw new NoSuchElementException("dequeue underflow");
-        
+            throw new NoSuchElementException("dequeue underflow");
+
         int r = StdRandom.uniform(a.length + 1);
         return a[r-1];
     }
-    
+
     public Iterator<Item> iterator()         // return an independent iterator over items in random order
     {
         return new ReverseArrayIterator();
@@ -73,8 +74,8 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
     private class ReverseArrayIterator implements Iterator<Item>
     {
         private int i = N;
-        
-        public boolean hasNext() 
+
+        public boolean hasNext()
         {
             return i > 0;
         }
@@ -89,7 +90,7 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
 
         public void remove()
         {
-              throw new UnsupportedOperationException();
+            throw new UnsupportedOperationException();
         }
     }
 
