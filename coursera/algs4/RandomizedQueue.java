@@ -46,15 +46,21 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
     {
         if (isEmpty())
             throw new NoSuchElementException("dequeue underflow");
+        //
+        //first call swap, and second dequeue.
+        //待修改,,需要将最后一个值拷贝过来。然长度减少1
+        int r = StdRandom.uniform(N);
 
-        //待修改
-        int r = StdRandom.uniform(a.length + 1);
-        Item item = a[r-1];
-        a[r-1] = null;
+        //StdOut.printf("r is %d\n", r);
+
+        Item swap = a[r];
+        a[r] = a[N-1];
+        a[N-1] = null;
         --N;
 
-        if (N > 0 && N == a.length/4) resize(a.length/2);
-        return item;
+        if (N > 0 && N == a.length/4)
+            resize(a.length/2);
+        return swap;
     }
 
     public Item sample()                     // return (but do not delete) a random item
@@ -62,8 +68,8 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
         if (isEmpty())
             throw new NoSuchElementException("dequeue underflow");
 
-        int r = StdRandom.uniform(a.length + 1);
-        return a[r-1];
+        int r = StdRandom.uniform(N);
+        return a[r];
     }
 
     public Iterator<Item> iterator()         // return an independent iterator over items in random order
@@ -73,11 +79,24 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
 
     private class ReverseArrayIterator implements Iterator<Item>
     {
-        private int i = N;
+        private int counter = 0;
+        private Item[] output;
+
+        private ReverseArrayIterator() {
+            output = (Item[]) new Object[N];
+            for (int i = 0; i < N; i++)
+                output[i] = a[i];
+            
+            /*
+             *  这里为什么要这样实现，而不是我每次随机取一个数
+             * */
+            StdRandom.shuffle(output);
+        }
+
 
         public boolean hasNext()
         {
-            return i > 0;
+            return counter < N;
         }
 
         public Item next()
@@ -85,7 +104,7 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
             if (!hasNext())
                 throw new NoSuchElementException();
 
-            return a[--i];
+            return output[counter++];
         }
 
         public void remove()
@@ -96,6 +115,19 @@ public class RandomizedQueue<Item> implements Iterable<Item> {
 
     public static void main(String[] args)   // unit testing
     {
-
+        RandomizedQueue r = new RandomizedQueue();
+        r.enqueue(1);
+        r.enqueue(2);
+        r.enqueue(3);
+        //r.dequeue();
+        //r.dequeue();
+        Iterator<Integer> iterator = r.iterator();
+        StdOut.printf("value is %d\n", iterator.next());
+        StdOut.printf("value is %d\n", iterator.next());
+        StdOut.printf("value is %d\n", iterator.next());
+        Iterator<Integer> iterator1 = r.iterator();
+        StdOut.printf("value1 is %d\n", iterator1.next());
+        StdOut.printf("value1 is %d\n", iterator1.next());
+        StdOut.printf("value1 is %d\n", iterator1.next());
     }
 }

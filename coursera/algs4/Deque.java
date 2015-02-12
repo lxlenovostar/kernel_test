@@ -1,12 +1,14 @@
+import java.util.*;
+
 public class Deque<Item> implements Iterable<Item> {
-    private Node first; // link to least recently added node
-    private Node last; // link to most recently added node
+    private Node<Item> first; // link to least recently added node
+    private Node<Item> last; // link to most recently added node
     private int N;  // number of items on the queue
-    private class Node
+    private class Node<Item>
     {   // nested class to define nodes
-        Item item;
-        Node next;
-        Node priv;
+        private Item item;
+        private Node<Item> next;
+        private Node<Item> priv;
     }
 
     public Deque()                           // construct an empty deque
@@ -18,7 +20,7 @@ public class Deque<Item> implements Iterable<Item> {
 
     public boolean isEmpty()                 // is the deque empty?
     {
-        return first == null;
+        return N == 0;
     }
 
     public int size()                        // return the number of items on the deque
@@ -36,24 +38,54 @@ public class Deque<Item> implements Iterable<Item> {
     {
         checknull(item);
 
-        Node<Item> oldfirst = first;
-        first = new Node<Item>();
-        first.item = item;
-        first.next = oldfirst;
-        first.priv = null;
-        N++;
+        if (isEmpty())
+        {
+            Node<Item> only;
+            only = new Node<Item>();
+            only.item = item;
+            only.next = null;
+            only.priv = null;
+            last = only;
+            first = only;
+            N++;
+        }
+        else
+        {
+            Node<Item> oldfirst = first;
+            first = new Node<Item>();
+            first.item = item;
+            first.next = oldfirst;
+            first.priv = null;
+            oldfirst.priv = first;
+            N++;
+        }
     }
 
     public void addLast(Item item)           // insert the item at the end
     {
         checknull(item);
-        Node<Item> oldlast = last;
-        last = new Node<Item>();
-        last.item = item;
-        last.next = null;
-        last.priv = oldlast;
-        oldlast.next = last;
-        N++;
+
+        if (isEmpty())
+        {
+            Node<Item> only;
+            only = new Node<Item>();
+            only.item = item;
+            only.next = null;
+            only.priv = null;
+            first = only;
+            last = only;
+            N++;
+        }
+        else
+        {
+            Node<Item> oldlast = last;
+            last = new Node<Item>();
+            last.item = item;
+            last.next = null;
+            last.priv = oldlast;
+            oldlast.next = last;
+            N++;
+        }
     }
 
     public Item removeFirst()                // delete and return the item at the front
@@ -66,7 +98,7 @@ public class Deque<Item> implements Iterable<Item> {
         N--;
 
         if (isEmpty())
-            last = null;   // to avoid loitering
+            first = last = null;   // to avoid loitering
 
         return item;
     }
@@ -81,7 +113,7 @@ public class Deque<Item> implements Iterable<Item> {
         N--;
 
         if (isEmpty())
-            last = null;   // to avoid loitering
+            first = last = null;   // to avoid loitering
 
         return item;
 
@@ -95,7 +127,7 @@ public class Deque<Item> implements Iterable<Item> {
     private class ListIterator<Item> implements Iterator<Item> {
         private Node<Item> current;
 
-        public ListIterator(Node<Item> first) {
+        public ListIterator(Node first) {
             current = first;
         }
 
@@ -121,4 +153,50 @@ public class Deque<Item> implements Iterable<Item> {
     }
 
     public static void main(String[] args)   // unit testing
+    {   /*
+           Deque<String> q1 = new Deque<String>();
+           q1.addFirst("b");
+           q1.addLast("c");
+
+           Deque<String> q2 = new Deque<String>();
+           q2.addFirst("b");
+           q2.addFirst("b");
+           q2.removeLast();
+
+           Deque<String> q3 = new Deque<String>();
+           q3.addLast("b");
+           q3.removeLast();
+
+           Deque<String> q4 = new Deque<String>();
+           q3.addLast("b");
+           q3.removeFirst();
+           */
+        /*Deque deque1 = new Deque<Integer>();
+        deque1.addFirst(101);
+        deque1.addFirst(102);
+        System.out.println("what1");
+        deque1.removeLast();
+        System.out.println("what2");
+        //assertEquals(1, deque1.size());
+        deque1.removeLast();
+        //assertEquals(0, deque1.size());
+        */
+
+        Deque deque = new Deque<Integer>();
+        deque.addFirst(101);
+        deque.addFirst(102);
+        deque.addFirst(103);
+        deque.addFirst(104);
+        deque.addFirst(105);
+        deque.addFirst(106);
+        Iterator<Integer> i= deque.iterator();
+
+        while (i.hasNext())
+        {
+
+            Integer value = i.next();
+            System.out.println(value);
+        }
+
+    }
 }
