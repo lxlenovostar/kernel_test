@@ -68,12 +68,16 @@ public class Point implements Comparable<Point> {
             return Double.POSITIVE_INFINITY;
         }
 
-        return (double)(that.y - this.y)/(that.x - this.x);
+        return (double) (that.y - this.y)/(that.x - this.x);
     }
 
     // is this point lexicographically smaller than that one?
     // comparing y-coordinates and breaking ties by x-coordinates
     public int compareTo(Point that) {
+        if (that == null) {
+            throw new NullPointerException();
+        }
+
         if (this.y == that.y && this.x == that.x)
             return 0;
 
