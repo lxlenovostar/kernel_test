@@ -41,19 +41,21 @@ public class Fast {
             String strpoints = ""; //this will be used later to construct the output
             Arrays.sort(slope_sorted, origin.SLOPE_ORDER); //sort the temp set by slope to the origin
 
-            for (int z = 0; z < N; ++z) {
+            /*for (int z = 0; z < N; ++z) {
                 System.out.printf("point1 is %s\n", slope_sorted[z].toString());
-            }
+            }*/
 
             for (int j = 1; j < N - 1; ++j) {
-                System.out.printf("j is %d and N-1 is %d\n", j, (N - 1));
+                //System.out.printf("j is %d and N-1 is %d\n", j, (N - 1));
                 if (origin.slopeTo(slope_sorted[j]) == origin.slopeTo(slope_sorted[j+1]))
                 {
-                    System.out.printf("origin is %s; slop is %s: %f and %s:%f \n", origin.toString(), slope_sorted[j].toString(), origin.slopeTo(slope_sorted[j]), slope_sorted[j+1].toString(), origin.slopeTo(slope_sorted[j+1]));
+                    //System.out.printf("origin is %s; slop is %s: %f and %s:%f \n", origin.toString(), slope_sorted[j].toString(), origin.slopeTo(slope_sorted[j]), slope_sorted[j+1].toString(), origin.slopeTo(slope_sorted[j+1]));
                     ++iline;
                     //System.out.printf("%d and N - 1 is %d\n", j, (N-1));
-                    //if (j + 2 != N)
-                    continue;
+                    if (j + 2 != N)
+                        continue;
+                    else
+                        ++j;
                 }
 
                 if (iline >= 2)
@@ -93,7 +95,7 @@ public class Fast {
                     int m = 1;
                     Point[] tmpPoint = new Point[iline+2];
                     tmpPoint[0] = origin;
-                    System.out.printf("N is %d and j is %d\n", N, j);
+                    //System.out.printf("N is %d and j is %d\n", N, j);
                     for(int k = j - iline; k < j + 1; ++k)
                     {
                         if (origin.compareTo(slope_sorted[k]) != 0)
