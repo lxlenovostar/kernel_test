@@ -28,12 +28,12 @@ main(void)
 		return -1;
 	}
 
-	/*call function recv_msg() */
+	/*call function set_ip() */
 	ret = setsockopt(sockfd, IPPROTO_IP, SOCKET_OPS_IPCHG, UMSG, UMSG_LEN);
 	printf("setsockopt: ret = %d. msg = %s\n", ret, UMSG);
 	len = sizeof (char) * 64;
 
-	/*call function send_msg() */
+	/*call function get_ip() */
 	ret = getsockopt(sockfd, IPPROTO_IP, SOCKET_OPS_IPCHG_CHK, kmsg, &len);
 	printf("getsockopt: ret = %d. msg = %s\n", ret, kmsg);
 	if (ret != 0) {
