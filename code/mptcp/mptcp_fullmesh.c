@@ -576,6 +576,7 @@ next_event:
 	rcu_read_lock_bh();
 	spin_lock(&fm_ns->local_lock);
 
+	/* 得到第一个事件 */
 	event = list_first_entry_or_null(&fm_ns->events,
 					 struct mptcp_addr_event, list);
 	if (!event) {
@@ -585,11 +586,13 @@ next_event:
 	}
 
 	list_del(&event->list);
-
-	mptcp_local = rcu_dereference_bh(fm_ns->local);
+	
+	/* 找出需要删除的地址 */
+	mptcp_local = rcu_dereference_bh(fm_ns->local); 
 
 	if (event->code == MPTCP_EVENT_DEL) {
-		id = mptcp_find_address(mptcp_local, event->family, &event->addr);
+		/* 确认是否有这个地址 */
+		id = mptcp_find_address(mptcp_local, event->family, &event->addr); 
 
 		/* Not in the list - so we don't care */
 		if (id < 0) {
@@ -611,6 +614,7 @@ next_event:
 		rcu_assign_pointer(fm_ns->local, mptcp_local);
 		kfree(old);
 	} else {
+		/* 非删除事件 */
 		int i = mptcp_find_address(mptcp_local, event->family, &event->addr);
 		int j = i;
 
@@ -628,6 +632,7 @@ next_event:
 				goto duno;
 			}
 
+			/* 哈哈 */
 			/* It might have been a MOD-event. */
 			event->code = MPTCP_EVENT_ADD;
 		} else {
@@ -657,6 +662,7 @@ next_event:
 			mptcp_local->locaddr6[i].low_prio = event->low_prio;
 		}
 
+		/*代表是新增地址*/
 		if (j < 0) {
 			if (event->family == AF_INET) {
 				mptcp_local->loc4_bits |= (1 << i);
@@ -672,6 +678,7 @@ next_event:
 	}
 	success = true;
 
+/*代表什么也不用做*/
 duno:
 	spin_unlock(&fm_ns->local_lock);
 	rcu_read_unlock_bh();
