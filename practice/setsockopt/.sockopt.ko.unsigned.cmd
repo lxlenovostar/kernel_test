@@ -1,1 +1,0 @@
-cmd_/opt/kernel_test/practice/setsockopt/sockopt.ko.unsigned := ld -r -m elf_x86_64 -T /usr/src/kernels/2.6.32-431.el6.x86_64/scripts/module-common.lds --build-id -o /opt/kernel_test/practice/setsockopt/sockopt.ko.unsigned /opt/kernel_test/practice/setsockopt/sockopt.o /opt/kernel_test/practice/setsockopt/sockopt.mod.o 
