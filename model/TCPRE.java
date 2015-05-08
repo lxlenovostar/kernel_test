@@ -1,15 +1,16 @@
 import java.math.BigInteger;
 import java.util.Random;
 import java.util.Hashtable;
+import java.math.BigInteger;
 
 public class TCPRE {
     private long Q = 1;          // a large prime, small enough to avoid long overflow
     private int R;           // radix
     private long RM;         // R^(M-1) % Q
-    private int zero_num = 2;    // the number of bits which equals 0
+    private int zero_num = 5;    // the number of bits which equals 0
     private int zero_value = 1;
     private int chunk_num = 64;   // divide the string into chunk
-    private int remedy = 2;
+    private int remedy = 12;
     private Hashtable<Long, String> hashmap; // hash the cache data
     public int count = 0;
     public int count_comp = 0;
@@ -37,6 +38,12 @@ public class TCPRE {
         if (this.calculateFingerprint(source) == false)
             throw new RuntimeException("the length of  source data less than " + chunk_num);
     }
+    
+    private String longToString(long data) {
+        Long R = new Long(data);
+        String str = Long.toString(R);
+        return str;
+    }
 
     // Compute hash for key[0..M-1].
     private long hash(String key, int M) {
@@ -54,11 +61,11 @@ public class TCPRE {
         if ((txtHash & zero_value) == 0) {
             if (hashmap.get(txtHash>>zero_num) == null) {
                 ++count;
-                hashmap.put(txtHash>>zero_num, txt.substring(0, chunk_num));
-                StdOut.println("old is:" +  txtHash  + " and " + (txtHash>>zero_num));
-                StdOut.println("str is: " + txt.substring(0, chunk_num));
+                hashmap.put(txtHash>>zero_num, "source");
+                //hashmap.put(txtHash>>zero_num, txt.substring(0, chunk_num));
             }
         }
+
         // check for hash match; if hash match, check for exact match
         for (int i = chunk_num; i < N; i++) {
             // Remove leading digit, add trailing digit, check for match.
@@ -70,9 +77,10 @@ public class TCPRE {
                 if (hashmap.get(txtHash>>zero_num) != null)
                     continue;
                 ++count;
-                hashmap.put(txtHash>>zero_num, txt.substring(i - chunk_num + 1, i));
-                StdOut.println("old is:" + (txtHash>>zero_num));
-                StdOut.println("str is: " + txt.substring(i - chunk_num + 1, i));
+                hashmap.put(txtHash>>zero_num, "source");
+                //hashmap.put(txtHash>>zero_num, txt.substring(i - chunk_num + 1, i));
+                //StdOut.println("old is:" + (txtHash>>zero_num));
+                //StdOut.println("str is: " + txt.substring(i - chunk_num + 1, i));
             }
         }
 
@@ -91,7 +99,7 @@ public class TCPRE {
         if ((txtHash & zero_value) == 0) {
             if (hashmap.get(txtHash>>zero_num) != null) {
                 cache_num = cache_num - chunk_num + remedy;
-                StdOut.println("new is:" + (txtHash>>zero_num));
+                //StdOut.println("new is:" + (txtHash>>zero_num));
             }
         }
 
@@ -106,8 +114,8 @@ public class TCPRE {
                         ++count_comp;
                         cache_num = cache_num - chunk_num + remedy;
                         delay_time = chunk_num;
-                        StdOut.println("new is:" + (txtHash>>zero_num) + " and index is: " + i);
-                        StdOut.println("str is: " + txt.substring(i - chunk_num + 1, i));
+                        //StdOut.println("new is:" + (txtHash>>zero_num) + " and index is: " + i);
+                        //StdOut.println("str is: " + txt.substring(i - chunk_num + 1, i));
                     }
                 }
             }
@@ -126,7 +134,6 @@ public class TCPRE {
     }
 
     public static void main(String[] args) {
-
         String source_filename = args[0];
         String cache_filename = args[1];
 
@@ -145,42 +152,9 @@ public class TCPRE {
             cache += txt;
         } while (cache_in.isEmpty() == false);
 
-        //StdOut.println("source is:" + source);
         TCPRE searcher = new TCPRE(source);
         StdOut.println("old is: " + cache.length() + " and new is: " + searcher.cacheFingrprint(cache));
         StdOut.println("count is: " + searcher.count + " and del is: " + searcher.count_comp);
 
-        /*if ((32 & 31) == 0)
-            StdOut.println("32 is 0");
-        else
-            StdOut.println("32 is 1");
-
-        if ((1 & 31) == 0)
-            StdOut.println("1 is 0");
-        else
-            StdOut.println("1 is 1");
-        */
-
-        /*Hashtable<String, Integer> numbers
-            = new Hashtable<String, Integer>();
-        numbers.put("one", 1);
-        numbers.put("two", 2);
-        numbers.put("three", 3);
-
-        Integer n = numbers.get("two");
-        if (n != null) {
-            System.out.println("two = " + n);
-        }
-
-        numbers.remove("two");
-        n = numbers.get("two");
-        if (n != null) {
-            System.out.println("two = " + n);
-        }
-        else
-        {
-            System.out.println("none");
-        }
-        */
     }
 }
