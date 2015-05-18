@@ -36,15 +36,18 @@ default_hash(void *a)
 }
 
 Hashmap *
-Hashmap_create(Hashmap_compare compare, Hashmap_hash hash)
+Hashmap_create(long buckets_len, Hashmap_compare compare, Hashmap_hash hash)
 {
+	long buckets_n = 0;
 	Hashmap *map = calloc(1, sizeof (Hashmap));
 	check_mem(map);
 
 	map->compare = compare == NULL ? default_compare : compare;
 	map->hash = hash == NULL ? default_hash : hash;
+	buckets_n = buckets_len > 0 ? buckets_len : DEFAULT_NUMBER_OF_BUCKETS;
+	printf("buckets_n is %ld and %ld\n", buckets_n, buckets_len);
 	map->buckets =
-	    DArray_create(sizeof (DArray *), DEFAULT_NUMBER_OF_BUCKETS);
+	    DArray_create(sizeof (DArray *), buckets_n);
 	map->buckets->end = map->buckets->max;	// fake out expanding it
 	check_mem(map->buckets);
 

@@ -6,13 +6,13 @@
 
 typedef struct DArray {
 	int end;
-	int max;
+	long max;
 	size_t element_size;
 	size_t expand_rate;
 	void **contents;
 } DArray;
 
-DArray *DArray_create(size_t element_size, size_t initial_max);
+DArray *DArray_create(size_t element_size, long initial_max);
 
 void DArray_destroy(DArray * array);
 

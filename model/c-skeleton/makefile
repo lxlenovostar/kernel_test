@@ -2,8 +2,11 @@ CFLAGS=-g -O2 -Wall -Wextra -Isrc -rdynamic -DNDEBUG $(OPTFLAGS)
 LIBS=-ldl $(OPTLIBS)
 PREFIX?=/usr/local
 
-SOURCES=$(wildcard src/**/*.c src/*.c)
+SOURCES=$(wildcard src/**/*.c)
 OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
+
+SOURCESMAIN=$(wildcard src/*.c)
+OBJECTSMAIN=$(patsubst %.c,%,$(SOURCESMAIN))
 
 TEST_SRC=$(wildcard tests/*_tests.c)
 TESTS=$(patsubst %.c,%,$(TEST_SRC))
@@ -12,7 +15,7 @@ TARGET=build/liblx.a
 SO_TARGET=$(patsubst %.a,%.so,$(TARGET))
 
 # The Target Build
-all: $(TARGET) $(SO_TARGET) tests
+all: $(TARGET) $(SO_TARGET) tests main 
 
 dev: CFLAGS=-g -Wall -Isrc -Wall -Wextra $(OPTFLAGS)
 dev: all
@@ -28,7 +31,7 @@ build:
 	@mkdir -p bin
 
 # The Unit Tests
-tests: $(TESTS)
+tests: $(TESTS) 
 	sh ./tests/runtests.sh
 
 $(TESTS):
@@ -37,9 +40,15 @@ $(TESTS):
 valgrind:
 	VALGRIND="valgrind --log-file=/tmp/valgrind-%p.log" $(MAKE)
 
+# The Main Function
+main: $(OBJECTSMAIN)
+$(OBJECTSMAIN): 
+	$(CC) $(CFLAGS) -o $@ $(SOURCESMAIN) $(TARGET)
+	@mv $@ bin
+
 # The Cleaner
 clean:
-	rm -rf build $(OBJECTS) $(TESTS)
+	rm -rf build $(OBJECTS) $(OBJECTSMAIN) $(TESTS)
 	rm -f tests/tests.log
 	find . -name "*.gc*" -exec rm {} \;
 	rm -rf `find . -name "*.dSYM" -print`

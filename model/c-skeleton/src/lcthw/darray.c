@@ -2,7 +2,7 @@
 #include "darray.h"
 
 DArray *
-DArray_create(size_t element_size, size_t initial_max)
+DArray_create(size_t element_size, long initial_max)
 {
 	DArray *array = malloc(sizeof (DArray));
 	check_mem(array);
@@ -10,6 +10,7 @@ DArray_create(size_t element_size, size_t initial_max)
 	check(array->max > 0, "You must set an initial_max > 0.");
 
 	array->contents = calloc(initial_max, sizeof (void *));
+	printf("size is %d, %ld, %ld\n", sizeof(void *), sizeof(void *) * initial_max, initial_max * 8 /1024/1024/1024);
 	check_mem(array->contents);
 
 	array->end = 0;
@@ -27,7 +28,7 @@ DArray_create(size_t element_size, size_t initial_max)
 void
 DArray_clear(DArray * array)
 {
-	int i = 0;
+	long i = 0;
 	if (array->element_size > 0) {
 		for (i = 0; i < array->max; i++) {
 			if (array->contents[i] != NULL) {
@@ -38,7 +39,7 @@ DArray_clear(DArray * array)
 }
 
 static inline int
-DArray_resize(DArray * array, size_t newsize)
+DArray_resize(DArray * array, long newsize)
 {
 	array->max = newsize;
 	check(array->max > 0, "The newsize must be > 0.");
@@ -46,7 +47,7 @@ DArray_resize(DArray * array, size_t newsize)
 	void *contents = realloc(array->contents, array->max * sizeof (void *));
 	// check contents and assume realloc doesn't harm the original on error
 
-    	check_mem(contents);
+   	check_mem(contents);
 	array->contents = contents;
 
 	return 0;
@@ -57,7 +58,7 @@ DArray_resize(DArray * array, size_t newsize)
 int
 DArray_expand(DArray * array)
 {
-	size_t old_max = array->max;
+	long old_max = array->max;
 	check(DArray_resize(array, array->max + array->expand_rate) == 0,
 	      "Failed to expand array to new size: %d",
 	      array->max + (int) array->expand_rate);

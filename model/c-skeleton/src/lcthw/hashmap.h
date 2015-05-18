@@ -23,7 +23,11 @@ typedef struct HashmapNode {
 
 typedef int (*Hashmap_traverse_cb) (HashmapNode * node);
 
-Hashmap *Hashmap_create(Hashmap_compare compare, Hashmap_hash);
+/*
+ * if buckets_len is 0, we will use the default value, 
+ * else we will user our value.
+ */
+Hashmap *Hashmap_create(long buckets_len, Hashmap_compare compare, Hashmap_hash);
 void Hashmap_destroy(Hashmap * map);
 
 int Hashmap_set(Hashmap * map, void *key, void *data);
