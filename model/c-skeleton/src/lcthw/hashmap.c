@@ -45,7 +45,6 @@ Hashmap_create(long buckets_len, Hashmap_compare compare, Hashmap_hash hash)
 	map->compare = compare == NULL ? default_compare : compare;
 	map->hash = hash == NULL ? default_hash : hash;
 	buckets_n = buckets_len > 0 ? buckets_len : DEFAULT_NUMBER_OF_BUCKETS;
-	printf("buckets_n is %ld and %ld\n", buckets_n, buckets_len);
 	map->buckets =
 	    DArray_create(sizeof (DArray *), buckets_n);
 	map->buckets->end = map->buckets->max;	// fake out expanding it
@@ -127,7 +126,7 @@ Hashmap_find_bucket(Hashmap *map, void *key, int create, uint32_t *hash_out)
 }
 
 int
-Hashmap_set(Hashmap * map, void *key, void *data)
+Hashmap_set(Hashmap *map, void *key, void *data)
 {
 	uint32_t hash = 0;
 	DArray *bucket = Hashmap_find_bucket(map, key, 1, &hash);
