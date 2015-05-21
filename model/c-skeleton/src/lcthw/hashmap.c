@@ -1,4 +1,3 @@
-#undef NDEBUG
 #include <stdint.h>
 #include "hashmap.h"
 #include "dbg.h"
@@ -105,8 +104,14 @@ static inline DArray *
 Hashmap_find_bucket(Hashmap *map, void *key, int create, uint32_t *hash_out)
 {
 	uint32_t hash = map->hash(key);
-	int bucket_n = hash % DEFAULT_NUMBER_OF_BUCKETS;
+	
+    //int bucket_n = hash % DEFAULT_NUMBER_OF_BUCKETS;
+	/*
+     * fixed value is not a good idea. 
+     */
+    int bucket_n = hash % (map->buckets->max);
 	check(bucket_n >= 0, "Invalid bucket found: %d", bucket_n);
+
 	*hash_out = hash;	// store it for the return so the caller can use it
 
 	DArray *bucket = DArray_get(map->buckets, bucket_n);
