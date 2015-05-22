@@ -8,11 +8,12 @@
 #define SIZE 1024
 #define PACKET_LEN 1460
 #define BUCKETS_LEN 997
-#define NUM 1000
+#define NUM 30000
 #define KEYNUM BUCKETS_LEN * NUM
 #define REMEDY 12
 Hashmap *map = NULL;
 
+static unsigned long hashmapnum = 0;
 static int recount = 0;
 static unsigned long sumbytes = 0;
 unsigned long index_key[KEYNUM];
@@ -51,6 +52,7 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
 			    Hashmap_set(map, (index_key + reindex), expect);
 			check(rc == 0, "Failed to set hashmap");
 			++reindex;
+            ++hashmapnum;
 		}
 	}
 
@@ -69,6 +71,7 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
                     Hashmap_set(map, (index_key + reindex), expect);
                 check(rc == 0, "Failed to set hashmap");
                 ++reindex;
+                ++hashmapnum;
             }
         }
 	}
@@ -97,16 +100,17 @@ lookup_hash(char *playload, int palyload_len, long Q, int R, long RM,
 		txthash = (txthash * R + playload[i]) % Q;
 
 		if (delay_time == 0) {
-
 			if ((txthash & zero_value) == 0) {
 				if (Hashmap_get(map, &txthash)) {
 					delay_time = chunk_num;
 					++recount;
 				}
-			} else {
-				--delay_time;
 			}
+			
 		}
+        else {
+				--delay_time;
+        }
 	}
 }
 
@@ -214,9 +218,9 @@ main()
 	long RM = 1;
 	int rc;
 	char source[1024] =
-	    "/root/kernel_test/model/c-skeleton/bin/history.txt";
+	    "/root/kernel_test/model/c-skeleton/bin/a";
 	char refile[1024] =
-	    "/root/kernel_test/model/c-skeleton/bin/history.txt.2";
+	    "/root/kernel_test/model/c-skeleton/bin/b";
 
 	// precalculate
 	for (i = 0; i < 60; ++i)
@@ -242,9 +246,10 @@ main()
 	rc = read_file(refile, 2, Q, R, RM, zero_value, chunk_num);
 	check(rc == 0, "Failed to lookup hash.");
 
-	unsigned long result = sumbytes - (chunk_num - REMEDY);
+	unsigned long result = sumbytes - recount*(chunk_num - REMEDY);
 	printf("sum bytes is %lu and re count is %d and result is %lu\n",
 	       sumbytes, recount, result);
+    printf("total hashkey is %lu\n", hashmapnum);
 
 	// read the file
 	/*input = fopen("/root/kernel_test/model/c-skeleton/bin/history.txt", "r");
