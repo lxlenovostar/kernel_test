@@ -1,4 +1,4 @@
 FLAGS=-Wall -g
 
 clean:
-	rm -f *.o
+	rm -f pcap_read
