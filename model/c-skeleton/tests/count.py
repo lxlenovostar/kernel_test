@@ -32,8 +32,11 @@ for key in dict.keys():
 	exit_code = result >> 8
 	if exit_code != 0:
 		exit(1)
-	if dict[key] + 1 != int(output):	
-		ferror.write(key + ' ' + str(dict[key]) + ' ' + output + '\n')
+	if dict[key] + 1 != int(output):
+		sec_result, sec_output = commands.getstatusoutput('grep -re ' + key + ' ' + filename)
+		sec_count = sec_output.count(key) 
+		if dict[key] + 1 !=  sec_count:	
+			ferror.write(key + ' ' + str(dict[key]) + ' ' + output + ' ' + sec_count + '\n')
 ferror.close()
 		
 
