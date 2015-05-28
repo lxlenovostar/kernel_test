@@ -29,8 +29,8 @@ typedef struct pcap_header {
 
 } pcap_header;
 
-#define MAX_ETH_FRAME 15140
-#define INT_TIME 10
+#define MAX_ETH_FRAME 30000
+#define INT_TIME 100
 #define ETH_ALEN        6
 #define __LITTLE_ENDIAN_BITFIELD 1
 #define NIPQUAD(addr) \
@@ -117,11 +117,11 @@ printPcap(int count, void *data, struct pcap_header *ph)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	long long stime;
-	char play_data[20480];
+	char play_data[30000];
 	int len;
 	int i;
 
-	memset(play_data, '\0', 20480);
+	memset(play_data, '\0', 30000);
 
 	if (data == NULL) {
 		return;
@@ -136,6 +136,7 @@ printPcap(int count, void *data, struct pcap_header *ph)
 					       sizeof (struct iphdr));
 			if (tcph->syn != 1 && ntohs(tcph->source) == 80 || ntohs(tcph->dest) == 80) {
 				len = ntohs(iph->tot_len) - iph->ihl * 4 - tcph->doff * 4;
+				//printf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
 				if (len > 0) {
 					stime = ph->ts.timestamp_s;
 					memcpy(play_data, ((char *)tcph + tcph->doff * 4), len);
@@ -154,7 +155,7 @@ printPcap(int count, void *data, struct pcap_header *ph)
 					if (stime < (start_stime + INT_TIME))
 					{
 						//fprintf(fp1, "time is %ld and stime is %ld\n", stime, start_stime);	
-						//fprintf(fp1, "len is %d and ack is %ld\n", len, ntohl(tcph->seq));
+						//printf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
 						for (i = 0; i < len; ++i) 
 							fprintf(fp1, "%x", play_data[i] & 0xff);
 						fprintf(fp1, "\n");
@@ -162,7 +163,7 @@ printPcap(int count, void *data, struct pcap_header *ph)
 					else
 					{
 						//fprintf(fp2, "time is %ld and stime is %ld\n", stime, start_stime);	
-						//fprintf(fp2, "len is %d and ack is %ld\n", len, ntohl(tcph->seq));
+						//fprintf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
 						for (i = 0; i < len; ++i) 
 							fprintf(fp2, "%x", play_data[i] & 0xff);
 						fprintf(fp2, "\n");
