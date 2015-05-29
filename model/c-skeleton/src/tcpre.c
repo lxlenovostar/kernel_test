@@ -13,6 +13,7 @@
 #define REMEDY 12
 Hashmap *map = NULL;
 FILE *fp = NULL;
+FILE *fpw = NULL;
 
 static unsigned long hashmapnum = 0;
 static int recount = 0;
@@ -49,13 +50,28 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
 	if ((txthash & zero_value) == 0) {
 		//insert the hashmap.
 		if (reindex < KEYNUM) {
-			index_key[reindex] = txthash;
-			int rc =
-			    Hashmap_set(map, (index_key + reindex), expect);
-			check(rc == 0, "Failed to set hashmap");
-			++reindex;
-            ++hashmapnum;
-            stats[txthash % BUCKETS_LEN] += 1;
+			if (Hashmap_get(map, &txthash)) {
+				++recount;
+			
+				char temp[65];
+				memcpy(temp, playload, chunk_num);
+				temp[64] = '\0';
+				fprintf(fp, "%s\n", temp);
+			} else {
+				index_key[reindex] = txthash;
+				int rc = Hashmap_set(map, (index_key + reindex),
+						     expect);
+				check(rc == 0, "Failed to set hashmap");
+				++reindex;
+
+				++hashmapnum;
+				stats[txthash % BUCKETS_LEN] += 1;
+				
+				char temphash[65];
+				memcpy(temphash, playload, chunk_num);
+				temphash[64] = '\0';
+				fprintf(fpw, "%s %lu\n", temphash, txthash);
+			}
 		}
 	}
 
@@ -64,32 +80,42 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
 		txthash = (txthash * R + playload[i]) % Q;
 
 		if (reindex < KEYNUM) {
-            if ((txthash & zero_value) == 0) {
-                //check whether we have the same one.
-                if (Hashmap_get(map, &txthash)) {
+			if ((txthash & zero_value) == 0) {
+				//check whether we have the same one.
+				if (Hashmap_get(map, &txthash)) {
 					++recount;
+
 					char temp[65];
-					memcpy(temp, playload + i - chunk_num, chunk_num);
+					memcpy(temp, playload + i - chunk_num,
+					       chunk_num);
 					temp[64] = '\0';
 					fprintf(fp, "%s\n", temp);
-                    continue;
+					continue;
 				}
 
-                index_key[reindex] = txthash;
-                int rc =
-                    Hashmap_set(map, (index_key + reindex), expect);
-                check(rc == 0, "Failed to set hashmap");
-                ++reindex;
-                ++hashmapnum;
-                stats[txthash % BUCKETS_LEN] += 1;
-            }
-        }
+				index_key[reindex] = txthash;
+				int rc =
+				    Hashmap_set(map, (index_key + reindex),
+						expect);
+				check(rc == 0, "Failed to set hashmap");
+				
+				++reindex;
+				++hashmapnum;
+				stats[txthash % BUCKETS_LEN] += 1;
+				
+				char temphash[65];
+				memcpy(temphash, playload + i - chunk_num,
+				       chunk_num);
+				temphash[64] = '\0';
+				fprintf(fpw, "%s %lu\n", temphash, txthash);
+			}
+		}
 	}
 
 	return 0;
 
-      error:
-	return -1;
+    error:
+		return -1;
 }
 
 void
@@ -99,6 +125,8 @@ lookup_hash(char *playload, int palyload_len, long Q, int R, long RM,
 	int i;
 	int delay_time = 0;
 	unsigned long txthash = hash(playload, chunk_num, R, Q);
+	//if (txthash == 84739273381536096)
+	//      printf("what3\n");
 
 	if ((txthash & zero_value) == 0) {
 		if (Hashmap_get(map, &txthash)) {
@@ -114,22 +142,24 @@ lookup_hash(char *playload, int palyload_len, long Q, int R, long RM,
 		txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
 		txthash = (txthash * R + playload[i]) % Q;
 
+		//if (txthash == 84739273381536096)
+		//      printf("what4\n");
 		if (delay_time == 0) {
 			if ((txthash & zero_value) == 0) {
 				if (Hashmap_get(map, &txthash)) {
 					delay_time = chunk_num;
 					++recount;
 					char temp[65];
-					memcpy(temp, playload + i - chunk_num, chunk_num);
+					memcpy(temp, playload + i - chunk_num,
+					       chunk_num);
 					temp[64] = '\0';
 					fprintf(fp, "%s\n", temp);
 				}
 			}
-			
+
+		} else {
+			--delay_time;
 		}
-        else {
-				--delay_time;
-        }
 	}
 }
 
@@ -237,13 +267,12 @@ main()
 	int R = 1048583;
 	long RM = 1;
 	int rc;
-	char source[1024] =
-	    "/root/kernel_test/model/c-skeleton/bin/a";
-	char refile[1024] =
-	    "/root/kernel_test/model/c-skeleton/bin/b";
+	char source[1024] = "/root/kernel_test/model/c-skeleton/bin/a";
+	//char refile[1024] = "/root/kernel_test/model/c-skeleton/bin/b";
 
 	//open a count file.
 	fp = fopen("count", "w");
+	fpw = fopen("hash", "w");
 
 	// precalculate
 	for (i = 0; i < 60; ++i)
@@ -266,17 +295,16 @@ main()
 	rc = read_file(source, 1, Q, R, RM, zero_value, chunk_num);
 	check(rc == 0, "Failed to calculate hash.");
 
-	rc = read_file(refile, 2, Q, R, RM, zero_value, chunk_num);
-	check(rc == 0, "Failed to lookup hash.");
+	//rc = read_file(refile, 2, Q, R, RM, zero_value, chunk_num);
+	//check(rc == 0, "Failed to lookup hash.");
 
-	unsigned long result = sumbytes - recount*(chunk_num - REMEDY);
+	unsigned long result = sumbytes - recount * (chunk_num - REMEDY);
 	printf("sum bytes is %lu and re count is %d and result is %lu\n",
 	       sumbytes, recount, result);
-    printf("total hashkey is %lu\n", hashmapnum);
-    //for(i = 0; i < BUCKETS_LEN; i++) {
-    //     printf("%lu\n", stats[i]);
-    //}
-
+	printf("total hashkey is %lu\n", hashmapnum);
+	//for(i = 0; i < BUCKETS_LEN; i++) {
+	//     printf("%lu\n", stats[i]);
+	//}
 
 	// read the file
 	/*input = fopen("/root/kernel_test/model/c-skeleton/bin/history.txt", "r");
@@ -319,11 +347,13 @@ main()
 	   free(temp);
 	   free(packet); */
 	fclose(fp);
+	fclose(fpw);
 	Hashmap_destroy(map);
 	return 0;
 
       error:
 	fclose(fp);
+	fclose(fpw);
 	Hashmap_destroy(map);
 	return -1;
 }
