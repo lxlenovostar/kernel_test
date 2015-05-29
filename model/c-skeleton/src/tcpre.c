@@ -5,10 +5,11 @@
 #include "lcthw/dbg.h"
 #include "lcthw/hashmap.h"
 
-#define SIZE 1024
-#define PACKET_LEN 1460
+#define CHUNK 64
+#define SIZE 30000
+#define PACKET_LEN 30000
 #define BUCKETS_LEN 997
-#define NUM 150000
+#define NUM 15000
 #define KEYNUM BUCKETS_LEN * NUM
 #define REMEDY 12
 Hashmap *map = NULL;
@@ -18,11 +19,11 @@ FILE *fpw = NULL;
 static unsigned long hashmapnum = 0;
 static int recount = 0;
 static unsigned long sumbytes = 0;
-unsigned long index_key[KEYNUM];
+unsigned long hash_key[KEYNUM];
+char hash_keydata[KEYNUM][CHUNK + 1];
 unsigned long stats[KEYNUM];
 static int reindex = 0;
-
-char expect[3] = "Hi";
+static unsigned long commonbytes = 0;
 
 // Compute hash for a string.
 unsigned long
@@ -41,11 +42,15 @@ hash(char *key, int M, int R, long Q)
  * choose 1460 or the other bytes calculate their hash values.
  */
 int
-calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
+calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 	       int zero_value, int chunk_num)
 {
 	int i;
+	char *data = NULL;
+	int delay_time = 0;
+
 	unsigned long txthash = hash(playload, chunk_num, R, Q);
+
 	if ((txthash & zero_value) == 0) {
 		//insert the hashmap.
 
@@ -55,18 +60,25 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
 		temphash[chunk_num] = '\0';
 		fprintf(fpw, "%s %lu\n", temphash, txthash);
 
-		if (Hashmap_get(map, &txthash)) {
-			++recount;
+		if ((data = Hashmap_get(map, &txthash)) != NULL) {
+			if (memcmp(data, playload, chunk_num) == 0) {
+				++recount;
+				delay_time = chunk_num;
 
-			char temp[65];
-			memcpy(temp, playload, chunk_num);
-			temp[chunk_num] = '\0';
-			fprintf(fp, "%s\n", temp);
+				char temp[65];
+				memcpy(temp, playload, chunk_num);
+				temp[chunk_num] = '\0';
+				fprintf(fp, "%s\n", temp);
+
+				debug("data is %s\ntemp is %s\n", data, temp);
+			}
 		} else {
 			if (reindex < KEYNUM) {
-				index_key[reindex] = txthash;
-				int rc = Hashmap_set(map, (index_key + reindex),
-						     expect);
+				hash_key[reindex] = txthash;
+				memcpy(hash_keydata + reindex, playload,
+				       chunk_num);
+				int rc = Hashmap_set(map, (hash_key + reindex),
+						     hash_keydata + reindex);
 				check(rc == 0, "Failed to set hashmap");
 				++reindex;
 
@@ -78,53 +90,76 @@ calculate_hash(char *playload, int palyload_len, long Q, int R, long RM,
 				   temphash[chunk_num] = '\0';
 				   fprintf(fpw, "%s %lu\n", temphash, txthash);
 				 */
+			} else {
+				goto error;
 			}
 		}
 	}
 
-	for (i = chunk_num; i < palyload_len; i++) {
+	for (i = chunk_num; i < playload_len; i++) {
 		txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
 		txthash = (txthash * R + playload[i]) % Q;
 
-		if ((txthash & zero_value) == 0) {
-			//check whether we have the same one.
+		if (delay_time == 0) {
+			if ((txthash & zero_value) == 0) {
+				//check whether we have the same one.
 
-			// just for test
-			char temphash[65];
-			memcpy(temphash, playload + i - chunk_num, chunk_num);
-			temphash[chunk_num] = '\0';
-			fprintf(fpw, "%s %lu\n", temphash, txthash);
-
-			if (Hashmap_get(map, &txthash)) {
-				++recount;
-
-				char temp[65];
-				memcpy(temp, playload + i - chunk_num,
+				// just for test
+				char temphash[65];
+				memcpy(temphash, playload + i - chunk_num,
 				       chunk_num);
-				temp[chunk_num] = '\0';
-				fprintf(fp, "%s\n", temp);
-				continue;
-			}
+				temphash[chunk_num] = '\0';
+				fprintf(fpw, "%s %lu\n", temphash, txthash);
 
-			if (reindex < KEYNUM) {
-				index_key[reindex] = txthash;
-				int rc = Hashmap_set(map, (index_key + reindex),
-						     expect);
-				check(rc == 0, "Failed to set hashmap");
+				if ((data = Hashmap_get(map, &txthash)) != NULL) {
+					if (memcmp
+					    (data, playload + i - chunk_num,
+					     chunk_num) == 0) {
+						++recount;
+						delay_time = chunk_num;
 
-				++reindex;
-				++hashmapnum;
-				stats[txthash % BUCKETS_LEN] += 1;
-				/*
-				   char temphash[65];
-				   memcpy(temphash, playload + i - chunk_num,
-				   chunk_num);
-				   temphash[chunk_num] = '\0';
-				   fprintf(fpw, "%s %lu\n", temphash, txthash); */
+						char temp[65];
+						memcpy(temp,
+						       playload + i - chunk_num,
+						       chunk_num);
+						temp[chunk_num] = '\0';
+						fprintf(fp, "%s\n", temp);
+
+						debug
+						    ("data is %s\ntemp is %s\n",
+						     data, temp);
+					}
+					continue;
+				}
+
+				if (reindex < KEYNUM) {
+					hash_key[reindex] = txthash;
+					memcpy(hash_keydata + reindex,
+					       playload + i - chunk_num,
+					       chunk_num);
+					int rc =
+					    Hashmap_set(map,
+							(hash_key + reindex),
+							hash_keydata + reindex);
+					check(rc == 0, "Failed to set hashmap");
+
+					++reindex;
+					++hashmapnum;
+					stats[txthash % BUCKETS_LEN] += 1;
+					/*
+					   char temphash[65];
+					   memcpy(temphash, playload + i - chunk_num,
+					   chunk_num);
+					   temphash[chunk_num] = '\0';
+					   fprintf(fpw, "%s %lu\n", temphash, txthash); */
+				} else {
+					goto error;
+				}
 			}
+		} else {
+			--delay_time;
 		}
 	}
-
 	return 0;
 
       error:
@@ -135,7 +170,6 @@ static uint32_t
 Hashmap_mode_hash(void *data)
 {
 	uint32_t hash = (*(unsigned long *) data) % BUCKETS_LEN;
-	//uint32_t hash = (*(unsigned long *) data) % 512;
 	debug("hash is %d", hash);
 	return hash;
 }
@@ -146,9 +180,6 @@ Hashmap_mode_compare(void *a, void *b)
 	// 0 stands for equal.
 	debug("a is %lu", *(unsigned long *) a);
 	debug("b is %lu", *(unsigned long *) b);
-
-	//if ( *(unsigned long *) a == 938095141181661967 || *(unsigned long *) b == 938095141181661967)
-	//      printf(" a is %lu and b is %lu\n", *(unsigned long *) a, *(unsigned long *) b);
 
 	return (*(unsigned long *) a - *(unsigned long *) b);
 }
@@ -187,20 +218,20 @@ read_file(char *filename, long Q, int R, long RM, int zero_value, int chunk_num)
 		temp[len - 1] = '\0';
 
 		// Second: copy and calculate the hash value    
-		len = strlen(temp);
-		// Fixup: maybe len > PACKET_LEN
-		strncpy(packet + copy_len, temp, len);
-		copy_len += len;
+		copy_len = strlen(temp);
+		// 30000 is the lagest pack playload. 
+		memcpy(packet, temp, copy_len);
 
-		sumbytes += len;
+		packet[copy_len] = '\0';
+		sumbytes += copy_len;
 
 		if (copy_len >= chunk_num) {
 			//calculate the hash
 			rc = calculate_hash(packet, copy_len, Q, R, RM,
 					    zero_value, chunk_num);
 			check(rc == 0, "calculate hash maybe error.");
-			copy_len = 0;
 		}
+		copy_len = 0;
 	}
 
 	fclose(input);
@@ -222,7 +253,6 @@ read_file(char *filename, long Q, int R, long RM, int zero_value, int chunk_num)
 int
 main()
 {
-	//int chunk_num = 64;	// divide the string into chunk
 	int chunk_num = 64;	// divide the string into chunk
 	int zero_num = 5;	// the number of bits which equals 0
 	int zero_value = 1;
@@ -234,8 +264,8 @@ main()
 	char source[1024] = "/root/kernel_test/model/c-skeleton/bin/a";
 
 	//open a count file.
-	fp = fopen("count", "w");
-	fpw = fopen("hash", "w");
+	fp = fopen("/root/kernel_test/model/c-skeleton/bin/count", "w");
+	fpw = fopen("/root/kernel_test/model/c-skeleton/bin/hash", "w");
 
 	// precalculate
 	for (i = 0; i < 60; ++i)
