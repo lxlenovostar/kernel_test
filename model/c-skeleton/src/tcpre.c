@@ -9,7 +9,7 @@
 #define SIZE 30000
 #define PACKET_LEN 30000
 #define BUCKETS_LEN 997
-#define NUM 15000
+#define NUM 30000
 #define KEYNUM BUCKETS_LEN * NUM
 #define REMEDY 12
 Hashmap *map = NULL;
@@ -20,7 +20,7 @@ static unsigned long hashmapnum = 0;
 static int recount = 0;
 static unsigned long sumbytes = 0;
 unsigned long hash_key[KEYNUM];
-char hash_keydata[KEYNUM][CHUNK + 1];
+char hash_keydata[KEYNUM][CHUNK*3 + 1];
 unsigned long stats[KEYNUM];
 static int reindex = 0;
 static unsigned long commonbytes = 0;
@@ -55,28 +55,47 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 		//insert the hashmap.
 
 		//just for test
-		char temphash[65];
+		/*char temphash[65];
 		memcpy(temphash, playload, chunk_num);
 		temphash[chunk_num] = '\0';
 		fprintf(fpw, "%s %lu\n", temphash, txthash);
+		*/
 
 		if ((data = Hashmap_get(map, &txthash)) != NULL) {
 			if (memcmp(data, playload, chunk_num) == 0) {
 				++recount;
 				delay_time = chunk_num;
 
+				/*
+				//fixup : strlen maybe a bug
+				int cmp_len = strlen(data) > playload_len ? playload_len : strlen(data);
+				for (i = chunk_num; i < cmp_len; ++i) {
+					if (data[i] == playload[i]) {
+						++delay_time;
+						++commonbytes;
+						debug("find");
+					}
+					else
+						break;
+				}
+				*/
+
 				char temp[65];
 				memcpy(temp, playload, chunk_num);
 				temp[chunk_num] = '\0';
 				fprintf(fp, "%s\n", temp);
 
-				debug("data is %s\ntemp is %s\n", data, temp);
+				debug("data is %s\ntemp is %s", data, temp);
 			}
 		} else {
 			if (reindex < KEYNUM) {
 				hash_key[reindex] = txthash;
-				memcpy(hash_keydata + reindex, playload,
-				       chunk_num);
+			
+				if (playload_len < chunk_num*3)
+					memcpy(hash_keydata + reindex, playload, playload_len);
+				else
+					memcpy(hash_keydata + reindex, playload, chunk_num*3);
+
 				int rc = Hashmap_set(map, (hash_key + reindex),
 						     hash_keydata + reindex);
 				check(rc == 0, "Failed to set hashmap");
@@ -105,18 +124,34 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 				//check whether we have the same one.
 
 				// just for test
-				char temphash[65];
+				/*char temphash[65];
 				memcpy(temphash, playload + i - chunk_num,
 				       chunk_num);
 				temphash[chunk_num] = '\0';
 				fprintf(fpw, "%s %lu\n", temphash, txthash);
+				*/
 
 				if ((data = Hashmap_get(map, &txthash)) != NULL) {
-					if (memcmp
-					    (data, playload + i - chunk_num,
-					     chunk_num) == 0) {
+					if (memcmp(data, playload + i - chunk_num, chunk_num) == 0) {
 						++recount;
 						delay_time = chunk_num;
+						
+						/*
+						//fixup : strlen maybe a bug
+						int cmp_len = strlen(data) > playload_len - i? playload_len - i : strlen(data);
+						int j, k;
+						k = i;
+						for (j = chunk_num; j < cmp_len; ++j) {
+							if (data[j] == playload[k]) {
+								++delay_time;
+								++commonbytes;
+								++k;
+								debug("find1");
+							}
+							else
+								break;
+						}
+						*/
 
 						char temp[65];
 						memcpy(temp,
@@ -134,13 +169,13 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 				if (reindex < KEYNUM) {
 					hash_key[reindex] = txthash;
-					memcpy(hash_keydata + reindex,
-					       playload + i - chunk_num,
-					       chunk_num);
-					int rc =
-					    Hashmap_set(map,
-							(hash_key + reindex),
-							hash_keydata + reindex);
+					
+					if (playload_len < chunk_num*3)
+						memcpy(hash_keydata + reindex, playload + i - chunk_num, playload_len);
+					else
+						memcpy(hash_keydata + reindex, playload + i - chunk_num, chunk_num*3);
+					
+					int rc = Hashmap_set(map, (hash_key + reindex), hash_keydata + reindex);
 					check(rc == 0, "Failed to set hashmap");
 
 					++reindex;
@@ -253,7 +288,7 @@ read_file(char *filename, long Q, int R, long RM, int zero_value, int chunk_num)
 int
 main()
 {
-	int chunk_num = 64;	// divide the string into chunk
+	int chunk_num = CHUNK;	// divide the string into chunk
 	int zero_num = 5;	// the number of bits which equals 0
 	int zero_value = 1;
 	long Q = 1;
@@ -288,7 +323,7 @@ main()
 	rc = read_file(source, Q, R, RM, zero_value, chunk_num);
 	check(rc == 0, "Failed to calculate hash.");
 
-	unsigned long result = sumbytes - recount * (chunk_num - REMEDY);
+	unsigned long result = sumbytes - recount * (chunk_num - REMEDY) - commonbytes;
 	printf("sum bytes is %lu and re count is %d and result is %lu\n",
 	       sumbytes, recount, result);
 	printf("total hashkey is %lu\n", hashmapnum);
