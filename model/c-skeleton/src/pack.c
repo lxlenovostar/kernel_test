@@ -19,7 +19,7 @@ int R = 1048583;
 //int R = 10;
 long RM = 1;
 int chunk_num = 48;
-int zero_num = 11;
+int zero_num = 9;
 int zero_value = 1;
 static int count_packet = 0;
 
@@ -27,45 +27,49 @@ static int count_packet = 0;
 unsigned long
 pack_hash(char *key, int M, int R, long Q)
 {
-    int j;
-    unsigned long h = 0;
+	int j;
+	unsigned long h = 0;
 
-    for (j = 0; j < M; j++) {
-        h = (R * h + key[j]) % Q;
-    }   
-    return h;
+	for (j = 0; j < M; j++) {
+		h = (R * h + key[j]) % Q;
+	}
+	return h;
 }
 
 /*
  * calculate the hash for parting point.
  */
-int
-pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM, 
-           int zero_value, int chunk_num)
+void
+pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
+		    int zero_value, int chunk_num)
 {
-    long i;
+	long i;
+	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
+	int delay_time = 0;
 
-    unsigned long txthash = pack_hash(playload, chunk_num, R, Q); 
+	//printf("%d|%d|", count_packet++, playload_len);
+	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
+	if ((txthash & zero_value) == 0) {
+		//printf("0 ");
+		fprintf(fp2, "0 ");
+	}
 
-    printf("%d|%d|", count_packet++,playload_len);
-    if ((txthash & zero_value) == 0) {
-        printf("0 ");
-    }   
+	for (i = chunk_num; i < playload_len; i++) {
+		txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
+		txthash = (txthash * R + playload[i]) % Q;
 
-    for (i = chunk_num; i < playload_len; i++) {
-        txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
-        txthash = (txthash * R + playload[i]) % Q;
-            
-        if ((txthash & zero_value) == 0) {
-            printf("%ld ", i); 
-        }   
-    }
-    printf("\n");
-
-    return 0;
-
-    error:
-    	return -1;
+		if (delay_time == 0) {
+			if ((txthash & zero_value) == 0) {
+				//printf("%ld ", i);
+				fprintf(fp2, "%ld ", i);
+				delay_time = chunk_num*12;
+			}
+		} else {
+			delay_time--;
+		}
+	}
+	//printf("\n");
+	fprintf(fp2, "\n");
 }
 
 void
@@ -78,7 +82,6 @@ printPcap(void *data, struct pcap_header *ph)
 	long long stime;
 	char play_data[30000];
 	int len;
-	int rc;
 
 	memset(play_data, '\0', 30000);
 
@@ -93,51 +96,33 @@ printPcap(void *data, struct pcap_header *ph)
 			tcph =
 			    (struct tcphdr *) (data + sizeof (struct ethhdr) +
 					       sizeof (struct iphdr));
-			if ((tcph->syn != 1) && ((ntohs(tcph->source) == 80) || (ntohs(tcph->dest) == 80))) {
-				len = ntohs(iph->tot_len) - iph->ihl * 4 - tcph->doff * 4;
-				//printf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
+			if ((tcph->syn != 1)
+			    && ((ntohs(tcph->source) == 80)
+				|| (ntohs(tcph->dest) == 80))) {
+				len =
+				    ntohs(iph->tot_len) - iph->ihl * 4 -
+				    tcph->doff * 4;
 				if (len > 0) {
+					if (count_packet == 179) {
+						debug
+						    ("playload is %s and len is %d and seq is %ld",
+						     play_data, len,
+						     ntohl(tcph->seq));
+					}
 					stime = ph->ts.timestamp_s;
-					memcpy(play_data, ((char *)tcph + tcph->doff * 4), len);
-					
-					//get the data parting point
-				 	rc = pack_calculate_hash(play_data, len, Q, R, RM, zero_value, chunk_num);
-            		check(rc == 0, "calculate hash maybe error.");
+					memcpy(play_data,
+					       ((char *) tcph + tcph->doff * 4),
+					       len);
 
-					//fputs(play_data, fp1);
-					
-					//fprintf(fp1, "%s", play_data);
-					//fprintf(fp1, "\n");
-					
-					/*					
-					if (start_stime == 0)
-						start_stime = stime;
-				
-					if (stime < (start_stime + INT_TIME))
-					{
-						//fprintf(fp1, "time is %ld and stime is %ld\n", stime, start_stime);	
-						//printf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
-						fprintf(fp1, "%ld\n", ntohl(tcph->seq));
-						for (i = 0; i < len; ++i) 
-							fprintf(fp1, "%x", play_data[i] & 0xff);
-						fprintf(fp1, "\n");
-					}
-					else
-					{
-						//fprintf(fp2, "time is %ld and stime is %ld\n", stime, start_stime);	
-						//fprintf("len is %d and ack is %ld\n", len, ntohl(tcph->seq));
-						for (i = 0; i < len; ++i) 
-							fprintf(fp2, "%x", play_data[i] & 0xff);
-						fprintf(fp2, "\n");
-					}
-					*/
+					//get the data parting point
+					pack_calculate_hash(play_data, len,
+							    Q, R, RM,
+							    zero_value,
+							    chunk_num);
 				}
 			}
 		}
 	}
-
-	error:
-		return -1;
 }
 
 int
@@ -154,17 +139,16 @@ main(int argc, const char *argv[])
 		printf("uage: ./a.out pcap_filename\n");
 		return -1;
 	}
-
 	// precalculate
-    for (i = 0; i < 60; ++i)
-        Q = (2 * Q);
+	for (i = 0; i < 60; ++i)
+		Q = (2 * Q);
 
-    for (i = 1; i <= chunk_num - 1; i++)
-        RM = (R * RM) % Q;
+	for (i = 1; i <= chunk_num - 1; i++)
+		RM = (R * RM) % Q;
 
-    for (i = 0; i < zero_num; ++i)
-        zero_value = (2 * zero_value);
-    zero_value = zero_value - 1;
+	for (i = 0; i < zero_num; ++i)
+		zero_value = (2 * zero_value);
+	zero_value = zero_value - 1;
 
 	FILE *fp = fopen(argv[1], "r");
 	if (fp == NULL) {
@@ -175,7 +159,7 @@ main(int argc, const char *argv[])
 	fread(&pfh, sizeof (pcap_file_header), 1, fp);
 
 	fp1 = fopen("source", "w");
-	fp2 = fopen("object", "w");
+	fp2 = fopen("result", "w");
 	buff = (void *) malloc(MAX_ETH_FRAME);
 
 	for (count = 1;; count++) {
@@ -189,10 +173,9 @@ main(int argc, const char *argv[])
 			fprintf(stderr, "malloc memory failed.\n");
 			return -1;
 		}
-		
 
 		readSize = fread(buff, 1, ph.capture_len, fp);
-		if (readSize != ph.capture_len) {
+		if (readSize != (int) ph.capture_len) {
 			free(buff);
 			fprintf(stderr, "pcap file parse error.\n");
 			return -1;
