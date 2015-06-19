@@ -108,7 +108,7 @@ printPcap(void *data, struct pcap_header *ph)
 				    ntohs(iph->tot_len) - iph->ihl * 4 -
 				    tcph->doff * 4;
 				if (len > 0) {
-					if (count_packet == 11159) {
+					if (count_packet == 452) {
 						debug
 						    ("playload is %s and len is %d and seq is %ld",
 						     play_data, len,

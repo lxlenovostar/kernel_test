@@ -1,12 +1,28 @@
 """
+Analysis data.
 """
+import random  
+
+result = []
+def stdDeviation(a):
+	l = len(a)
+	m = sum(a) / l
+	d = 0
+	for i in a: 
+		d += (i-m) ** 2
+	return (d/(l - 1)) ** 0.5
+
+def getsd():
+	data = []
+	for dummy_i in result:
+		data.append(float(dummy_i))
+	print stdDeviation(data)
 
 def main():
 	"""
 	read the data file.
 	"""
 	remain = 0
-	result = []
 	f = open('result', 'r')
 	for line in f.readlines():
 		data = line[:-1]
@@ -52,4 +68,30 @@ def main():
 	fw.close()
 	f.close()
 
-main()						
+def randomdata():
+	"""
+	generate the random dataset.
+	"""
+	res = []
+	len_set = 792966
+	for dummy_i in range(len_set):
+		tmp = random.randint(570, 2000)
+		res.append(float(tmp))
+
+	fw = open('random', 'w')
+	for dummy_i in res:
+		fw.write(str(dummy_i) + '\n')
+	fw.close()
+
+	print stdDeviation(res)
+
+
+	
+main()
+getsd()				
+#randomdata()
+
+
+
+
+		
