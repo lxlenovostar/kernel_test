@@ -22,7 +22,7 @@ int chunk_num = 48;
 int zero_num = 9;
 int zero_value = 1;
 static int count_packet = 0;
-
+static int delay_time = 0;
 // Compute hash for a string.
 unsigned long
 pack_hash(char *key, int M, int R, long Q)
@@ -45,13 +45,18 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 {
 	long i;
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
-	int delay_time = 0;
 
 	//printf("%d|%d|", count_packet++, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
-	if ((txthash & zero_value) == 0) {
-		//printf("0 ");
-		fprintf(fp2, "0 ");
+
+	if (delay_time == 0) {
+		if ((txthash & zero_value) == 0) {
+			//printf("0 ");
+			fprintf(fp2, "0 ");
+			delay_time = chunk_num * 12;
+		}
+	} else {
+		delay_time--;
 	}
 
 	for (i = chunk_num; i < playload_len; i++) {
@@ -62,7 +67,7 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 			if ((txthash & zero_value) == 0) {
 				//printf("%ld ", i);
 				fprintf(fp2, "%ld ", i);
-				delay_time = chunk_num*12;
+				delay_time = chunk_num * 12;
 			}
 		} else {
 			delay_time--;
@@ -103,7 +108,7 @@ printPcap(void *data, struct pcap_header *ph)
 				    ntohs(iph->tot_len) - iph->ihl * 4 -
 				    tcph->doff * 4;
 				if (len > 0) {
-					if (count_packet == 179) {
+					if (count_packet == 11159) {
 						debug
 						    ("playload is %s and len is %d and seq is %ld",
 						     play_data, len,
