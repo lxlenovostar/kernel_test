@@ -19,6 +19,14 @@ typedef struct HashmapNode {
 	void *key;
 	void *data;
 	uint32_t hash;
+
+	/*
+     * make a mult-link hashmap.
+     * next: a array which contains all next nodes.
+	 * next_count: count the next nodes.
+     */
+	void *next;      	 
+	int next_count;  
 } HashmapNode;
 
 typedef int (*Hashmap_traverse_cb) (HashmapNode * node);
