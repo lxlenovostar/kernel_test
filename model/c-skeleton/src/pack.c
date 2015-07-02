@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include "../src/lcthw/sha.h"
+#include "../src/lcthw/chunk.h"
 #include "lcthw/dbg.h"
 #include "lcthw/pack.h"
 
@@ -29,7 +30,7 @@ int zero_value = 1;
 static int count_packet = 0;
 static int delay_time = 0;
 
-
+chunk *remain_data = NULL;
 
 
 /*
@@ -84,6 +85,8 @@ calculate_sha(char *data, long begin, long end)
         perror("close(cfd)");
         //return 1;
     }
+
+	free(tmp);
 }
 
 /*
@@ -104,11 +107,15 @@ pack_hash(char *key, int M, int R, long Q)
 /*
  * calculate the hash for parting point.
  *
- * 1. there are one parting point.
- * 2. there are twe or more patring point.
- * 3. there are none parting point.
  *
+ *  (data0, data0) [point0, point0  data1 point1 point1] (data2, data2)  
  *
+ * 1. there are one parting point. we should calculate_sha one SHA-1,
+ * and store part of the data.
+ * 2. there are N patring point, we should calculate_sha N - 1  SHA-1, 
+ * and store part of the data.
+ * 3. there are none parting point, we should store part of the data. 
+ * #bgein = -1
  */
 void
 pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
@@ -117,14 +124,34 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 	long i;
 	long begin = -1; 
 	long end = -1;
+	long end_point = -1;   //stand for the last parting point.
+
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
-
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
+ 
+	if (delay_time == 0) {
+		if ((txthash & zero_value) == 0) {
+			fprintf(fp2, "0 ");
+			delay_time = chunk_num * 12;
 
-	if ((txthash & zero_value) == 0) {
-		fprintf(fp2, "0 ");
-		delay_time = chunk_num * 12;
-		begin = 0;
+			end_point = chunk_num;
+
+			if (remain_data->max > 0) {
+				// some last remaining data.
+				chunk_merge(remain_data, playload, 0, chunk_num-1);
+				calculate_sha(remain_data->content, 0, remain_data->max);
+				chunk_clean(remain_data);
+				begin = chunk_num; 
+			}
+			else
+			{
+				//no remaining data. we just begin.
+				begin = 0;
+			}
+		}
+	} 
+	else {
+		--delay_time;
 	}
 
 	for (i = chunk_num; i < playload_len; i++) {
@@ -135,14 +162,30 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 			if ((txthash & zero_value) == 0) {
 				fprintf(fp2, "%ld ", i);
 				delay_time = chunk_num * 12;
+				end_point = i + 1;
 				
 				if (begin >= 0) {
 					end = i;
 					calculate_sha(playload, begin, end);
-					begin = i;
+					begin = i + 1;
 				}
 				else {
-					begin = i;
+					if (remain_data->max > 0) {
+						// some last remaining data.
+						chunk_merge(remain_data, playload, 0, i);
+						calculate_sha(remain_data->content, 0, remain_data->max);
+						chunk_clean(remain_data);
+						begin = i + 1; 
+					}
+					else
+					{
+						/*
+						 * no remaining data. but we still nedd calculate.
+                         * like (data0, data0)
+						 */
+						calculate_sha(playload, 0, i - chunk_num + 1);
+						begin = i - chunk_num + 1;
+					}
 				} 
 			}
 		} else {
@@ -150,6 +193,19 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 		}
 	}
 	fprintf(fp2, "\n");
+
+	//store the data.
+	if (end_point > 0) {
+		if (end_point != playload_len) {
+			chunk_store(remain_data, playload, end_point, playload_len - 1);
+		}
+		else{
+			chunk_clean(remain_data);
+		}
+	}
+	else {
+		chunk_store(remain_data, playload, 0, playload_len - 1);
+	}
 }
 
 void
@@ -190,7 +246,7 @@ printPcap(void *data, struct pcap_header *ph)
 						     ntohl(tcph->seq));
 					}
 					stime = ph->ts.timestamp_s;
-					memcpy(play_data,
+				memcpy(play_data,
 					       ((char *) tcph + tcph->doff * 4),
 					       len);
 
@@ -215,10 +271,12 @@ main(int argc, const char *argv[])
 	int readSize = 0;
 	int ret = 0;
 
+	remain_data = chunk_create();
+	check_mem(remain_data);
 
 	if (argc != 2) {
 		printf("uage: ./a.out pcap_filename\n");
-		return -1;
+		ret = -1;
 	}
 	// precalculate
 	for (i = 0; i < 60; ++i)
@@ -234,7 +292,7 @@ main(int argc, const char *argv[])
 	FILE *fp = fopen(argv[1], "r");
 	if (fp == NULL) {
 		fprintf(stderr, "Open file %s error.", argv[1]);
-		return -1;
+		ret = -1;
 	}
 
 	fread(&pfh, sizeof (pcap_file_header), 1, fp);
@@ -255,14 +313,14 @@ main(int argc, const char *argv[])
 
 		if (buff == NULL) {
 			fprintf(stderr, "malloc memory failed.\n");
-			return -1;
+			ret = -1;
 		}
 
 		readSize = fread(buff, 1, ph.capture_len, fp);
 		if (readSize != (int) ph.capture_len) {
 			free(buff);
 			fprintf(stderr, "pcap file parse error.\n");
-			return -1;
+			ret =  -1;
 		}
 		printPcap(buff, &ph);
 
@@ -271,8 +329,10 @@ main(int argc, const char *argv[])
 		}
 	}
 
-	fclose(fp);
-	fclose(fp1);
-	fclose(fp2);
-	return ret;
+	error:
+			chunk_destroy(remain_data);
+			fclose(fp);
+			fclose(fp1);
+			fclose(fp2);
+			return ret;
 }
