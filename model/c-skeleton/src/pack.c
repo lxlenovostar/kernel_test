@@ -3,11 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <linux/types.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "../src/lcthw/sha.h"
 #include "lcthw/dbg.h"
 #include "lcthw/pack.h"
 
 #define SIZE 30000
 #define PACKET_LEN 30000
+#define BUCKETS_LEN 997
 
 FILE *fp1;
 FILE *fp2;
@@ -23,7 +28,67 @@ int zero_num = 9;
 int zero_value = 1;
 static int count_packet = 0;
 static int delay_time = 0;
-// Compute hash for a string.
+
+
+
+
+/*
+ * calculate the SHA-1.
+ */
+void 
+calculate_sha(char *data, long begin, long end)
+{
+	int cfd = -1, i;
+    struct cryptodev_ctx ctx;
+    uint8_t digest[20];
+    //char text[] = "1The quick brown fox jumps over the lazy dog";
+    //char text[] = "1The quick brown fox jumps over the lazy dog";
+    //uint8_t expected[] = "\x2f\xd4\xe1\xc6\x7a\x2d\x28\xfc\xed\x84\x9e\xe1\xbb\x76\xe7\x39\x1b\x93\xeb\x12";
+	
+	int len = end - begin + 1;
+	char *tmp = (char *)malloc(len * sizeof(char));
+	memcpy(tmp, data + begin, len);
+	
+	fprintf(fp2, "\nsha-1: %d\n", len);
+
+    cfd = open("/dev/crypto", O_RDWR, 0);
+    if (cfd < 0) {
+        perror("open(/dev/crypto)");
+        //return 1;
+    }
+
+    if (fcntl(cfd, F_SETFD, 1) == -1) {
+        perror("fcntl(F_SETFD)");
+        //return 1;
+    }
+
+    sha_ctx_init(&ctx, cfd, NULL, 0);
+    sha_hash(&ctx, tmp, len, digest);
+    sha_ctx_deinit(&ctx);
+
+    for (i = 0; i < 20; i++) {
+        //printf("%02x:", digest[i]);
+        fprintf(fp2, "%02x:", digest[i]);
+    }
+    //printf("\n");
+	fprintf(fp2, "\n");
+   
+	/* 
+    if (memcmp(digest, expected, 20) != 0) {
+        printf("SHA1 hashing failed\n");
+        //return 1;
+    }
+	*/
+
+    if (close(cfd)) {
+        perror("close(cfd)");
+        //return 1;
+    }
+}
+
+/*
+ * Compute hash for a string.
+ */
 unsigned long
 pack_hash(char *key, int M, int R, long Q)
 {
@@ -38,25 +103,28 @@ pack_hash(char *key, int M, int R, long Q)
 
 /*
  * calculate the hash for parting point.
+ *
+ * 1. there are one parting point.
+ * 2. there are twe or more patring point.
+ * 3. there are none parting point.
+ *
+ *
  */
 void
 pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 		    int zero_value, int chunk_num)
 {
 	long i;
+	long begin = -1; 
+	long end = -1;
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 
-	//printf("%d|%d|", count_packet++, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
 
-	if (delay_time == 0) {
-		if ((txthash & zero_value) == 0) {
-			//printf("0 ");
-			fprintf(fp2, "0 ");
-			delay_time = chunk_num * 12;
-		}
-	} else {
-		delay_time--;
+	if ((txthash & zero_value) == 0) {
+		fprintf(fp2, "0 ");
+		delay_time = chunk_num * 12;
+		begin = 0;
 	}
 
 	for (i = chunk_num; i < playload_len; i++) {
@@ -65,15 +133,22 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 		if (delay_time == 0) {
 			if ((txthash & zero_value) == 0) {
-				//printf("%ld ", i);
 				fprintf(fp2, "%ld ", i);
 				delay_time = chunk_num * 12;
+				
+				if (begin >= 0) {
+					end = i;
+					calculate_sha(playload, begin, end);
+					begin = i;
+				}
+				else {
+					begin = i;
+				} 
 			}
 		} else {
 			delay_time--;
 		}
 	}
-	//printf("\n");
 	fprintf(fp2, "\n");
 }
 
@@ -110,7 +185,7 @@ printPcap(void *data, struct pcap_header *ph)
 				if (len > 0) {
 					if (count_packet == 452) {
 						debug
-						    ("playload is %s and len is %d and seq is %ld",
+						    ("playload is %s and len is %d and seq is %d",
 						     play_data, len,
 						     ntohl(tcph->seq));
 					}
@@ -140,6 +215,7 @@ main(int argc, const char *argv[])
 	int readSize = 0;
 	int ret = 0;
 
+
 	if (argc != 2) {
 		printf("uage: ./a.out pcap_filename\n");
 		return -1;
@@ -166,6 +242,9 @@ main(int argc, const char *argv[])
 	fp1 = fopen("source", "w");
 	fp2 = fopen("result", "w");
 	buff = (void *) malloc(MAX_ETH_FRAME);
+
+	//map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);
+    //check(map != NULL, "Failed to create map.");
 
 	for (count = 1;; count++) {
 		memset(buff, 0, MAX_ETH_FRAME);
