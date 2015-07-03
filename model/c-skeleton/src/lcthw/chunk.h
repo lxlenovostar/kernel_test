@@ -9,7 +9,7 @@
 typedef struct chunk{
 	unsigned long max;
 	unsigned long limit;
-	void *content;
+	char *content;
 } chunk;
 
 chunk *chunk_create();

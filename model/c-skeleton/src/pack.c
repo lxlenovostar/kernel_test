@@ -32,59 +32,58 @@ static int delay_time = 0;
 
 chunk *remain_data = NULL;
 
-
 /*
  * calculate the SHA-1.
  */
-void 
+void
 calculate_sha(char *data, long begin, long end)
 {
 	int cfd = -1, i;
-    struct cryptodev_ctx ctx;
-    uint8_t digest[20];
-    //char text[] = "1The quick brown fox jumps over the lazy dog";
-    //char text[] = "1The quick brown fox jumps over the lazy dog";
-    //uint8_t expected[] = "\x2f\xd4\xe1\xc6\x7a\x2d\x28\xfc\xed\x84\x9e\xe1\xbb\x76\xe7\x39\x1b\x93\xeb\x12";
-	
+	struct cryptodev_ctx ctx;
+	uint8_t digest[20];
+	//char text[] = "1The quick brown fox jumps over the lazy dog";
+	//char text[] = "1The quick brown fox jumps over the lazy dog";
+	//uint8_t expected[] = "\x2f\xd4\xe1\xc6\x7a\x2d\x28\xfc\xed\x84\x9e\xe1\xbb\x76\xe7\x39\x1b\x93\xeb\x12";
+
 	int len = end - begin + 1;
-	char *tmp = (char *)malloc(len * sizeof(char));
+	char *tmp = (char *) malloc(len * sizeof (char));
 	memcpy(tmp, data + begin, len);
-	
+
 	fprintf(fp2, "\nsha-1: %d\n", len);
 
-    cfd = open("/dev/crypto", O_RDWR, 0);
-    if (cfd < 0) {
-        perror("open(/dev/crypto)");
-        //return 1;
-    }
+	cfd = open("/dev/crypto", O_RDWR, 0);
+	if (cfd < 0) {
+		perror("open(/dev/crypto)");
+		//return 1;
+	}
 
-    if (fcntl(cfd, F_SETFD, 1) == -1) {
-        perror("fcntl(F_SETFD)");
-        //return 1;
-    }
+	if (fcntl(cfd, F_SETFD, 1) == -1) {
+		perror("fcntl(F_SETFD)");
+		//return 1;
+	}
 
-    sha_ctx_init(&ctx, cfd, NULL, 0);
-    sha_hash(&ctx, tmp, len, digest);
-    sha_ctx_deinit(&ctx);
+	sha_ctx_init(&ctx, cfd, NULL, 0);
+	sha_hash(&ctx, tmp, len, digest);
+	sha_ctx_deinit(&ctx);
 
-    for (i = 0; i < 20; i++) {
-        //printf("%02x:", digest[i]);
-        fprintf(fp2, "%02x:", digest[i]);
-    }
-    //printf("\n");
-	fprintf(fp2, "\n");
-   
+	for (i = 0; i < 20; i++) {
+		//printf("%02x:", digest[i]);
+		fprintf(fp2, "%02x:", digest[i]);
+	}
+	//printf("\n");
+	//fprintf(fp2, "\n");
+
 	/* 
-    if (memcmp(digest, expected, 20) != 0) {
-        printf("SHA1 hashing failed\n");
-        //return 1;
-    }
-	*/
+	   if (memcmp(digest, expected, 20) != 0) {
+	   printf("SHA1 hashing failed\n");
+	   //return 1;
+	   }
+	 */
 
-    if (close(cfd)) {
-        perror("close(cfd)");
-        //return 1;
-    }
+	if (close(cfd)) {
+		perror("close(cfd)");
+		//return 1;
+	}
 
 	free(tmp);
 }
@@ -106,8 +105,9 @@ pack_hash(char *key, int M, int R, long Q)
 
 /*
  * calculate the hash for parting point.
- *
- *
+ * 这个函数可以拆一下，第一遍读的时候计算分割点 
+ * 第二次读的时候计算hash
+ * 
  *  (data0, data0) [point0, point0  data1 point1 point1] (data2, data2)  
  *
  * 1. there are one parting point. we should calculate_sha one SHA-1,
@@ -122,13 +122,19 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 		    int zero_value, int chunk_num)
 {
 	long i;
-	long begin = -1; 
+	long begin = -1;
 	long end = -1;
-	long end_point = -1;   //stand for the last parting point.
+	long end_point = -1;	//stand for the last parting point.
+	int flag = 1;           //stand for:  [point0, point0  data1 point1 point1] (data2, data2)  
+
+	if (playload_len < chunk_num) {
+		chunk_merge(remain_data, playload, 0, playload_len - 1);
+		return;
+	}
 
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
- 
+
 	if (delay_time == 0) {
 		if ((txthash & zero_value) == 0) {
 			fprintf(fp2, "0 ");
@@ -138,19 +144,23 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 			if (remain_data->max > 0) {
 				// some last remaining data.
-				chunk_merge(remain_data, playload, 0, chunk_num-1);
-				calculate_sha(remain_data->content, 0, remain_data->max);
+				debug("max is:%ld, limit is:%ld",
+				      remain_data->max, remain_data->limit);
+				chunk_merge(remain_data, playload, 0,
+					    chunk_num - 1);
+				fprintf(fp2, "case0");
+				calculate_sha(remain_data->content, 0,
+					      remain_data->max);
 				chunk_clean(remain_data);
-				begin = chunk_num; 
-			}
-			else
-			{
+				begin = chunk_num;
+				flag = 1;
+			} else {
 				//no remaining data. we just begin.
 				begin = 0;
+				flag = 0;
 			}
 		}
-	} 
-	else {
+	} else {
 		--delay_time;
 	}
 
@@ -163,30 +173,35 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 				fprintf(fp2, "%ld ", i);
 				delay_time = chunk_num * 12;
 				end_point = i + 1;
-				
+
 				if (begin >= 0) {
 					end = i;
+					fprintf(fp2, "case1");
 					calculate_sha(playload, begin, end);
 					begin = i + 1;
-				}
-				else {
+					flag = 1;
+				} else {
 					if (remain_data->max > 0) {
 						// some last remaining data.
+						//fprintf(fp2, "\nbegin case2 and max is:%ld", remain_data->max);
+						fprintf(fp2, "\ncase2");
 						chunk_merge(remain_data, playload, 0, i);
+						//fprintf(fp2, "\nend case2 and max is:%ld", remain_data->max);
 						calculate_sha(remain_data->content, 0, remain_data->max);
 						chunk_clean(remain_data);
-						begin = i + 1; 
-					}
-					else
-					{
+						begin = i + 1;
+						flag = 1;
+					} else {
 						/*
 						 * no remaining data. but we still nedd calculate.
-                         * like (data0, data0)
+						 * like (data0, data0)
 						 */
+						fprintf(fp2, "case3");
 						calculate_sha(playload, 0, i - chunk_num + 1);
 						begin = i - chunk_num + 1;
+						flag = 0;
 					}
-				} 
+				}
 			}
 		} else {
 			delay_time--;
@@ -197,15 +212,22 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 	//store the data.
 	if (end_point > 0) {
 		if (end_point != playload_len) {
-			chunk_store(remain_data, playload, end_point, playload_len - 1);
-		}
-		else{
+			if (flag) {
+				debug("playload_len is %d", playload_len);
+				chunk_store(remain_data, playload, end_point + 1, playload_len - 1);
+			}
+			else{
+				chunk_store(remain_data, playload, end_point - chunk_num + 1, playload_len - 1);
+			}
+		} else {
 			chunk_clean(remain_data);
 		}
+	} else {
+		chunk_merge(remain_data, playload, 0, playload_len - 1);
 	}
-	else {
-		chunk_store(remain_data, playload, 0, playload_len - 1);
-	}
+						
+	fprintf(fp2, "end rmain->max is:%ld", remain_data->max);
+	fprintf(fp2, "\n");
 }
 
 void
@@ -246,7 +268,7 @@ printPcap(void *data, struct pcap_header *ph)
 						     ntohl(tcph->seq));
 					}
 					stime = ph->ts.timestamp_s;
-				memcpy(play_data,
+					memcpy(play_data,
 					       ((char *) tcph + tcph->doff * 4),
 					       len);
 
@@ -302,7 +324,7 @@ main(int argc, const char *argv[])
 	buff = (void *) malloc(MAX_ETH_FRAME);
 
 	//map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);
-    //check(map != NULL, "Failed to create map.");
+	//check(map != NULL, "Failed to create map.");
 
 	for (count = 1;; count++) {
 		memset(buff, 0, MAX_ETH_FRAME);
@@ -320,7 +342,7 @@ main(int argc, const char *argv[])
 		if (readSize != (int) ph.capture_len) {
 			free(buff);
 			fprintf(stderr, "pcap file parse error.\n");
-			ret =  -1;
+			ret = -1;
 		}
 		printPcap(buff, &ph);
 
@@ -329,10 +351,10 @@ main(int argc, const char *argv[])
 		}
 	}
 
-	error:
-			chunk_destroy(remain_data);
-			fclose(fp);
-			fclose(fp1);
-			fclose(fp2);
-			return ret;
+      error:
+	chunk_destroy(remain_data);
+	fclose(fp);
+	fclose(fp1);
+	fclose(fp2);
+	return ret;
 }
