@@ -31,7 +31,7 @@ static int count_packet = 0;
 static int delay_time = 0;
 
 chunk *remain_data = NULL;
-
+part_point *part = NULL;
 /*
  * calculate the SHA-1.
  */
@@ -105,60 +105,23 @@ pack_hash(char *key, int M, int R, long Q)
 
 /*
  * calculate the hash for parting point.
- * 这个函数可以拆一下，第一遍读的时候计算分割点 
- * 第二次读的时候计算hash
- * 
- *  (data0, data0) [point0, point0  data1 point1 point1] (data2, data2)  
- *
- * 1. there are one parting point. we should calculate_sha one SHA-1,
- * and store part of the data.
- * 2. there are N patring point, we should calculate_sha N - 1  SHA-1, 
- * and store part of the data.
- * 3. there are none parting point, we should store part of the data. 
- * #bgein = -1
  */
 void
-pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
+pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		    int zero_value, int chunk_num)
 {
 	long i;
-	long begin = -1;
-	long end = -1;
-	long end_point = -1;	//stand for the last parting point.
-	int flag = 1;           //stand for:  [point0, point0  data1 point1 point1] (data2, data2)  
-
-	if (playload_len < chunk_num) {
-		chunk_merge(remain_data, playload, 0, playload_len - 1);
-		return;
-	}
 
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
+	part_set(part, count_packet);
+	part_set(part, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
 
 	if (delay_time == 0) {
 		if ((txthash & zero_value) == 0) {
-			fprintf(fp2, "0 ");
+			part_set(part, (chunk_num-1));
+			fprintf(fp2, "%d ", (chunk_num-1));
 			delay_time = chunk_num * 12;
-
-			end_point = chunk_num;
-
-			if (remain_data->max > 0) {
-				// some last remaining data.
-				debug("max is:%ld, limit is:%ld",
-				      remain_data->max, remain_data->limit);
-				chunk_merge(remain_data, playload, 0,
-					    chunk_num - 1);
-				fprintf(fp2, "case0");
-				calculate_sha(remain_data->content, 0,
-					      remain_data->max);
-				chunk_clean(remain_data);
-				begin = chunk_num;
-				flag = 1;
-			} else {
-				//no remaining data. we just begin.
-				begin = 0;
-				flag = 0;
-			}
 		}
 	} else {
 		--delay_time;
@@ -170,64 +133,78 @@ pack_calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 		if (delay_time == 0) {
 			if ((txthash & zero_value) == 0) {
+				part_set(part, i);
 				fprintf(fp2, "%ld ", i);
 				delay_time = chunk_num * 12;
-				end_point = i + 1;
-
-				if (begin >= 0) {
-					end = i;
-					fprintf(fp2, "case1");
-					calculate_sha(playload, begin, end);
-					begin = i + 1;
-					flag = 1;
-				} else {
-					if (remain_data->max > 0) {
-						// some last remaining data.
-						//fprintf(fp2, "\nbegin case2 and max is:%ld", remain_data->max);
-						fprintf(fp2, "\ncase2");
-						chunk_merge(remain_data, playload, 0, i);
-						//fprintf(fp2, "\nend case2 and max is:%ld", remain_data->max);
-						calculate_sha(remain_data->content, 0, remain_data->max);
-						chunk_clean(remain_data);
-						begin = i + 1;
-						flag = 1;
-					} else {
-						/*
-						 * no remaining data. but we still nedd calculate.
-						 * like (data0, data0)
-						 */
-						fprintf(fp2, "case3");
-						calculate_sha(playload, 0, i - chunk_num + 1);
-						begin = i - chunk_num + 1;
-						flag = 0;
-					}
-				}
 			}
 		} else {
 			delay_time--;
 		}
 	}
 	fprintf(fp2, "\n");
+}
 
-	//store the data.
-	if (end_point > 0) {
-		if (end_point != playload_len) {
-			if (flag) {
-				debug("playload_len is %d", playload_len);
-				chunk_store(remain_data, playload, end_point + 1, playload_len - 1);
-			}
-			else{
-				chunk_store(remain_data, playload, end_point - chunk_num + 1, playload_len - 1);
-			}
-		} else {
+/*
+ * calculate the SHA-1 for store the data.
+ */
+void 
+pack_SHA(char *playload, int playload_len)
+{
+	long pp;
+ 	int i;
+
+	switch (part->end+1) {
+		case 0:
+		case 1:
+			sentinel("Error case");		
+		/*
+		 * no part point.
+         * 1. store the remain data.
+         */
+		case 2:
+			chunk_merge(remain_data, playload, 0, playload_len-1);	
+		/*
+		 * just one part point.
+         * 1.calculate SHA only once. 
+         * 2.store the remain data.
+         */
+		case 3:
+			pp = part->index[2];
+			chunk_merge(remain_data, playload, 0, pp);
+			calculate_sha(remain_data->content, 0, remain_data->end-1);
 			chunk_clean(remain_data);
-		}
-	} else {
-		chunk_merge(remain_data, playload, 0, playload_len - 1);
+			chunk_store(remain_data, playload, (pp+1), (playload_len-1));
+		/*
+		 * more than one part point.
+		 * 1.calculate SHA
+         * 2.store the remain data.
+         */
+		default:
+			for (i = 2; i < part->end; ++i) {
+				if (i == 2) {
+					pp = part->index[i];
+					chunk_merge(remain_data, playload, 0, pp);
+					calculate_sha(remain_data->content, 0, remain_data->end-1);
+					chunk_clean(remain_data);
+				
+				}
+				else {
+					//中间太需要处理
+					//calculate_sha(remain_data->content, part->index[i], remain_data->end-1);
+
+				}
+			}
+			//最后还需要存储一下数据			
 	}
-						
-	fprintf(fp2, "end rmain->max is:%ld", remain_data->max);
-	fprintf(fp2, "\n");
+}
+
+/*
+ * calculate the SHA in remain data.
+ */
+void 
+remain_SHA()
+{
+
 }
 
 void
@@ -272,8 +249,9 @@ printPcap(void *data, struct pcap_header *ph)
 					       ((char *) tcph + tcph->doff * 4),
 					       len);
 
+					part_clean(part);
 					//get the data parting point
-					pack_calculate_hash(play_data, len,
+					pack_calculate_part(play_data, len,
 							    Q, R, RM,
 							    zero_value,
 							    chunk_num);
@@ -295,6 +273,9 @@ main(int argc, const char *argv[])
 
 	remain_data = chunk_create();
 	check_mem(remain_data);
+	
+	part = part_create();
+	check_mem(part);
 
 	if (argc != 2) {
 		printf("uage: ./a.out pcap_filename\n");
@@ -353,6 +334,7 @@ main(int argc, const char *argv[])
 
       error:
 	chunk_destroy(remain_data);
+	part_destroy(part);
 	fclose(fp);
 	fclose(fp1);
 	fclose(fp2);

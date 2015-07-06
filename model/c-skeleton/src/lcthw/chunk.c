@@ -82,9 +82,6 @@ chunk_merge(chunk *ck, char *src, long begin, long end)
 	check_mem(src);
 	check(end >= begin, "error end value.");
 	
-	/*
-     * 待理解Darry 的实现
-     */
 	if ((ck->end - 1  + len) > ck->limit)
 	{
 		ck->limit = len + ck->end - 1;

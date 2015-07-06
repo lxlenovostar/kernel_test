@@ -97,3 +97,43 @@ struct icmphdr {
         } frag;
     } un;
 };
+
+/*
+ * used for record parting point.
+ */
+#define PLEN 100
+typedef part_point {
+	long index[PLEN];
+	int end;
+} part_point;
+
+part_point *
+part_create()
+{
+	part_point *tmp = (part_point)malloc(sizeof(part_point));
+	part_point->end = 0;
+}
+
+void
+part_destroy(part_point *point) 
+{
+	if (point)
+		free(point);
+}
+
+void
+part_clean(part_point *point) 
+{
+	point->end = 0;
+}
+
+void
+part_set(part_point *point, long data)
+{
+	if (point->end >= PLEN)
+		sentinel("error case happen in part_set.");
+	
+	point->index[point->end] = data;
+	++point->end;
+} 
+
