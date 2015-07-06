@@ -5,9 +5,9 @@
 #include <lcthw/dbg.h>
 #include <string.h>
 
-#define SHA 40 //SHA-1 need 40 bytes.
+#define SHA 20 //SHA-1 need 20 bytes.
 #define SHANUM 10000
-#define NUM (SHA*SHANUM)
+
 
 typedef struct keyvalue{
 	unsigned long index;

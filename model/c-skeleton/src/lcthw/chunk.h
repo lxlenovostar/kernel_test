@@ -7,7 +7,7 @@
 #define LEN 30000
 
 typedef struct chunk{
-	unsigned long max;
+	unsigned long end;
 	unsigned long limit;
 	char *content;
 } chunk;

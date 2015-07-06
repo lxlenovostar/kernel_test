@@ -10,8 +10,8 @@ test_create()
 	mu_assert(kv != NULL, "keyvalue_create failed.");
 	mu_assert(kv->key != NULL, "keys are wrong in kv");
 	mu_assert(kv->index == 0, "index is wrong in kv");
-	mu_assert(kv->capacity == NUM, "capacity is wrong in kv");
-	mu_assert(kv->expand_rate == NUM, "expand_rate is wrong in kv");
+	mu_assert(kv->capacity == SHANUM*SHA, "capacity is wrong in kv");
+	mu_assert(kv->expand_rate == SHANUM*SHA, "expand_rate is wrong in kv");
 
 	return NULL;
 }
@@ -50,8 +50,8 @@ test_push()
          keyvalue_push(kv, sha);
      }
 	
-	debug("capacity is %lu and NUM is %d and index is %lu", kv->capacity, NUM, kv->index); 
-    mu_assert(kv->capacity == 2*NUM, "Wrong max size.");
+	debug("capacity is %lu and NUM is %d and index is %lu", kv->capacity, SHANUM, kv->index); 
+    mu_assert(kv->capacity == (2*SHA*SHANUM), "Wrong max size.");
 
 	return NULL;
 }

@@ -9,11 +9,11 @@ keyvalue_create()
 	keyvalue *kv = calloc(1, sizeof(keyvalue));
 	check_mem(kv);
 
-	kv->key = calloc(NUM, SHA);	
+	kv->key = calloc(SHANUM, SHA);	
 	check_mem(kv->key);
 	kv->index = 0;
-	kv->capacity = NUM;
-	kv->expand_rate = NUM;
+	kv->capacity = (SHANUM*SHA);
+	kv->expand_rate = (SHANUM*SHA);
 
 	return kv;
 
@@ -74,7 +74,7 @@ keyvalue_expand(keyvalue *kv)
             "Failed to expand kv to new size: %lu",
             kv->capacity + kv->expand_rate);
 
-    memset(kv->key + old_max, 0, kv->expand_rate + 1);     //why + 1?
+    memset(kv->key + old_max, 0, kv->expand_rate);     
 	debug("the capacity is %lu", kv->capacity);
  
     return 0;
@@ -86,7 +86,7 @@ keyvalue_expand(keyvalue *kv)
 int 
 keyvalue_push(keyvalue *kv, void *el)
 {
-	strncpy(kv->key + kv->index, el,  SHA);
+	strncpy(kv->key + kv->index, el, SHA);
 	kv->index += SHA;
 
     if(keyvalue_full(kv)) {
