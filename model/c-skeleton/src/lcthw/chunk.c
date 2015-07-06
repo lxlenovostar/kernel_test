@@ -59,7 +59,7 @@ chunk_store(chunk *ck, char *src, long begin, long end)
 	check_mem(src);
 	check(end >= begin, "error end value.");
 	memcpy(ck->content, src + begin, len);
-	ck->end = (len - 1);
+	ck->end = len;
 	
     return len;
 
@@ -82,13 +82,17 @@ chunk_merge(chunk *ck, char *src, long begin, long end)
 	check_mem(src);
 	check(end >= begin, "error end value.");
 	
-	if ((ck->end + len) > (ck->limit - 1))
+	/*
+     * 待理解Darry 的实现
+     */
+	if ((ck->end - 1  + len) > ck->limit)
 	{
-		ck->limit = len + ck->end + 1;
+		ck->limit = len + ck->end - 1;
 		char *tmp = realloc(ck->content, ck->limit * sizeof(char));
 		check_mem(tmp);
 		ck->content = tmp; 
-		memset(ck->content + old_max + 1, 0, len);
+		// + 1 for old_max
+		memset(ck->content + old_max, 0, (len+1));
 	}	
 	
 	memcpy(ck->content + ck->end, src + begin, len);
