@@ -7,7 +7,9 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include "../src/lcthw/sha.h"
+#include "../src/lcthw/keyvalue.h"
 #include "../src/lcthw/chunk.h"
+#include "../src/lcthw/hashmap.h"
 #include "lcthw/dbg.h"
 #include "lcthw/pack.h"
 
@@ -32,11 +34,30 @@ static int delay_time = 0;
 
 chunk *remain_data = NULL;
 part_point *part = NULL;
+keyvalue *key = NULL;
+Hashmap *map = NULL;
+
+/*
+ * this hash function maybe verify the effect.
+ */
+static uint32_t
+Hashmap_mode_hash(void *data)
+{
+	unsigned long hash = 0;
+	int i; 
+	char *tmp = (char *)data;
+	for (i = 0; i < SHA ; i++)
+		hash = (10 * hash + tmp[i]) % BUCKETS_LEN;
+	
+	debug("hash is %lu", hash);
+	return hash;
+}
+
 /*
  * calculate the SHA-1.
  */
 void
-calculate_sha(char *data, long begin, long end)
+calculate_sha(char *data, long begin, long end, char* result)
 {
 	int cfd = -1, i;
 	struct cryptodev_ctx ctx;
@@ -70,6 +91,7 @@ calculate_sha(char *data, long begin, long end)
 		//printf("%02x:", digest[i]);
 		fprintf(fp2, "%02x:", digest[i]);
 	}
+	memcpy(result, digest, SHA);
 	//printf("\n");
 	//fprintf(fp2, "\n");
 
@@ -152,17 +174,22 @@ pack_SHA(char *playload, int playload_len)
 {
 	long pp;
  	int i;
-
-	switch (part->end+1) {
+	char *res = NULL;
+	
+	res = malloc(SHA*sizeof(char));
+	switch (part->end) {
 		case 0:
 		case 1:
-			sentinel("Error case");		
+			log_err("Error case");		
+			exit(-1);
+			break;
 		/*
 		 * no part point.
          * 1. store the remain data.
          */
 		case 2:
 			chunk_merge(remain_data, playload, 0, playload_len-1);	
+			break;
 		/*
 		 * just one part point.
          * 1.calculate SHA only once. 
@@ -171,9 +198,16 @@ pack_SHA(char *playload, int playload_len)
 		case 3:
 			pp = part->index[2];
 			chunk_merge(remain_data, playload, 0, pp);
-			calculate_sha(remain_data->content, 0, remain_data->end-1);
+			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
+			printf("case 3: sha is:\n");
+			for (i = 0; i < 20; i++) {
+			//printf("%02x:", digest[i]);
+			printf("%02x:", res[i]&0xff);
+			}
+			printf("\n");
 			chunk_clean(remain_data);
-			chunk_store(remain_data, playload, (pp+1), (playload_len-1));
+			chunk_store(remain_data, playload, pp+1, playload_len-1);
+			break;
 		/*
 		 * more than one part point.
 		 * 1.calculate SHA
@@ -184,18 +218,17 @@ pack_SHA(char *playload, int playload_len)
 				if (i == 2) {
 					pp = part->index[i];
 					chunk_merge(remain_data, playload, 0, pp);
-					calculate_sha(remain_data->content, 0, remain_data->end-1);
+					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 					chunk_clean(remain_data);
-				
 				}
 				else {
-					//中间太需要处理
-					//calculate_sha(remain_data->content, part->index[i], remain_data->end-1);
-
+					calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
 				}
 			}
-			//最后还需要存储一下数据			
+			chunk_store(remain_data, playload, i+1, playload_len-1);
+			break;
 	}
+	free(res);
 }
 
 /*
@@ -255,6 +288,7 @@ printPcap(void *data, struct pcap_header *ph)
 							    Q, R, RM,
 							    zero_value,
 							    chunk_num);
+					pack_SHA(play_data, len);
 				}
 			}
 		}
@@ -276,6 +310,12 @@ main(int argc, const char *argv[])
 	
 	part = part_create();
 	check_mem(part);
+
+	key = keyvalue_create();
+	check_mem(key);
+
+	map = Hashmap_create(BUCKETS_LEN, NULL, Hashmap_mode_hash);
+	check(map != NULL, "Failed to create map.");
 
 	if (argc != 2) {
 		printf("uage: ./a.out pcap_filename\n");
@@ -335,6 +375,8 @@ main(int argc, const char *argv[])
       error:
 	chunk_destroy(remain_data);
 	part_destroy(part);
+	keyvalue_destroy(key);
+	Hashmap_destroy(map);
 	fclose(fp);
 	fclose(fp1);
 	fclose(fp2);

@@ -184,15 +184,21 @@ int ballocmin (bstring b, int len) {
  *  Create a bstring which contains the contents of the '\0' terminated char *
  *  buffer str.
  */
-bstring bfromcstr (const char * str) {
-bstring b;
-int i;
-size_t j;
+bstring 
+bfromcstr (const char * str) 
+{
+	bstring b;
+	int i;
+	size_t j;
 
-	if (str == NULL) return NULL;
+	if (str == NULL) 
+		return NULL;
+
 	j = (strlen) (str);
 	i = snapUpSize ((int) (j + (2 - (j != 0))));
-	if (i <= (int) j) return NULL;
+	
+	if (i <= (int) j) 
+		return NULL;
 
 	b = (bstring) bstr__alloc (sizeof (struct tagbstring));
 	if (NULL == b) return NULL;
