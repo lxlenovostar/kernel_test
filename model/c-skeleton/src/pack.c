@@ -36,9 +36,11 @@ chunk *remain_data = NULL;
 part_point *part = NULL;
 keyvalue *key = NULL;
 Hashmap *map = NULL;
+void *value = NULL; //for filling the value in hashmap.
 
 /*
- * this hash function maybe verify the effect.
+ * this hash function need verify the effect.
+ * for SHA-1.
  */
 static uint32_t
 Hashmap_mode_hash(void *data)
@@ -46,12 +48,21 @@ Hashmap_mode_hash(void *data)
 	unsigned long hash = 0;
 	int i; 
 	char *tmp = (char *)data;
-	for (i = 0; i < SHA ; i++)
-		hash = (10 * hash + tmp[i]) % BUCKETS_LEN;
 	
-	debug("hash is %lu", hash);
+	for (i = 0; i < SHA ; i++)
+		hash = (10 * hash + (int)(tmp[i]&0xff)) % BUCKETS_LEN;
+	
+	//debug("hash is %lu", hash);
 	return hash;
 }
+
+static int
+Hashmap_mode_compare(void *a, void *b)
+{
+	// 0 stands for equal.
+	return memcmp(a, b, SHA);
+}
+
 
 /*
  * calculate the SHA-1.
@@ -173,8 +184,9 @@ void
 pack_SHA(char *playload, int playload_len)
 {
 	long pp;
- 	int i;
-	char *res = NULL;
+ 	int i, j;
+	char *res = NULL;	
+	void *hashmap_key = NULL;
 	
 	res = malloc(SHA*sizeof(char));
 	switch (part->end) {
@@ -199,14 +211,19 @@ pack_SHA(char *playload, int playload_len)
 			pp = part->index[2];
 			chunk_merge(remain_data, playload, 0, pp);
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
-			printf("case 3: sha is:\n");
-			for (i = 0; i < 20; i++) {
-			//printf("%02x:", digest[i]);
-			printf("%02x:", res[i]&0xff);
+			for (i = 0; i < SHA; i++) {
+				printf("%x:", res[i]&0xff);
 			}
 			printf("\n");
 			chunk_clean(remain_data);
 			chunk_store(remain_data, playload, pp+1, playload_len-1);
+			if (Hashmap_get(map, res) == NULL) {
+				hashmap_key = keyvalue_push(key, res);
+				Hashmap_set(map, hashmap_key, value);
+			}
+			else {
+				debug("find it");
+			}
 			break;
 		/*
 		 * more than one part point.
@@ -219,13 +236,33 @@ pack_SHA(char *playload, int playload_len)
 					pp = part->index[i];
 					chunk_merge(remain_data, playload, 0, pp);
 					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
+					/*for (j = 0; j < SHA; j++) {
+						printf("%x:", res[j]&0xff);
+					}
+					printf("\n");*/
 					chunk_clean(remain_data);
 				}
 				else {
 					calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
+					/*for (j = 0; j < SHA; j++) {
+						printf("%x:", res[j]&0xff);
+					}
+					printf("\n");*/
 				}
+				//printf("part3 %d\n", part->end);
+				
+				if (Hashmap_get(map, res) == NULL) {
+					hashmap_key = keyvalue_push(key, res);
+					Hashmap_set(map, hashmap_key, value);
+				}
+				else {
+					debug("find it");
+					printf("find it\n");
+				}
+				
 			}
-			chunk_store(remain_data, playload, i+1, playload_len-1);
+			debug("chunk_store i is:%d and end is:%d, part is:%d", (i+1), playload_len-1, part->index[i-1]);
+			chunk_store(remain_data, playload, part->index[i]+1, playload_len-1);
 			break;
 	}
 	free(res);
@@ -295,6 +332,34 @@ printPcap(void *data, struct pcap_header *ph)
 	}
 }
 
+void 
+text_test(const char* filename, long Q, int R, long RM, int  zero_value, int chunk_num) 
+{
+	FILE *input;
+	char *source = NULL;
+	int data_len = 6000;
+
+	input = fopen(filename, "r");
+	check((input != NULL), "Can't find the file.");
+
+	source = (char *)malloc(data_len);
+	check((source != NULL), "Can't alloc merrory.");
+	
+	while (fgets(source, data_len, input) != NULL) {
+		//printf("%s", source);
+		//printf("len is %d\n", (int)strlen(source));
+	}
+	
+	part_clean(part);
+	pack_calculate_part(source, (int)strlen(source), Q, R, RM, zero_value, chunk_num);
+	pack_SHA(source, (int)strlen(source));
+
+	free(source);
+	return;
+	error:
+		printf("something is error.\n");
+}
+
 int
 main(int argc, const char *argv[])
 {
@@ -314,7 +379,7 @@ main(int argc, const char *argv[])
 	key = keyvalue_create();
 	check_mem(key);
 
-	map = Hashmap_create(BUCKETS_LEN, NULL, Hashmap_mode_hash);
+	map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);
 	check(map != NULL, "Failed to create map.");
 
 	if (argc != 2) {
@@ -332,6 +397,7 @@ main(int argc, const char *argv[])
 		zero_value = (2 * zero_value);
 	zero_value = zero_value - 1;
 
+	/*
 	FILE *fp = fopen(argv[1], "r");
 	if (fp == NULL) {
 		fprintf(stderr, "Open file %s error.", argv[1]);
@@ -343,9 +409,6 @@ main(int argc, const char *argv[])
 	fp1 = fopen("source", "w");
 	fp2 = fopen("result", "w");
 	buff = (void *) malloc(MAX_ETH_FRAME);
-
-	//map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);
-	//check(map != NULL, "Failed to create map.");
 
 	for (count = 1;; count++) {
 		memset(buff, 0, MAX_ETH_FRAME);
@@ -371,14 +434,24 @@ main(int argc, const char *argv[])
 			break;
 		}
 	}
+	*/
+	
+	/*
+	 * text test.
+	 */
+	fp2 = fopen("result", "w");
+	text_test(argv[1], Q, R, RM, zero_value, chunk_num);
 
-      error:
-	chunk_destroy(remain_data);
-	part_destroy(part);
-	keyvalue_destroy(key);
-	Hashmap_destroy(map);
-	fclose(fp);
-	fclose(fp1);
-	fclose(fp2);
-	return ret;
+    error:
+		chunk_destroy(remain_data);
+		part_destroy(part);
+		keyvalue_destroy(key);
+		Hashmap_destroy(map);
+		/*
+		fclose(fp);
+		fclose(fp1);
+		fclose(fp2);
+		*/
+		fclose(fp2);
+		return ret;
 }

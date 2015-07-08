@@ -102,7 +102,7 @@ struct icmphdr {
  * used for record parting point.
  */
 #define PLEN 100
-typedef part_point {
+typedef struct part_point {
 	long index[PLEN];
 	int end;
 } part_point;
@@ -110,8 +110,9 @@ typedef part_point {
 part_point *
 part_create()
 {
-	part_point *tmp = (part_point)malloc(sizeof(part_point));
-	part_point->end = 0;
+	part_point *tmp = (part_point*)malloc(sizeof(part_point));
+	tmp->end = 0;
+	return tmp;
 }
 
 void
@@ -130,9 +131,10 @@ part_clean(part_point *point)
 void
 part_set(part_point *point, long data)
 {
-	if (point->end >= PLEN)
-		sentinel("error case happen in part_set.");
-	
+	if (point->end >= PLEN) {
+		log_err("error case happen in part_set.");
+		exit(-1);
+	}
 	point->index[point->end] = data;
 	++point->end;
 } 

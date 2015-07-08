@@ -17,8 +17,8 @@ typedef struct keyvalue{
 	void *key;
 } keyvalue;
 
-keyvalue *keyvalue_create();
+keyvalue* keyvalue_create();
 void keyvalue_destroy(keyvalue *kv);
 int keyvalue_full(keyvalue *kv);
 int keyvalue_expand(keyvalue *kv);
-int keyvalue_push(keyvalue *kv, void *el);
+void* keyvalue_push(keyvalue *kv, void *el);

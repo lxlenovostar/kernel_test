@@ -83,16 +83,18 @@ keyvalue_expand(keyvalue *kv)
     	return -1; 
 }
 
-int 
+void* 
 keyvalue_push(keyvalue *kv, void *el)
 {
-	strncpy(kv->key + kv->index, el, SHA);
+	int old_index = kv->index;
+	strncpy(kv->key + old_index, el, SHA);
 	kv->index += SHA;
 
     if(keyvalue_full(kv)) {
 		debug("the kv is full, so we should expand it");
-        return keyvalue_expand(kv);
-    } else {
-        return 0;
-    }   
+        if (keyvalue_expand(kv) != 0) {
+			return NULL;
+		}
+    } 
+	return (kv->key + old_index);
 }

@@ -48,6 +48,7 @@ error:
 
 static inline void *DArray_get(DArray *array, int i)
 {
+	debug("i is:%d, max is:%d", i, array->max);
     check(i < array->max, "darray attempt to get past max");
     return array->contents[i];
 error:

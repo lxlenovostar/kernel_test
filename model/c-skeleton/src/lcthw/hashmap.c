@@ -110,6 +110,7 @@ Hashmap_find_bucket(Hashmap *map, void *key, int create, uint32_t *hash_out)
      * fixed value is not a good idea. 
      */
     int bucket_n = hash % (map->buckets->max);
+	debug("bucket_n is:%d", bucket_n);
 	check(bucket_n >= 0, "Invalid bucket found: %d", bucket_n);
 
 	*hash_out = hash;	// store it for the return so the caller can use it
