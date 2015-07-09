@@ -60,7 +60,19 @@ static int
 Hashmap_mode_compare(void *a, void *b)
 {
 	// 0 stands for equal.
-	return memcmp(a, b, SHA);
+	int result = memcmp(a, b, SHA);
+	/*int j;
+	for (j = 0; j < SHA; j++) {
+		printf("%x:", tmp1[j]&0xff);
+	}
+	printf("\n");
+	for (j = 0; j < SHA; j++) {
+		printf("%x:", tmp2[j]&0xff);
+	}
+	printf("\n");
+	*/
+	//debug("a is %s", (char *)a);
+	return result;
 }
 
 
@@ -72,7 +84,7 @@ calculate_sha(char *data, long begin, long end, char* result)
 {
 	int cfd = -1, i;
 	struct cryptodev_ctx ctx;
-	uint8_t digest[20];
+	uint8_t digest[20] = {0};
 	//char text[] = "1The quick brown fox jumps over the lazy dog";
 	//char text[] = "1The quick brown fox jumps over the lazy dog";
 	//uint8_t expected[] = "\x2f\xd4\xe1\xc6\x7a\x2d\x28\xfc\xed\x84\x9e\xe1\xbb\x76\xe7\x39\x1b\x93\xeb\x12";
@@ -189,6 +201,7 @@ pack_SHA(char *playload, int playload_len)
 	void *hashmap_key = NULL;
 	
 	res = malloc(SHA*sizeof(char));
+
 	switch (part->end) {
 		case 0:
 		case 1:
@@ -211,15 +224,11 @@ pack_SHA(char *playload, int playload_len)
 			pp = part->index[2];
 			chunk_merge(remain_data, playload, 0, pp);
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
-			for (i = 0; i < SHA; i++) {
-				printf("%x:", res[i]&0xff);
-			}
-			printf("\n");
 			chunk_clean(remain_data);
 			chunk_store(remain_data, playload, pp+1, playload_len-1);
 			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
-				Hashmap_set(map, hashmap_key, value);
+				Hashmap_set(map, hashmap_key, hashmap_key);
 			}
 			else {
 				debug("find it");
@@ -236,33 +245,23 @@ pack_SHA(char *playload, int playload_len)
 					pp = part->index[i];
 					chunk_merge(remain_data, playload, 0, pp);
 					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
-					/*for (j = 0; j < SHA; j++) {
-						printf("%x:", res[j]&0xff);
-					}
-					printf("\n");*/
 					chunk_clean(remain_data);
 				}
 				else {
 					calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
-					/*for (j = 0; j < SHA; j++) {
-						printf("%x:", res[j]&0xff);
-					}
-					printf("\n");*/
 				}
-				//printf("part3 %d\n", part->end);
-				
 				if (Hashmap_get(map, res) == NULL) {
 					hashmap_key = keyvalue_push(key, res);
-					Hashmap_set(map, hashmap_key, value);
+					Hashmap_set(map, hashmap_key, hashmap_key);
+					printf("set it\n");
 				}
 				else {
 					debug("find it");
 					printf("find it\n");
 				}
-				
 			}
-			debug("chunk_store i is:%d and end is:%d, part is:%d", (i+1), playload_len-1, part->index[i-1]);
-			chunk_store(remain_data, playload, part->index[i]+1, playload_len-1);
+			debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
+			chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
 			break;
 	}
 	free(res);
@@ -274,7 +273,24 @@ pack_SHA(char *playload, int playload_len)
 void 
 remain_SHA()
 {
+	char *res = NULL;	
+	void *hashmap_key = NULL;
+	
+	res = malloc(SHA*sizeof(char));
+	calculate_sha(remain_data->content, 0, remain_data->end-1, res);
+	chunk_clean(remain_data);
+				
+	if (Hashmap_get(map, res) == NULL) {
+		hashmap_key = keyvalue_push(key, res);
+		Hashmap_set(map, hashmap_key, hashmap_key);
+		printf("set it\n");
+	}
+	else {
+		debug("find it");
+		printf("find it\n");
+	}
 
+	free(res);
 }
 
 void
@@ -353,6 +369,7 @@ text_test(const char* filename, long Q, int R, long RM, int  zero_value, int chu
 	part_clean(part);
 	pack_calculate_part(source, (int)strlen(source), Q, R, RM, zero_value, chunk_num);
 	pack_SHA(source, (int)strlen(source));
+	remain_SHA();
 
 	free(source);
 	return;
