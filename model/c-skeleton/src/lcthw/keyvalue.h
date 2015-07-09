@@ -13,11 +13,12 @@ typedef struct keyvalue{
 	unsigned long index;
 	unsigned long capacity;
 	unsigned long expand_rate;
+	int step;
 	//void key[][40];
 	void *key;
 } keyvalue;
 
-keyvalue* keyvalue_create();
+keyvalue* keyvalue_create(size_t num, size_t step_s);
 void keyvalue_destroy(keyvalue *kv);
 int keyvalue_full(keyvalue *kv);
 int keyvalue_expand(keyvalue *kv);

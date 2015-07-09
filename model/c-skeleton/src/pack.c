@@ -7,7 +7,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include "../src/lcthw/sha.h"
-#include "../src/lcthw/keyvalue.h"
 #include "../src/lcthw/chunk.h"
 #include "../src/lcthw/hashmap.h"
 #include "lcthw/dbg.h"
@@ -37,6 +36,8 @@ part_point *part = NULL;
 keyvalue *key = NULL;
 Hashmap *map = NULL;
 void *value = NULL; //for filling the value in hashmap.
+HashmapNode *pre_node = NULL; //for internal links.	
+size_t save_len = 0;
 
 /*
  * this hash function need verify the effect.
@@ -189,6 +190,58 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 	fprintf(fp2, "\n");
 }
 
+void 
+set_internallinks(void *key, size_t len)
+{
+	unsigned long i;
+	int same = 0;
+
+	if (pre_node == NULL) {
+		/*
+		 * you are the first one.
+		 */
+		pre_node = Hashmap_getnode(map, key);
+	} 
+	else {
+		/*
+		 * two chioces.
+		 * one: the pre_node next link this node.
+		 * two: find the same node, not add next link.
+		 */
+		for (i = 0; i < pre_node->next->index; ++i) {
+			if (memcmp((pre_node->next->key + i * (pre_node->next->step)), key, pre_node->next->step) == 0) {
+				same = 1;
+				break;
+			}
+		}
+
+		/*
+		 * check key of pre_node 
+         */
+		if (same == 0) {
+			if (memcmp(pre_node->key, key, pre_node->next->step) == 0) 
+				same = 1;
+		}
+
+		if (same == 0) {
+			/*
+			 * not find the same one.	
+			 */
+			void *tmp  = Hashmap_getnode(map, key);
+			keyvalue_push(pre_node->next, tmp);
+			pre_node = tmp;
+		}
+		else {
+			pre_node = Hashmap_getnode(map, key);
+		}
+
+		if (same == 1) {
+			save_len += len;
+			printf("got it!\n");
+		}			
+	}	
+}
+
 /*
  * calculate the SHA-1 for store the data.
  */
@@ -197,9 +250,9 @@ pack_SHA(char *playload, int playload_len)
 {
 	long pp;
  	int i, j;
+	int len;
 	char *res = NULL;	
 	void *hashmap_key = NULL;
-	
 	res = malloc(SHA*sizeof(char));
 
 	switch (part->end) {
@@ -223,6 +276,7 @@ pack_SHA(char *playload, int playload_len)
 		case 3:
 			pp = part->index[2];
 			chunk_merge(remain_data, playload, 0, pp);
+			len = remain_data->end;
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 			chunk_clean(remain_data);
 			chunk_store(remain_data, playload, pp+1, playload_len-1);
@@ -233,6 +287,7 @@ pack_SHA(char *playload, int playload_len)
 			else {
 				debug("find it");
 			}
+			set_internallinks(hashmap_key, len);
 			break;
 		/*
 		 * more than one part point.
@@ -244,12 +299,15 @@ pack_SHA(char *playload, int playload_len)
 				if (i == 2) {
 					pp = part->index[i];
 					chunk_merge(remain_data, playload, 0, pp);
+					len = remain_data->end;
 					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 					chunk_clean(remain_data);
 				}
 				else {
+					len = part->index[i] - part->index[i-1];
 					calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
 				}
+
 				if (Hashmap_get(map, res) == NULL) {
 					hashmap_key = keyvalue_push(key, res);
 					Hashmap_set(map, hashmap_key, hashmap_key);
@@ -259,6 +317,7 @@ pack_SHA(char *playload, int playload_len)
 					debug("find it");
 					printf("find it\n");
 				}
+				set_internallinks(hashmap_key, len);
 			}
 			debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
 			chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
@@ -275,8 +334,10 @@ remain_SHA()
 {
 	char *res = NULL;	
 	void *hashmap_key = NULL;
-	
+	size_t len;
+
 	res = malloc(SHA*sizeof(char));
+	len = remain_data->end;
 	calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 	chunk_clean(remain_data);
 				
@@ -289,6 +350,7 @@ remain_SHA()
 		debug("find it");
 		printf("find it\n");
 	}
+	set_internallinks(hashmap_key, len);
 
 	free(res);
 }
@@ -371,6 +433,7 @@ text_test(const char* filename, long Q, int R, long RM, int  zero_value, int chu
 	pack_SHA(source, (int)strlen(source));
 	remain_SHA();
 
+	printf("total size is%d, save size is%d\n", (int)strlen(source), (int)save_len);
 	free(source);
 	return;
 	error:
@@ -393,7 +456,7 @@ main(int argc, const char *argv[])
 	part = part_create();
 	check_mem(part);
 
-	key = keyvalue_create();
+	key = keyvalue_create(0, 0);
 	check_mem(key);
 
 	map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);

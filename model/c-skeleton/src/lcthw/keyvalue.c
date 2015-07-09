@@ -4,16 +4,26 @@
 #include <lcthw/keyvalue.h>
 
 keyvalue* 
-keyvalue_create()
+keyvalue_create(size_t num, size_t step_s)
 {
 	keyvalue *kv = calloc(1, sizeof(keyvalue));
 	check_mem(kv);
 
-	kv->key = calloc(SHANUM, SHA);	
-	check_mem(kv->key);
+	if (num <= 0) {
+		kv->step = SHA;
+		kv->key = calloc(SHANUM, kv->step);	
+		check_mem(kv->key);
+		kv->capacity = (SHANUM*(kv->step));
+		kv->expand_rate = (SHANUM*(kv->step));
+	}
+	else {
+		kv->step = step_s;
+		kv->key = calloc(num, kv->step);	
+		check_mem(kv->key);
+		kv->capacity = (num*(kv->step));
+		kv->expand_rate = (num*(kv->step));
+	}
 	kv->index = 0;
-	kv->capacity = (SHANUM*SHA);
-	kv->expand_rate = (SHANUM*SHA);
 
 	return kv;
 
@@ -55,7 +65,7 @@ keyvalue_resize(keyvalue *kv, size_t newsize)
     kv->capacity = newsize;
     check(kv->capacity > 0, "The newsize must be > 0.");
 
-    void *contents = realloc(kv->key, kv->capacity * SHA);
+    void *contents = realloc(kv->key, kv->capacity * (kv->step));
     // check contents and assume realloc doesn't harm the original on error
     check_mem(contents);
 
@@ -87,8 +97,8 @@ void*
 keyvalue_push(keyvalue *kv, void *el)
 {
 	int old_index = kv->index;
-	strncpy(kv->key + old_index, el, SHA);
-	kv->index += SHA;
+	strncpy(kv->key + old_index, el, kv->step);
+	kv->index += kv->step;
 
     if(keyvalue_full(kv)) {
 		debug("the kv is full, so we should expand it");

@@ -55,8 +55,7 @@ Hashmap_create(long buckets_len, Hashmap_compare compare, Hashmap_hash hash)
         if (map) {
             Hashmap_destroy(map);
         }
-
-        return NULL;
+	return NULL;
 }
 
 void
@@ -93,6 +92,12 @@ Hashmap_node_create(int hash, void *key, void *data)
 	node->key = key;
 	node->data = data;
 	node->hash = hash;
+	
+	/*
+	 * add internal links in hashmap.
+     */
+	node->next = keyvalue_create(15, sizeof(void *));
+	check_mem(node->next);
 
 	return node;
 
@@ -182,6 +187,28 @@ Hashmap_get(Hashmap * map, void *key)
 	      "Failed to get node from bucket when it should exist.");
 
 	return node->data;
+
+    error:			// fallthrough
+	    return NULL;
+}
+
+HashmapNode*
+Hashmap_getnode(Hashmap * map, void *key)
+{
+	uint32_t hash = 0;
+	DArray *bucket = Hashmap_find_bucket(map, key, 0, &hash);
+	if (!bucket)
+		return NULL;
+
+	int i = Hashmap_get_node(map, hash, bucket, key);
+	if (i == -1)
+		return NULL;
+
+	HashmapNode *node = DArray_get(bucket, i);
+	check(node != NULL,
+	      "Failed to get node from bucket when it should exist.");
+
+	return node;
 
     error:			// fallthrough
 	    return NULL;

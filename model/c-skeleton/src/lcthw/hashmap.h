@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <lcthw/darray.h>
+#include "keyvalue.h"
 
 #define DEFAULT_NUMBER_OF_BUCKETS 100
 
@@ -23,10 +24,8 @@ typedef struct HashmapNode {
 	/*
      * make a mult-link hashmap.
      * next: a array which contains all next nodes.
-	 * next_count: count the next nodes.
      */
-	void *next;      	 
-	int next_count;  
+	keyvalue *next;      	 
 } HashmapNode;
 
 typedef int (*Hashmap_traverse_cb) (HashmapNode * node);
@@ -44,5 +43,10 @@ void *Hashmap_get(Hashmap * map, void *key);
 int Hashmap_traverse(Hashmap * map, Hashmap_traverse_cb traverse_cb);
 
 void *Hashmap_delete(Hashmap * map, void *key);
+
+/*
+ * for internal link.
+ */
+HashmapNode *Hashmap_getnode(Hashmap * map, void *key);
 
 #endif
