@@ -57,7 +57,7 @@ chunk_store(chunk *ck, char *src, long begin, long end)
 	int len = end - begin + 1;
 	debug("max is:%lu, limit is:%lu, begin is:%ld, end is:%ld", ck->end, ck->limit, begin, end);
 	check_mem(src);
-	check(end >= begin, "error end value.");
+	check(end >= begin, "error end value. begin is %ld, end is %ld", begin, end);
 	memcpy(ck->content, src + begin, len);
 	ck->end = len;
 	

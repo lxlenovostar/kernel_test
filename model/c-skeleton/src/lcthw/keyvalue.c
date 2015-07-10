@@ -97,7 +97,7 @@ void*
 keyvalue_push(keyvalue *kv, void *el)
 {
 	int old_index = kv->index;
-	strncpy(kv->key + old_index, el, kv->step);
+	memcpy(kv->key + old_index, el, kv->step);
 	kv->index += kv->step;
 
     if(keyvalue_full(kv)) {

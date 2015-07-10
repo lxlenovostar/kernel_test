@@ -37,7 +37,9 @@ keyvalue *key = NULL;
 Hashmap *map = NULL;
 void *value = NULL; //for filling the value in hashmap.
 HashmapNode *pre_node = NULL; //for internal links.	
-size_t save_len = 0;
+unsigned long save_len = 0;
+unsigned long mid_len = 0;
+unsigned long sum_len = 0;
 
 /*
  * this hash function need verify the effect.
@@ -51,8 +53,9 @@ Hashmap_mode_hash(void *data)
 	char *tmp = (char *)data;
 	
 	for (i = 0; i < SHA ; i++)
+	{
 		hash = (10 * hash + (int)(tmp[i]&0xff)) % BUCKETS_LEN;
-	
+	}
 	//debug("hash is %lu", hash);
 	return hash;
 }
@@ -157,6 +160,7 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		    int zero_value, int chunk_num)
 {
 	long i;
+	
 
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 	part_set(part, count_packet);
@@ -180,6 +184,8 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		if (delay_time == 0) {
 			if ((txthash & zero_value) == 0) {
 				part_set(part, i);
+				//if (i == playload_len-1)
+				//	debug("fuck i is %ld", i);
 				fprintf(fp2, "%ld ", i);
 				delay_time = chunk_num * 12;
 			}
@@ -190,6 +196,10 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 	fprintf(fp2, "\n");
 }
 
+/*
+ * 这个函数理解有点不清楚。
+ * 这个函数可以只用于发现新的节点，进行内部连接。而不做统计用。
+ */
 void 
 set_internallinks(void *key, size_t len)
 {
@@ -210,6 +220,8 @@ set_internallinks(void *key, size_t len)
 		 */
 		for (i = 0; i < pre_node->next->index; ++i) {
 			if (memcmp((pre_node->next->key + i * (pre_node->next->step)), key, pre_node->next->step) == 0) {
+			//if (memcmp(pre_node->next->key , key, pre_node->next->step) == 0) {
+			//if (memcmp(key , key, pre_node->next->step) == 0) {
 				same = 1;
 				break;
 			}
@@ -219,7 +231,11 @@ set_internallinks(void *key, size_t len)
 		 * check key of pre_node 
          */
 		if (same == 0) {
+			printf("step is:%d\n", pre_node->next->step);
+			check_mem(pre_node->key);
+			check_mem(key);
 			if (memcmp(pre_node->key, key, pre_node->next->step) == 0) 
+			//if (memcmp(pre_node->next->key, key, pre_node->next->step) == 0) 
 				same = 1;
 		}
 
@@ -239,7 +255,9 @@ set_internallinks(void *key, size_t len)
 			save_len += len;
 			printf("got it!\n");
 		}			
-	}	
+	}
+	error:
+		printf("error memory\n");	
 }
 
 /*
@@ -279,15 +297,19 @@ pack_SHA(char *playload, int playload_len)
 			len = remain_data->end;
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 			chunk_clean(remain_data);
-			chunk_store(remain_data, playload, pp+1, playload_len-1);
+			//if(pp+1 > playload_len-1)
+			//	debug("fuck1 begin is:%ld, end is:%ld, playload_len is:%ld", pp+1, playload_len-1, playload_len);
+			if (pp != playload_len-1)
+				chunk_store(remain_data, playload, pp+1, playload_len-1);
 			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
 				Hashmap_set(map, hashmap_key, hashmap_key);
 			}
 			else {
 				debug("find it");
+				mid_len += len;
 			}
-			set_internallinks(hashmap_key, len);
+			//set_internallinks(hashmap_key, len);
 			break;
 		/*
 		 * more than one part point.
@@ -311,15 +333,19 @@ pack_SHA(char *playload, int playload_len)
 				if (Hashmap_get(map, res) == NULL) {
 					hashmap_key = keyvalue_push(key, res);
 					Hashmap_set(map, hashmap_key, hashmap_key);
-					printf("set it\n");
+					//printf("set it\n");
+					debug("set it");
 				}
 				else {
 					debug("find it");
-					printf("find it\n");
+					//printf("find it\n");
+					mid_len += len;
 				}
-				set_internallinks(hashmap_key, len);
+				//set_internallinks(hashmap_key, len);
 			}
-			debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
+			//debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
+			//if(pp+1 > playload_len-1)
+			//	debug("fuck2 begin is:%d, end is:%d", pp+1, playload_len-1);
 			chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
 			break;
 	}
@@ -344,13 +370,14 @@ remain_SHA()
 	if (Hashmap_get(map, res) == NULL) {
 		hashmap_key = keyvalue_push(key, res);
 		Hashmap_set(map, hashmap_key, hashmap_key);
-		printf("set it\n");
+		//printf("set it\n");
+		debug("set it");
 	}
 	else {
 		debug("find it");
-		printf("find it\n");
+		//printf("find it\n");
 	}
-	set_internallinks(hashmap_key, len);
+	//set_internallinks(hashmap_key, len);
 
 	free(res);
 }
@@ -396,14 +423,18 @@ printPcap(void *data, struct pcap_header *ph)
 					memcpy(play_data,
 					       ((char *) tcph + tcph->doff * 4),
 					       len);
-
-					part_clean(part);
-					//get the data parting point
-					pack_calculate_part(play_data, len,
-							    Q, R, RM,
-							    zero_value,
-							    chunk_num);
-					pack_SHA(play_data, len);
+				
+					/*
+     				 * small packet, pass it.
+     				 */
+					if (len >= chunk_num) {
+						part_clean(part);
+						
+						//get the data parting point
+						pack_calculate_part(play_data, len, Q, R, RM, zero_value, chunk_num);
+						pack_SHA(play_data, len);
+						sum_len += len;
+					}
 				}
 			}
 		}
@@ -477,7 +508,7 @@ main(int argc, const char *argv[])
 		zero_value = (2 * zero_value);
 	zero_value = zero_value - 1;
 
-	/*
+	
 	FILE *fp = fopen(argv[1], "r");
 	if (fp == NULL) {
 		fprintf(stderr, "Open file %s error.", argv[1]);
@@ -514,24 +545,27 @@ main(int argc, const char *argv[])
 			break;
 		}
 	}
-	*/
+					
+
+	remain_SHA();
+	printf("total size is:%lu, m_size is:%lu, save size is:%lu\n", sum_len, mid_len, save_len);
+	
 	
 	/*
 	 * text test.
 	 */
-	fp2 = fopen("result", "w");
-	text_test(argv[1], Q, R, RM, zero_value, chunk_num);
+	//fp2 = fopen("result", "w");
+	//text_test(argv[1], Q, R, RM, zero_value, chunk_num);
 
     error:
 		chunk_destroy(remain_data);
 		part_destroy(part);
 		keyvalue_destroy(key);
 		Hashmap_destroy(map);
-		/*
 		fclose(fp);
 		fclose(fp1);
 		fclose(fp2);
-		*/
-		fclose(fp2);
+		//fclose(fp2);
+		free(buff);
 		return ret;
 }

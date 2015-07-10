@@ -63,7 +63,7 @@ Hashmap_destroy(Hashmap * map)
 {
 	int i = 0;
 	int j = 0;
-
+	HashmapNode *node = NULL;
 	if (map) {
 		if (map->buckets) {
 			for (i = 0; i < DArray_count(map->buckets); i++) {
@@ -71,7 +71,9 @@ Hashmap_destroy(Hashmap * map)
 				if (bucket) {
 					for (j = 0; j < DArray_count(bucket);
 					     j++) {
-						free(DArray_get(bucket, j));
+						node = DArray_get(bucket, j);
+						keyvalue_destroy(node->next);
+						free(node);
 					}
 					DArray_destroy(bucket);
 				}
@@ -96,7 +98,11 @@ Hashmap_node_create(int hash, void *key, void *data)
 	/*
 	 * add internal links in hashmap.
      */
-	node->next = keyvalue_create(15, sizeof(void *));
+	//node->next = keyvalue_create(15, sizeof(void *));
+	/*
+     * update it.
+     */
+	node->next = keyvalue_create(1, SHA);
 	check_mem(node->next);
 
 	return node;
