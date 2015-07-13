@@ -64,8 +64,9 @@ static int
 Hashmap_mode_compare(void *a, void *b)
 {
 	// 0 stands for equal.
-	int result = memcmp(a, b, SHA);
-	/*int j;
+	/*char *tmp1 = (char *)a;
+	char *tmp2 = (char *)b;
+	int j;
 	for (j = 0; j < SHA; j++) {
 		printf("%x:", tmp1[j]&0xff);
 	}
@@ -73,12 +74,11 @@ Hashmap_mode_compare(void *a, void *b)
 	for (j = 0; j < SHA; j++) {
 		printf("%x:", tmp2[j]&0xff);
 	}
-	printf("\n");
-	*/
-	//debug("a is %s", (char *)a);
+	printf("\n");*/
+	int result = memcmp(a, b, SHA);
+	
 	return result;
 }
-
 
 /*
  * calculate the SHA-1.
@@ -97,7 +97,7 @@ calculate_sha(char *data, long begin, long end, char* result)
 	char *tmp = (char *) malloc(len * sizeof (char));
 	memcpy(tmp, data + begin, len);
 
-	fprintf(fp2, "\nsha-1: %d\n", len);
+	//fprintf(fp2, "\nsha-1: %d\n", len);
 
 	cfd = open("/dev/crypto", O_RDWR, 0);
 	if (cfd < 0) {
@@ -116,18 +116,11 @@ calculate_sha(char *data, long begin, long end, char* result)
 
 	for (i = 0; i < 20; i++) {
 		//printf("%02x:", digest[i]);
-		fprintf(fp2, "%02x:", digest[i]);
+		//fprintf(fp2, "%02x:", digest[i]);
 	}
 	memcpy(result, digest, SHA);
 	//printf("\n");
 	//fprintf(fp2, "\n");
-
-	/* 
-	   if (memcmp(digest, expected, 20) != 0) {
-	   printf("SHA1 hashing failed\n");
-	   //return 1;
-	   }
-	 */
 
 	if (close(cfd)) {
 		perror("close(cfd)");
@@ -197,8 +190,8 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 }
 
 /*
- * 这个函数理解有点不清楚。
- * 这个函数可以只用于发现新的节点，进行内部连接。而不做统计用。
+ * 这个函数可以只用进行内部连接。而不做统计用。
+ * 现阶段没有用处。
  */
 void 
 set_internallinks(void *key, size_t len)
@@ -297,12 +290,14 @@ pack_SHA(char *playload, int playload_len)
 			len = remain_data->end;
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 			chunk_clean(remain_data);
-			//if(pp+1 > playload_len-1)
-			//	debug("fuck1 begin is:%ld, end is:%ld, playload_len is:%ld", pp+1, playload_len-1, playload_len);
-			if (pp != playload_len-1)
+			if (pp != playload_len-1) {
+				if(pp+1 > playload_len-1)
+					debug("fuck1 begin is:%ld, end is:%ld, playload_len is:%ld\n", pp+1, playload_len-1, playload_len);
 				chunk_store(remain_data, playload, pp+1, playload_len-1);
+			}
 			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
+				check_mem(hashmap_key);
 				Hashmap_set(map, hashmap_key, hashmap_key);
 			}
 			else {
@@ -332,24 +327,25 @@ pack_SHA(char *playload, int playload_len)
 
 				if (Hashmap_get(map, res) == NULL) {
 					hashmap_key = keyvalue_push(key, res);
+					check_mem(hashmap_key);
 					Hashmap_set(map, hashmap_key, hashmap_key);
-					//printf("set it\n");
 					debug("set it");
 				}
 				else {
 					debug("find it");
-					//printf("find it\n");
 					mid_len += len;
 				}
 				//set_internallinks(hashmap_key, len);
 			}
 			//debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
-			//if(pp+1 > playload_len-1)
-			//	debug("fuck2 begin is:%d, end is:%d", pp+1, playload_len-1);
-			chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
+			if(part->index[i-1]+1 > playload_len-1)
+				debug("fuck2 begin is:%d, end is:%d\n", part->index[i-1]+1, playload_len-1);
+			if (part->index[i-1] != playload_len-1) 
+				chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
 			break;
 	}
-	free(res);
+		error:
+			free(res);
 }
 
 /*
@@ -370,12 +366,10 @@ remain_SHA()
 	if (Hashmap_get(map, res) == NULL) {
 		hashmap_key = keyvalue_push(key, res);
 		Hashmap_set(map, hashmap_key, hashmap_key);
-		//printf("set it\n");
 		debug("set it");
 	}
 	else {
 		debug("find it");
-		//printf("find it\n");
 	}
 	//set_internallinks(hashmap_key, len);
 
@@ -476,6 +470,7 @@ main(int argc, const char *argv[])
 {
 	pcap_file_header pfh;
 	pcap_header ph;
+	FILE *fp = NULL;
 	int count = 0;
 	void *buff = NULL;
 	int readSize = 0;
@@ -509,7 +504,7 @@ main(int argc, const char *argv[])
 	zero_value = zero_value - 1;
 
 	
-	FILE *fp = fopen(argv[1], "r");
+	fp = fopen(argv[1], "r");
 	if (fp == NULL) {
 		fprintf(stderr, "Open file %s error.", argv[1]);
 		ret = -1;

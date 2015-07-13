@@ -53,7 +53,7 @@ int
 keyvalue_full(keyvalue *kv)
 {
 	debug("the capacity is %lu and index id %lu", kv->capacity, kv->index);
-	if (kv->index <= kv->capacity - 1)
+	if (kv->index <= kv->capacity - kv->step)
 		return 0;
 	else
 		return 1;
