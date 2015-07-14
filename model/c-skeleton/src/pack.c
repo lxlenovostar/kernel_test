@@ -1,11 +1,13 @@
 #include <stdio.h>
-#include <arpa/inet.h>
+#include <ctype.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <linux/types.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <dirent.h> 
 #include "../src/lcthw/sha.h"
 #include "../src/lcthw/chunk.h"
 #include "../src/lcthw/hashmap.h"
@@ -25,7 +27,7 @@ int i = 0;
 int R = 1048583;
 //int R = 10;
 long RM = 1;
-int chunk_num = 48;
+int chunk_num = 48; 
 int zero_num = 9;
 int zero_value = 1;
 static int count_packet = 0;
@@ -80,6 +82,74 @@ Hashmap_mode_compare(void *a, void *b)
 	return result;
 }
 
+void 
+store_data(char *data, long begin, long end, uint8_t *name, int find)
+{
+	char *dir_set = "/root/kernel_test/model/c-skeleton/tmp/a/";
+	char *dir_find = "/root/kernel_test/model/c-skeleton/tmp/b/";
+	char *filename = NULL;
+	size_t len_set = strlen(dir_set);
+	size_t len_find = strlen(dir_find);
+	int fd;
+	int i;
+	char buffer[2*SHA + 1];
+	buffer[2*SHA] = '\0';
+	filename = (char *)malloc(300 * sizeof(char));
+	
+	if (find == 0) {
+		/*
+		 * build the name.
+         */
+		strcpy(filename, dir_set);
+		for (i = 0; i < SHA; ++i) {
+			snprintf(buffer+2*i, 3,  "%02x", name[i] & 0xff);
+		}
+		strncpy(filename + len_set, buffer, strlen(buffer));
+		filename[len_set + strlen(buffer)] = '\0';
+		
+		/*
+		//just for test.
+		printf("%s\n", buffer);
+		for (i = 0; i < SHA; ++i) 
+				printf("%02x:", name[i] & 0xff);
+		printf("\n");
+		for (i = 0; i < 2*SHA - 1; i += 2) 
+				printf("%c%c:", buffer[i], buffer[i+1]);
+		printf("\n");
+		*/
+		fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+		if (write(fd, data, (end - begin + 1)) != (end - begin + 1))
+		{
+			debug("something error with write.");
+		}
+
+		close(fd);
+	} 
+	else {
+			DIR *d;
+			struct dirent *dir;
+			
+			strcpy(filename, dir_find);
+			for (i = 0; i < SHA; ++i) {
+				snprintf(buffer+2*i, 3,  "%02x", name[i] & 0xff);
+			}
+			strncpy(filename + len_set, buffer, strlen(buffer));
+			filename[len_set + strlen(buffer)] = '\0';
+
+			d = opendir(dir_find);
+			if (d){
+				while ((dir = readdir(d)) != NULL) {
+					 if (strcmp(dir->d_name, "ffea76ff3fe9d804ddfde408ddf3ecbe13d604dc") == 0) 
+						printf("ok %s\n", dir->d_name);
+					//printf("%s\n", dir->d_name);
+				}
+				closedir(d);
+			}		
+		}	
+
+	free(filename);
+}
+
 /*
  * calculate the SHA-1.
  */
@@ -122,6 +192,7 @@ calculate_sha(char *data, long begin, long end, char* result)
 	//printf("\n");
 	//fprintf(fp2, "\n");
 
+	store_data(data, begin, end, digest, 0);
 	if (close(cfd)) {
 		perror("close(cfd)");
 		//return 1;
@@ -260,7 +331,7 @@ void
 pack_SHA(char *playload, int playload_len)
 {
 	long pp;
- 	int i, j;
+ 	int i;
 	int len;
 	char *res = NULL;	
 	void *hashmap_key = NULL;
@@ -290,11 +361,7 @@ pack_SHA(char *playload, int playload_len)
 			len = remain_data->end;
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 			chunk_clean(remain_data);
-			if (pp != playload_len-1) {
-				if(pp+1 > playload_len-1)
-					debug("fuck1 begin is:%ld, end is:%ld, playload_len is:%ld\n", pp+1, playload_len-1, playload_len);
-				chunk_store(remain_data, playload, pp+1, playload_len-1);
-			}
+			
 			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
 				check_mem(hashmap_key);
@@ -302,7 +369,14 @@ pack_SHA(char *playload, int playload_len)
 			}
 			else {
 				debug("find it");
+				//store_data(remain_data->content, 0, 1, res, 1);
 				mid_len += len;
+			}
+			
+			if (pp != playload_len-1) {
+				if(pp+1 > playload_len-1)
+					debug("fuck1 begin is:%ld, end is:%d, playload_len is:%d\n", pp+1, playload_len-1, playload_len);
+				chunk_store(remain_data, playload, pp+1, playload_len-1);
 			}
 			//set_internallinks(hashmap_key, len);
 			break;
@@ -322,7 +396,8 @@ pack_SHA(char *playload, int playload_len)
 				}
 				else {
 					len = part->index[i] - part->index[i-1];
-					calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
+					calculate_sha(playload, part->index[i-1]+1, part->index[i], res);
+					//calculate_sha(remain_data->content, part->index[i-1]+1, part->index[i], res);
 				}
 
 				if (Hashmap_get(map, res) == NULL) {
@@ -333,13 +408,14 @@ pack_SHA(char *playload, int playload_len)
 				}
 				else {
 					debug("find it");
+					//store_data(remain_data->content, 0, 1, res, 1);
 					mid_len += len;
 				}
 				//set_internallinks(hashmap_key, len);
 			}
 			//debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
 			if(part->index[i-1]+1 > playload_len-1)
-				debug("fuck2 begin is:%d, end is:%d\n", part->index[i-1]+1, playload_len-1);
+				debug("fuck2 begin is:%ld, end is:%d\n", part->index[i-1]+1, playload_len-1);
 			if (part->index[i-1] != playload_len-1) 
 				chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
 			break;
