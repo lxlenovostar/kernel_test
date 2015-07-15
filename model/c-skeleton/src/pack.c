@@ -27,8 +27,8 @@ int i = 0;
 int R = 1048583;
 //int R = 10;
 long RM = 1;
-int chunk_num = 48; 
-int zero_num = 9;
+int chunk_num = 4; 
+int zero_num = 7;
 int zero_value = 1;
 static int count_packet = 0;
 static int delay_time = 0;
@@ -40,7 +40,6 @@ Hashmap *map = NULL;
 void *value = NULL; //for filling the value in hashmap.
 HashmapNode *pre_node = NULL; //for internal links.	
 unsigned long save_len = 0;
-unsigned long mid_len = 0;
 unsigned long sum_len = 0;
 
 /*
@@ -192,7 +191,7 @@ calculate_sha(char *data, long begin, long end, char* result)
 	//printf("\n");
 	//fprintf(fp2, "\n");
 
-	store_data(data, begin, end, digest, 0);
+	//store_data(data, begin, end, digest, 0);
 	if (close(cfd)) {
 		perror("close(cfd)");
 		//return 1;
@@ -224,13 +223,11 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		    int zero_value, int chunk_num)
 {
 	long i;
-	
-
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 	part_set(part, count_packet);
 	part_set(part, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
-
+		
 	if (delay_time == 0) {
 		if ((txthash & zero_value) == 0) {
 			part_set(part, (chunk_num-1));
@@ -370,12 +367,12 @@ pack_SHA(char *playload, int playload_len)
 			else {
 				debug("find it");
 				//store_data(remain_data->content, 0, 1, res, 1);
-				mid_len += len;
+				save_len += len;
 			}
 			
 			if (pp != playload_len-1) {
-				if(pp+1 > playload_len-1)
-					debug("fuck1 begin is:%ld, end is:%d, playload_len is:%d\n", pp+1, playload_len-1, playload_len);
+				//if(pp+1 > playload_len-1)
+					//debug("fuck1 begin is:%ld, end is:%d, playload_len is:%d\n", pp+1, playload_len-1, playload_len);
 				chunk_store(remain_data, playload, pp+1, playload_len-1);
 			}
 			//set_internallinks(hashmap_key, len);
@@ -409,13 +406,13 @@ pack_SHA(char *playload, int playload_len)
 				else {
 					debug("find it");
 					//store_data(remain_data->content, 0, 1, res, 1);
-					mid_len += len;
+					save_len += len;
 				}
 				//set_internallinks(hashmap_key, len);
 			}
 			//debug("chunk_store i is:%d and end is:%d, begin is:%ld", (i+1), playload_len-1, part->index[i-1]);
-			if(part->index[i-1]+1 > playload_len-1)
-				debug("fuck2 begin is:%ld, end is:%d\n", part->index[i-1]+1, playload_len-1);
+			//if(part->index[i-1]+1 > playload_len-1)
+				//debug("fuck2 begin is:%ld, end is:%d\n", part->index[i-1]+1, playload_len-1);
 			if (part->index[i-1] != playload_len-1) 
 				chunk_store(remain_data, playload, part->index[i-1]+1, playload_len-1);
 			break;
@@ -619,7 +616,7 @@ main(int argc, const char *argv[])
 					
 
 	remain_SHA();
-	printf("total size is:%lu, m_size is:%lu, save size is:%lu\n", sum_len, mid_len, save_len);
+	printf("total size is:%lu, save size is:%lu, compress rate is:%f \%\n", sum_len, save_len, 100*((float)save_len/(float)sum_len));
 	
 	
 	/*
