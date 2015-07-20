@@ -101,7 +101,7 @@ struct icmphdr {
 /*
  * used for record parting point.
  */
-#define PLEN 1000
+#define PLEN 5000
 typedef struct part_point {
 	long index[PLEN];
 	int end;

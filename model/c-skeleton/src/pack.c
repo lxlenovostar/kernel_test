@@ -27,11 +27,12 @@ int i = 0;
 int R = 1048583;
 //int R = 10;
 long RM = 1;
-int chunk_num = 4; 
-int zero_num = 7;
-int zero_value = 1;
+int chunk_num = 8;  //控制最小值
+int zero_num = 3;
+unsigned long zero_value = 1;
 static int count_packet = 0;
 static int delay_time = 0;
+int step = 20; //控制块长
 
 chunk *remain_data = NULL;
 part_point *part = NULL;
@@ -41,6 +42,7 @@ void *value = NULL; //for filling the value in hashmap.
 HashmapNode *pre_node = NULL; //for internal links.	
 unsigned long save_len = 0;
 unsigned long sum_len = 0;
+unsigned long data[300];
 
 /*
  * this hash function need verify the effect.
@@ -88,7 +90,7 @@ store_data(char *data, long begin, long end, uint8_t *name, int find)
 	char *dir_find = "/root/kernel_test/model/c-skeleton/tmp/b/";
 	char *filename = NULL;
 	size_t len_set = strlen(dir_set);
-	size_t len_find = strlen(dir_find);
+	//size_t len_find = strlen(dir_find);
 	int fd;
 	int i;
 	char buffer[2*SHA + 1];
@@ -209,10 +211,124 @@ pack_hash(char *key, int M, int R, long Q)
 	int j;
 	unsigned long h = 0;
 
-	for (j = 0; j < M; j++) {
+	for (j = 0; j < M; j++) { 
 		h = (R * h + key[j]) % Q;
 	}
+	
 	return h;
+		
+	//printf("%lu\n", h);
+}
+
+void data_set()
+{
+
+	int j = 0;
+	/*
+	// jpeg
+	int tmp1[2] = {0xFF, 0xD9}; // picture end
+	int tmp2[2] = {0xFF, 0xD8}; // picture begin
+
+	//gif 
+	char tmp3[2] = {'7', 'a'}; // picture begin
+	char tmp4[2] = {'9', 'a'}; // picture begin
+	int tmp5[2] = {0x00, 0x3b}; // picture begin
+
+	//png
+	char *tmp = "HT";
+	*/
+	char *keyword[] = {"ED", "EA", "HE", "(.", "..", "E.", "P.", ".E", ".P", "QE", "ET", "OS", "ST", "Ac", "Us","\r\n", "jp", "pg", "pn", "ng", "gi", "if", "ho", "HO", "HP", "hp", "WW","ol", "ve", "GE", "PO", "ww", "cd", "HT", "ht", "zh", "ZH", NULL};
+	char **kwp;
+
+	for (kwp = keyword; *kwp != NULL; kwp++) {
+		data[j] = pack_hash(*kwp, 2, R, Q);
+		++j;
+		//printf("%s\n", *kwp);
+	}
+}
+
+void
+pack_calculate_part2(char *playload, int playload_len, long Q, int R, long RM,
+		    unsigned long zero_value, int chunk_num)
+{	/*
+	unsigned char longval = 0;
+	long i;
+	unsigned long j = 0;
+	
+	part_set(part, count_packet);
+	part_set(part, playload_len);
+	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
+	
+	for (i = 0; i < playload_len; i++) {
+		//longval = longval << 1;
+		longval ^= playload[i];
+		//printf("%lu\n", longval);
+		++j;
+		if (delay_time == 0) {
+			if (j >= chunk_num && (longval & zero_value) == 0) {
+				j = 0;
+				longval = 0;
+				part_set(part, i);
+				fprintf(fp2, "%ld ", i);
+				//delay_time = chunk_num * 12;
+				delay_time = 100;
+			}
+		}
+		else {
+			--delay_time;
+		}	
+	}	 
+	fprintf(fp2, "\n");
+	*/
+}
+
+unsigned long 
+check_data_point(char *playload, long Q, int R, int index) 
+{
+	/*
+	// jpeg
+	int tmp1[2] = {0xFF, 0xD9}; // picture end
+	int tmp2[2] = {0xFF, 0xD8}; // picture begin
+
+	//gif 
+	char tmp3[2] = {'7', 'a'}; // picture begin
+	char tmp4[2] = {'9', 'a'}; // picture begin
+	int tmp5[2] = {0x00, 0x3b}; // picture begin
+	
+	//unsigned long mask = 75498060;
+	//unsigned long mask1 = 267388861;
+	//unsigned long mask2 = 267388881;
+	unsigned long mask = 267388882;
+	unsigned long mask1 = 267388881;
+	unsigned long mask2 = 57672162;
+	unsigned long mask3 = 59769328;
+	unsigned long mask4 = 59;
+	unsigned long mask5 = 75498060;
+	unsigned long mask6 = 116392821;
+	unsigned long mask7 = 74449462;
+	unsigned long mask8 = 13631589;
+	*/
+	int j;
+
+	if (index - 1 >= 0){
+		int begin = index - 1;
+		int len = 2;
+		unsigned long txthash = pack_hash(playload + begin, len, R, Q);
+		//if (txthash == mask8 || txthash == 0 || txthash == mask6 || txthash == mask7 || txthash == mask5 ||txthash == mask || txthash == mask1 || txthash == mask2 || txthash == mask3 || txthash == mask4) {
+		for (j = 0; j < 300; ++j) {
+			if (data[j] != 0) {
+				if (data[j] == txthash)		
+					return 1;
+			}
+			else
+				return 0;
+		}
+		return 0;
+	}
+	else 
+	{
+		return 0;
+	}	
 }
 
 /*
@@ -220,19 +336,21 @@ pack_hash(char *key, int M, int R, long Q)
  */
 void
 pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
-		    int zero_value, int chunk_num)
+		    unsigned long zero_value, int chunk_num)
 {
-	long i;
+	long i, j = 1;
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 	part_set(part, count_packet);
 	part_set(part, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
-		
+	
+	
 	if (delay_time == 0) {
-		if ((txthash & zero_value) == 0) {
+		//if ((txthash & zero_value) == 0) {
+		if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, (chunk_num - 1))) {
 			part_set(part, (chunk_num-1));
 			fprintf(fp2, "%d ", (chunk_num-1));
-			delay_time = chunk_num * 12;
+			delay_time = step;
 		}
 	} else {
 		--delay_time;
@@ -242,13 +360,17 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
 		txthash = (txthash * R + playload[i]) % Q;
 
+		++j;
 		if (delay_time == 0) {
-			if ((txthash & zero_value) == 0) {
+			//if ((txthash & zero_value) == 0 || j >= 552) {
+			//if ((txthash & zero_value) == 0) {
+			if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, i)) {
 				part_set(part, i);
 				//if (i == playload_len-1)
 				//	debug("fuck i is %ld", i);
 				fprintf(fp2, "%ld ", i);
-				delay_time = chunk_num * 12;
+				delay_time = step;
+				j = 0;
 			}
 		} else {
 			delay_time--;
@@ -499,6 +621,7 @@ printPcap(void *data, struct pcap_header *ph)
 						
 						//get the data parting point
 						pack_calculate_part(play_data, len, Q, R, RM, zero_value, chunk_num);
+						//pack_calculate_part2(play_data, len, Q, R, RM, zero_value, chunk_num);
 						pack_SHA(play_data, len);
 						sum_len += len;
 					}
@@ -576,6 +699,7 @@ main(int argc, const char *argv[])
 		zero_value = (2 * zero_value);
 	zero_value = zero_value - 1;
 
+	data_set();
 	
 	fp = fopen(argv[1], "r");
 	if (fp == NULL) {
@@ -616,7 +740,7 @@ main(int argc, const char *argv[])
 					
 
 	remain_SHA();
-	printf("total size is:%lu, save size is:%lu, compress rate is:%f \%\n", sum_len, save_len, 100*((float)save_len/(float)sum_len));
+	printf("total size is:%lu, save size is:%lu, compress rate is:%f %% \n", sum_len, save_len, 100*((float)save_len/(float)sum_len));
 	
 	
 	/*
