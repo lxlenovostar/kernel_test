@@ -23,7 +23,7 @@ typedef struct pcap_header {
 
 } pcap_header;
 
-#define MAX_ETH_FRAME 30000
+#define MAX_ETH_FRAME 36000
 #define INT_TIME 1
 #define ETH_ALEN        6
 #define __LITTLE_ENDIAN_BITFIELD 1
@@ -101,7 +101,7 @@ struct icmphdr {
 /*
  * used for record parting point.
  */
-#define PLEN 5000
+#define PLEN 21000
 typedef struct part_point {
 	long index[PLEN];
 	int end;

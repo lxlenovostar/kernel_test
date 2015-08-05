@@ -14,12 +14,15 @@
 #include "lcthw/dbg.h"
 #include "lcthw/pack.h"
 
-#define SIZE 30000
-#define PACKET_LEN 30000
+#define SIZE 36000
+#define PACKET_LEN 36000
 #define BUCKETS_LEN 997
 
 FILE *fp1;
 FILE *fp2;
+FILE *fp3;
+FILE *fp4;
+char *aux;
 long long start_stime;
 
 long Q = 1;
@@ -27,18 +30,18 @@ int i = 0;
 int R = 1048583;
 //int R = 10;
 long RM = 1;
-int chunk_num = 48;  //控制最小值
-int zero_num = 7;
+int chunk_num = 16;  //控制最小值
+int zero_num = 6;
 unsigned long zero_value = 1;
 static int count_packet = 0;
 static int delay_time = 0;
-int step = 64; //控制块长
+int step = 16; //控制块长
 const int cmplen = 96;
 
 chunk *remain_data = NULL;
 part_point *part = NULL;
 keyvalue *key = NULL;
-keyvalue *value = NULL;
+//keyvalue *value = NULL;
 Hashmap *map = NULL;
 //void *value = NULL; //for filling the value in hashmap.
 HashmapNode *pre_node = NULL; //for internal links.	
@@ -46,7 +49,6 @@ unsigned long save_len = 0;
 unsigned long rm_len = 0;
 unsigned long sum_len = 0;
 unsigned long data[300];
-char *strmem = "try to be a value";
 
 /*
  * this hash function need verify the effect.
@@ -112,16 +114,6 @@ store_data(char *data, long begin, long end, uint8_t *name, int find)
 		strncpy(filename + len_set, buffer, strlen(buffer));
 		filename[len_set + strlen(buffer)] = '\0';
 		
-		/*
-		//just for test.
-		printf("%s\n", buffer);
-		for (i = 0; i < SHA; ++i) 
-				printf("%02x:", name[i] & 0xff);
-		printf("\n");
-		for (i = 0; i < 2*SHA - 1; i += 2) 
-				printf("%c%c:", buffer[i], buffer[i+1]);
-		printf("\n");
-		*/
 		fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 		if (write(fd, data, (end - begin + 1)) != (end - begin + 1))
 		{
@@ -241,11 +233,11 @@ void data_set()
 	//png
 	char *tmp = "HT";
 	*/
-	uint16_t value[] = {0x8950, 0x504e, 0x4945, 0xffd8, 0xffe0, 0xffe1, 0xffd9};
+	uint16_t value[] = {0x850b, 0x0bf0, 0xdbfe, 0x00e2, 0xccc9, 0xc1cc,0xbfc1, 0xc9bf, 0xc3c9, 0x4514, 0x5001, 0x4500, 0x1451, 0x0014, 0x21ff, 0x83ff, 0x68ff, 0xff00, 0x0085, 0xffff, 0x0000, 0x8950, 0x504e, 0x4945, 0xffd8, 0xffe0, 0xffe1, 0xffd9};
 	int i, len;
 	len = sizeof(value)/sizeof(uint16_t);
 	
-	char *keyword[] = {"7a", "9a", "ED", "EA", "HE", "(.", "..", "E.", "P.", ".E", ".P", "QE", "ET", "OS", "ST", "Ac", "Us","\r\n", "jp", "pg", "pn", "ng", "gi", "if", "ho", "HO", "HP", "hp", "WW","ol", "ve", "GE", "PO", "ww", "cd", "HT", "ht", "zh", "ZH", NULL};
+	char *keyword[] = {"90", "7a", "9a", "ED", "EA", "HE", "(.", "..", "E.", "P.", ".E", ".P", "QE", "ET", "OS", "ST", "Ac", "Us","\r\n", "jp", "pg", "pn", "ng", "gi", "if", "ho", "HO", "HP", "hp", "WW","ol", "ve", "GE", "PO", "ww", "cd", "HT", "ht", "zh", "ZH", NULL};
 	char **kwp;
 
 	for (kwp = keyword; *kwp != NULL; kwp++) {
@@ -306,6 +298,77 @@ pack_calculate_part2(char *playload, int playload_len, long Q, int R, long RM,
 	*/
 }
 
+void 
+merge(char *a, int lo, int mid, int hi)
+{
+	int i = lo, j = mid + 1;
+	int k;
+
+	memcpy(aux + lo, a + lo, hi - lo + 1);
+	//for (k = lo; k <= hi; k++) // Copy a[lo..hi] to aux[lo..hi].
+	//	aux[k] = a[k];
+	
+
+	for (k = lo; k <= hi; k++) {
+		if (i > mid)
+			a[k] = aux[j++];
+		else if (j > hi)
+			a[k] = aux[i++];
+		else if (aux[j] < aux[i])
+			a[k] = aux[j++];
+		else
+			a[k] = aux[i++];
+	}
+}
+
+void 
+sort(char *a, int lo, int hi)
+{ 
+	if (hi <= lo) 
+		return;
+		
+	int mid = lo + (hi - lo)/2;
+	sort(a, lo, mid);  // Sort left half.
+	//printf("%d,%d\n", lo, mid);
+	sort(a, mid+1, hi);  // Sort right half.
+	//printf("%d,%d\n", mid+1, hi);
+	merge(a, lo, mid, hi); // Merge results.
+} 
+
+void
+store_char(char *playload, int playload_len)
+{
+	//fprintf(fp2, "%d|%d|", count_packet++, playload_len);
+	int i, count;
+	char cmp;
+
+	char *tmp_data = (char *)malloc(sizeof(char) * playload_len);
+	aux = (char *)malloc(sizeof(char) * playload_len);
+	memcpy(tmp_data, playload, playload_len);
+
+	//first sort
+	sort(tmp_data, 0, playload_len - 1);
+
+	//lookup 
+	count = 1;
+	cmp = tmp_data[0];
+	for (i = 1; i < playload_len; ++i) {
+		
+		if (cmp != tmp_data[i]) {
+			fprintf(fp3, "%x:%d|", cmp&0xff, count);
+			count = 1;
+			cmp = tmp_data[i];
+		}
+		else {
+			count++;
+		}
+	}		
+	fprintf(fp3, "\n");
+
+	free(tmp_data);
+	free(aux);
+}
+
 unsigned long 
 check_data_point(char *playload, long Q, int R, int index) 
 {
@@ -332,11 +395,47 @@ check_data_point(char *playload, long Q, int R, int index)
 	unsigned long mask7 = 74449462;
 	unsigned long mask8 = 13631589;
 	*/
-	int j;
+	int j; 
+	int data_len;
 
 	if (index - 1 >= 0){
 		int begin = index - 1;
 		int len = 2;
+		//uint8_t gen_data[] = {0,32,48, 101, 105, 115, 116, 255};
+		uint8_t gen_data[] = {0x70, 0x2d, 0xa2, 0x93, 0xc0, 0x18, 0x61, 0x03, 0xcd, 0x25, 0xb1, 0x67, 0xd6, 0xc6, 0xe0, 0x02};
+		//uint8_t gen_data[] = {0x70, 0x2d, 0xa2, 0x93, 0xc0, 0x18, 0x61, 0x03};
+		data_len = sizeof(gen_data)/sizeof(uint8_t);
+
+		char a = (playload + begin)[0];	
+		char b = (playload + begin)[1];
+		char a1 = (a>>4) & 0xf;
+		char a2 = a & 0xf;
+		char b1 = (b>>4) & 0xf;
+		char b2 = b & 0xf;
+
+		//if ((a == b) || (a == b + 1) || (b == a + 1) || (a == 0x00) || (b == 0x00) || (a == 0xff) || (b == 0xff))
+		//if ((a == b) || (a == b + 1) || (b == a + 1) || (a1 == a2) || (b1 == b2) || (a1 == 0xf) || (a2 == 0xf) || (b1 == 0xf) || (b2 == 0xf))
+		//if ((a == b) || (a == b + 1) || (b == a + 1))
+		if ((a == b) || (a == b + 1) || (b == a + 1) || (a1 == 0x0) || (a2 == 0x0) || (b1 == 0x0) || (b2 == 0x0))
+			return 1;
+	
+		return 0;	
+
+		for (j = 0; j < data_len; j++) {
+			if ((playload + begin)[0] == gen_data[j] || (playload + begin)[1] == gen_data[j])
+				return 1;
+		}
+		return 0;
+	
+		if ((playload + begin)[0] == (playload + begin)[1] || ((playload + begin)[1] == (playload + begin)[0] + 1) || ((playload + begin)[0] == (playload + begin)[1] + 1) )
+		//if ((playload + begin)[0] == (playload + begin)[1])
+			return 1;
+			
+		return 0;	
+		//if (((playload + begin)[1]>>4 & 0xf) == 0xb || ((playload + begin)[1]>>4 & 0xf) == 0xc || ((playload + begin)[0]>>4 & 0xf) == 0xb || ((playload + begin)[0]>>4 & 0xf) == 0xc)
+		//	return 1;
+		
+
 		unsigned long txthash = pack_hash(playload + begin, len, R, Q);
 		//if (txthash == mask8 || txthash == 0 || txthash == mask6 || txthash == mask7 || txthash == mask5 ||txthash == mask || txthash == mask1 || txthash == mask2 || txthash == mask3 || txthash == mask4) {
 		for (j = 0; j < 300; ++j) {
@@ -369,16 +468,17 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 	part_set(part, playload_len);
 	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
 	
-	
 	if (delay_time == 0) {
 		//if ((txthash & zero_value) == 0) {
 		if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, (chunk_num - 1))) {
+		//if (check_data_point(playload, Q, R, (chunk_num - 1))) {
 			part_set(part, (chunk_num-1));
 			fprintf(fp2, "%d ", (chunk_num-1));
 			delay_time = step;
 		}
 	} else {
 		--delay_time;
+			
 	}
 
 	for (i = chunk_num; i < playload_len; i++) {
@@ -390,6 +490,7 @@ pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 			//if ((txthash & zero_value) == 0 || j >= 52) {
 			//if ((txthash & zero_value) == 0) {
 			if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, i)) {
+			//if (check_data_point(playload, Q, R, i)) {
 				part_set(part, i);
 				fprintf(fp2, "%ld ", i);
 				delay_time = step;
@@ -476,6 +577,8 @@ rm_data(char *playload, int playload_len, int i, int pp, char *data)
 {
 	int step = 32;
 	int j; 
+	int cmplen = 96;
+	char *strmem = "try but not effective.";
 	
 	if (pp + cmplen > playload_len - 1 || data == strmem)
 	{
@@ -517,9 +620,6 @@ pack_SHA(char *playload, int playload_len)
 	char *res = NULL;	
 	void *hashmap_key = NULL;
 	res = malloc(SHA*sizeof(char));
-	char tmp_value[96] = {0};
-	void *data = NULL;
-	void *data_mem = NULL;
 
 	switch (part->end) {
 		case 0:
@@ -543,34 +643,46 @@ pack_SHA(char *playload, int playload_len)
 			pp = part->index[2];
 			chunk_merge(remain_data, playload, 0, pp);
 			len = remain_data->end;
+			int index_start = 0;
+			int index_end = remain_data->end-1;
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 			chunk_clean(remain_data);
 			
-			if ((data = Hashmap_get(map, res)) == NULL) {
+			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
 				check_mem(hashmap_key);
-				{
-					if (pp + cmplen > playload_len - 1)
-					{
-						memcpy(tmp_value, playload+pp+1, cmplen);
-						data_mem = keyvalue_push(value, tmp_value);
-						memset(tmp_value, 0, cmplen);
-					}					
-					else 
-						data_mem = strmem;					
-				}
-				Hashmap_set(map, hashmap_key, data_mem);
+				Hashmap_set(map, hashmap_key, hashmap_key);
 				//store_data(remain_data->content, 0, remain_data->end-1, res, 0);
+				int k;
+				fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
+				for (k = 0; k < 20; k++) {
+					//printf("%02x:", digest[i]);
+					fprintf(fp4, "%02x:", res[k]&0xff);
+				}
+				fprintf(fp4, "\n");
+				for (k = 0; k < len; k++) {
+					fprintf(fp4, "%02x:", remain_data->content[k]&0xff);
+				}
+				fprintf(fp4, "\n");
 			}
 			else {
 				debug("find it");
 				//store_data(remain_data->content, 0, 1, res, 1);
 				save_len += len;
-				i = 2;
-				rm_data(playload, playload_len, i, pp, data); 
+
+				int k;
+				fprintf(fp1, "%d|%d|%d|%d\nsha|", count_packet-1, len, index_start, index_end);
+				for (k = 0; k < 20; k++) {
+					//printf("%02x:", digest[i]);
+					fprintf(fp1, "%02x:", res[k]&0xff);
+				}
+				fprintf(fp1, "\n");
+				for (k = 0; k < len; k++) {
+					fprintf(fp1, "%02x:", remain_data->content[k]&0xff);
+				}
+				fprintf(fp1, "\n");
 			}
 			
-			//chunk_clean(remain_data);
 			if (pp != playload_len-1) {
 				chunk_store(remain_data, playload, pp+1, playload_len-1);
 			}
@@ -584,39 +696,64 @@ pack_SHA(char *playload, int playload_len)
 		default:
 			for (i = 2; i < part->end; ++i) {
 				pp = part->index[i];
+				int index_start = 0;
+				int index_end = 0;
 				if (i == 2) {
 					chunk_merge(remain_data, playload, 0, pp);
+					index_start = 0;
+					index_end = remain_data->end-1;
 					len = remain_data->end;
 					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
 					chunk_clean(remain_data);
 				}
 				else {
+					index_start = part->index[i-1] + 1;
+					index_end = part->index[i];
 					len = part->index[i] - part->index[i-1];
-					if (len == 0) //we have handle it for the same data at the tail.
-						continue;
-					calculate_sha(playload, part->index[i-1]+1, part->index[i], res);
+					calculate_sha(playload, part->index[i-1] + 1, part->index[i], res);
 				}
 
-				if ((data = Hashmap_get(map, res)) == NULL) {
+				if (Hashmap_get(map, res) == NULL) {
 					hashmap_key = keyvalue_push(key, res);
 					check_mem(hashmap_key);
-					{
-						if (pp + cmplen > playload_len - 1)
-						{
-							memcpy(tmp_value, playload+pp+1, cmplen);
-							data_mem = keyvalue_push(value, tmp_value);
-							memset(tmp_value, 0, cmplen);
-						}
-						else 
-							data_mem = strmem;					
-					}
-					Hashmap_set(map, hashmap_key, data_mem);
+					Hashmap_set(map, hashmap_key, hashmap_key);
 					debug("set it");
+					
+					int k;
+					fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
+					for (k = 0; k < 20; k++) {
+						//printf("%02x:", digest[i]);
+						fprintf(fp4, "%02x:", res[k]&0xff);
+					}
+					fprintf(fp4, "\n");
+					for (k = index_start; k <= index_end; k++) {
+						if (i == 2)
+							fprintf(fp4, "%02x:", remain_data->content[k]&0xff);
+						else
+							fprintf(fp4, "%02x:", playload[k]&0xff);
+					}
+					fprintf(fp4, "\n");
 				}
 				else {
 					debug("find it");
 					save_len += len;
-					rm_data(playload, playload_len, i, pp, data); 
+					
+					int k;
+					fprintf(fp1, "%d|%d|%d|%d\nsha|", count_packet-1, len, index_start, index_end);
+					for (k = 0; k < 20; k++) {
+						//printf("%02x:", digest[i]);
+						fprintf(fp1, "%02x:", res[k]&0xff);
+					}
+					fprintf(fp1, "\n");
+					for (k = index_start; k <= index_end; k++) {
+						if (i == 2)
+							fprintf(fp1, "%02x:", remain_data->content[k]&0xff);
+						else
+							fprintf(fp1, "%02x:", playload[k]&0xff);
+					}
+					fprintf(fp1, "\n");
+					
+					//rm_data(playload, playload_len, i, pp, data); 
 				}
 				//set_internallinks(hashmap_key, len);
 			}
@@ -664,10 +801,10 @@ printPcap(void *data, struct pcap_header *ph)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	long long stime;
-	char play_data[30000];
+	char play_data[PACKET_LEN];
 	int len;
 
-	memset(play_data, '\0', 30000);
+	memset(play_data, '\0', PACKET_LEN);
 
 	if (data == NULL) {
 		return;
@@ -702,13 +839,14 @@ printPcap(void *data, struct pcap_header *ph)
      				 * small packet, pass it.
      				 */
 					if (len >= chunk_num) {
+						fprintf(fp1, "%d|%d|%u\n", count_packet, len, ntohl(tcph->seq));
 						part_clean(part);
-						
 						//get the data parting point
 						pack_calculate_part(play_data, len, Q, R, RM, zero_value, chunk_num);
 						//pack_calculate_part2(play_data, len, Q, R, RM, zero_value, chunk_num);
 						pack_SHA(play_data, len);
 						sum_len += len;
+						//store_char(play_data, len);
 					}
 				}
 			}
@@ -765,9 +903,6 @@ main(int argc, const char *argv[])
 
 	key = keyvalue_create(0, 0);
 	check_mem(key);
-	
-	value = keyvalue_create(10000, cmplen);
-	check_mem(value);
 
 	map = Hashmap_create(BUCKETS_LEN, Hashmap_mode_compare, Hashmap_mode_hash);
 	check(map != NULL, "Failed to create map.");
@@ -799,10 +934,13 @@ main(int argc, const char *argv[])
 
 	fp1 = fopen("source", "w");
 	fp2 = fopen("result", "w");
+	fp3 = fopen("char_set", "w");
+	fp4 = fopen("char_get", "w");
 	buff = (void *) malloc(MAX_ETH_FRAME);
 
 	for (count = 1;; count++) {
 		memset(buff, 0, MAX_ETH_FRAME);
+
 		readSize = fread(&ph, sizeof (pcap_header), 1, fp);
 		if (readSize <= 0) {
 			break;
@@ -812,6 +950,9 @@ main(int argc, const char *argv[])
 			fprintf(stderr, "malloc memory failed.\n");
 			ret = -1;
 		}
+
+		//check_mem(buff);
+		//printf("len is %d\n", ph.capture_len);
 
 		readSize = fread(buff, 1, ph.capture_len, fp);
 		if (readSize != (int) ph.capture_len) {
@@ -841,12 +982,13 @@ main(int argc, const char *argv[])
 		chunk_destroy(remain_data);
 		part_destroy(part);
 		keyvalue_destroy(key);
-		keyvalue_destroy(value);
 		Hashmap_destroy(map);
 		fclose(fp);
 		fclose(fp1);
 		fclose(fp2);
 		//fclose(fp2);
+		fclose(fp3);
+		fclose(fp4);
 		free(buff);
 		return ret;
 }

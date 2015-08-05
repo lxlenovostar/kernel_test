@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define SHA 20 //SHA-1 need 20 bytes.
-#define SHANUM 8000000
+#define SHANUM 50000000
 
 
 typedef struct keyvalue{
