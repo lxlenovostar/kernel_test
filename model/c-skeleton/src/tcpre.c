@@ -39,7 +39,7 @@ hash(char *key, int M, int R, long Q)
 }
 
 /*
- * choose 1460 or the other bytes calculate their hash values.
+ * choose 64 bytes calculate their hash values.
  */
 int
 calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
@@ -53,33 +53,11 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 	if ((txthash & zero_value) == 0) {
 		//insert the hashmap.
-
-		//just for test
-		/*char temphash[65];
-		memcpy(temphash, playload, chunk_num);
-		temphash[chunk_num] = '\0';
-		fprintf(fpw, "%s %lu\n", temphash, txthash);
-		*/
-
 		if ((data = Hashmap_get(map, &txthash)) != NULL) {
 			if (memcmp(data, playload, chunk_num) == 0) {
 				++recount;
 				delay_time = chunk_num;
-
-				/*
-				//fixup : strlen maybe a bug
-				int cmp_len = strlen(data) > playload_len ? playload_len : strlen(data);
-				for (i = chunk_num; i < cmp_len; ++i) {
-					if (data[i] == playload[i]) {
-						++delay_time;
-						++commonbytes;
-						debug("find");
-					}
-					else
-						break;
-				}
-				*/
-
+				
 				char temp[65];
 				memcpy(temp, playload, chunk_num);
 				temp[chunk_num] = '\0';
@@ -103,12 +81,6 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 
 				++hashmapnum;
 				stats[txthash % BUCKETS_LEN] += 1;
-				/*
-				   char temphash[65];
-				   memcpy(temphash, playload, chunk_num);
-				   temphash[chunk_num] = '\0';
-				   fprintf(fpw, "%s %lu\n", temphash, txthash);
-				 */
 			} else {
 				goto error;
 			}
@@ -123,35 +95,10 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 			if ((txthash & zero_value) == 0) {
 				//check whether we have the same one.
 
-				// just for test
-				/*char temphash[65];
-				memcpy(temphash, playload + i - chunk_num,
-				       chunk_num);
-				temphash[chunk_num] = '\0';
-				fprintf(fpw, "%s %lu\n", temphash, txthash);
-				*/
-
 				if ((data = Hashmap_get(map, &txthash)) != NULL) {
 					if (memcmp(data, playload + i - chunk_num, chunk_num) == 0) {
 						++recount;
 						delay_time = chunk_num;
-						
-						/*
-						//fixup : strlen maybe a bug
-						int cmp_len = strlen(data) > playload_len - i? playload_len - i : strlen(data);
-						int j, k;
-						k = i;
-						for (j = chunk_num; j < cmp_len; ++j) {
-							if (data[j] == playload[k]) {
-								++delay_time;
-								++commonbytes;
-								++k;
-								debug("find1");
-							}
-							else
-								break;
-						}
-						*/
 
 						char temp[65];
 						memcpy(temp,
@@ -181,12 +128,6 @@ calculate_hash(char *playload, int playload_len, long Q, int R, long RM,
 					++reindex;
 					++hashmapnum;
 					stats[txthash % BUCKETS_LEN] += 1;
-					/*
-					   char temphash[65];
-					   memcpy(temphash, playload + i - chunk_num,
-					   chunk_num);
-					   temphash[chunk_num] = '\0';
-					   fprintf(fpw, "%s %lu\n", temphash, txthash); */
 				} else {
 					goto error;
 				}
@@ -289,7 +230,7 @@ int
 main()
 {
 	int chunk_num = CHUNK;	// divide the string into chunk
-	int zero_num = 5;	// the number of bits which equals 0
+	int zero_num = 2;	// the number of bits which equals 0
 	int zero_value = 1;
 	long Q = 1;
 	int i = 0;

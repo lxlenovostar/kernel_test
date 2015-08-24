@@ -8,7 +8,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <dirent.h> 
-#include <sys/time.h>   
+#include <limits.h>
 #include "../src/lcthw/sha.h"
 #include "../src/lcthw/chunk.h"
 #include "../src/lcthw/hashmap.h"
@@ -17,36 +17,24 @@
 
 #define SIZE 36000
 #define PACKET_LEN 36000
-//#define BUCKETS_LEN 997
-//#define BUCKETS_LEN 1999
-//#define BUCKETS_LEN 3989
-//#define BUCKETS_LEN 7993
-//#define BUCKETS_LEN 15991
-//#define BUCKETS_LEN 31991
-//#define BUCKETS_LEN 63997
-#define BUCKETS_LEN 127997
-
+#define BUCKETS_LEN 997
 
 FILE *fp1;
 FILE *fp2;
 FILE *fp3;
 FILE *fp4;
-int f_write;
 char *aux;
 long long start_stime;
-unsigned long count_sec = 0;
 
 long Q = 1;
 int i = 0;
 int R = 1048583;
 //int R = 10;
 long RM = 1;
-int chunk_num = 32;  //控制最小值
 int zero_num = 6;
 unsigned long zero_value = 1;
 static int count_packet = 0;
-static int delay_time = 0;
-int step = 32; //控制块长
+int step = 16; 
 const int cmplen = 96;
 
 chunk *remain_data = NULL;
@@ -62,14 +50,15 @@ unsigned long sum_len = 0;
 unsigned long data[300];
 
 /*
- * return microseconds.
+ * WINN
  */
-long getCurrentTime()    
-{    
-    struct timeval tv;    
-    gettimeofday(&tv,NULL);    
-    return tv.tv_usec + tv.tv_sec*1000*1000;    
-}
+#define WINDOW 16
+#define THRESHOLD 16 
+int chunk_num = 16;  //最小hash值的计算
+long min_index = 0;
+//unsigned long min_hash = ULLONG_MAX;
+unsigned long min_hash = 0;
+int window = WINDOW;
 
 /*
  * this hash function need verify the effect.
@@ -284,7 +273,6 @@ void data_set()
 	}	
 }
 
-
 void 
 merge(char *a, int lo, int mid, int hi)
 {
@@ -402,8 +390,8 @@ check_data_point(char *playload, long Q, int R, int index)
 
 		//if ((a == b) || (a == b + 1) || (b == a + 1) || (a == 0x00) || (b == 0x00) || (a == 0xff) || (b == 0xff))
 		//if ((a == b) || (a == b + 1) || (b == a + 1) || (a1 == a2) || (b1 == b2) || (a1 == 0xf) || (a2 == 0xf) || (b1 == 0xf) || (b2 == 0xf))
-		if ((a == b) || (a == b + 1) || (b == a + 1))
-		//if ((a == b) || (a == b + 1) || (b == a + 1) || (a1 == 0x0) || (a2 == 0x0) || (b1 == 0x0) || (b2 == 0x0))
+		//if ((a == b) || (a == b + 1) || (b == a + 1))
+		if ((a == b) || (a == b + 1) || (b == a + 1) || (a1 == 0x0) || (a2 == 0x0) || (b1 == 0x0) || (b2 == 0x0))
 			return 1;
 	
 		return 0;	
@@ -448,49 +436,88 @@ void
 pack_calculate_part(char *playload, int playload_len, long Q, int R, long RM,
 		    unsigned long zero_value, int chunk_num)
 {
-	long i, j = 1;
+	long i;
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 	
 	part_set(part, count_packet);
 	part_set(part, playload_len);
-	//fprintf(fp2, "%d|%d|", count_packet++, playload_len);
-	
-	if (delay_time == 0) {
-		//if ((txthash & zero_value) == 0) {
-		if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, (chunk_num - 1))) {
-		//if (check_data_point(playload, Q, R, (chunk_num - 1))) {
-			part_set(part, (chunk_num-1));
-			//fprintf(fp2, "%d ", (chunk_num-1));
-			delay_time = step;
-		}
-	} else {
-		--delay_time;
-			
+	fprintf(fp2, "%d|%d|", count_packet++, playload_len);
+
+	//printf("window1 is %d\n", window);
+	window--;
+	if (txthash >= min_hash) {
+		min_index = chunk_num - 1;
+		min_hash = txthash;
 	}
+
+	if (window == 0) {
+		part_set(part, min_index);
+		fprintf(fp2, "%ld ", min_index);
+		
+		//printf("%ld ", min_index);
+		
+		window = WINDOW;
+		min_index = 0;
+		//min_hash = ULLONG_MAX;
+		min_hash = 0;
+	}	
 
 	for (i = chunk_num; i < playload_len; i++) {
 		txthash = (txthash + Q - RM * playload[i - chunk_num] % Q) % Q;
 		txthash = (txthash * R + playload[i]) % Q;
-
-		++j;
-		if (delay_time == 0) {
-			//if ((txthash & zero_value) == 0 || j >= 52) {
-			//if ((txthash & zero_value) == 0) {
-			if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, i)) {
-			//if (check_data_point(playload, Q, R, i)) {
-				part_set(part, i);
-				//fprintf(fp2, "%ld ", i);
-				delay_time = step;
-				j = 0;
-			}
-		} else {
-			delay_time--;
-			j--;
+				
+		//printf("window2 is %d and i is:%d\n", window, i);
+		window--;
+		if (txthash >= min_hash) {
+			min_index = i;
+			min_hash = txthash;
 		}
+		
+		if (window == 0) {
+			//printf("min_index is:%d, end is:%d, %d\n", min_index, part->index[part->end-1], part->end);
+			
+			if (part->end == 2) {
+				part_set(part, min_index);
+				fprintf(fp2, "%ld ", min_index);
+			}
+	
+			if (part->end > 2 && min_index - part->index[part->end-1] >= THRESHOLD)
+			{	
+				//printf("2min_index is:%d, end is:%d, %d\n", min_index, part->index[part->end-1], part->end);
+				part_set(part, min_index);
+				fprintf(fp2, "%ld ", min_index);
+			}
+		
+		
+			//printf("%ld ", min_index);
+			
+			window = WINDOW;
+			min_index = 0;
+			//min_hash = ULLONG_MAX;
+			min_hash = 0;
+		}	
 	}
-	//fprintf(fp2, "\n");
-}
 
+	//if (min_index == 0 && min_hash == ULLONG_MAX && window == WINDOW) {
+	if (min_index == 0 && min_hash == 0 && window == WINDOW) {
+		fprintf(fp2, "\n");
+	}	
+	else {	
+		if (window >= WINDOW/2) {
+			//part_set(part, min_index);
+			//fprintf(fp2, "%ld ", min_index);
+			
+			//printf("%ld ", min_index);
+		}	
+		
+		window = WINDOW;
+		min_index = 0;
+		//min_hash = ULLONG_MAX;
+		min_hash = 0;
+		fprintf(fp2, "\n");
+	}	
+	//printf("window3 is %d\n", window);
+}
 
 /*
  * calculate the SHA-1 for store the data.
@@ -529,28 +556,14 @@ pack_SHA(char *playload, int playload_len)
 			len = remain_data->end;
 			int index_start = 0;
 			int index_end = remain_data->end-1;
-            
-            long begin_time, end_time;
-            begin_time = getCurrentTime();
 			calculate_sha(remain_data->content, 0, remain_data->end-1, res);
-            end_time = getCurrentTime();
-            count_sec += end_time - begin_time;
-            //printf("%ld, %ld, %lu\n", begin_time, end_time, count_sec);
-
 			chunk_clean(remain_data);
 			
 			if (Hashmap_get(map, res) == NULL) {
 				hashmap_key = keyvalue_push(key, res);
 				check_mem(hashmap_key);
 				Hashmap_set(map, hashmap_key, hashmap_key);
-	            
-                /*
-                if ( write(f_write, remain_data->content, len) != len) {
-                    printf("write error\n");
-                    exit(-1);
-                }*/
-
-    			//store_data(remain_data->content, 0, remain_data->end-1, res, 0);
+				//store_data(remain_data->content, 0, remain_data->end-1, res, 0);
 				int k;/*
 				fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
 				for (k = 0; k < 20; k++) {
@@ -567,27 +580,18 @@ pack_SHA(char *playload, int playload_len)
 				debug("find it");
 				//store_data(remain_data->content, 0, 1, res, 1);
 				save_len += len;
-	            /*
-                if ( write(f_write, remain_data->content, len) != len) {
-                    printf("write error\n");
-                    exit(-1);
-                }*/
 
-				int k; /*
+				int k;/*
 				fprintf(fp1, "%d|%d|%d|%d\nsha|", count_packet-1, len, index_start, index_end);
-				//just test
-                fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
 				for (k = 0; k < 20; k++) {
 					//printf("%02x:", digest[i]);
 					fprintf(fp1, "%02x:", res[k]&0xff);
-					fprintf(fp4, "%02x:", res[k]&0xff);
 				}
 				fprintf(fp1, "\n");
 				for (k = 0; k < len; k++) {
 					fprintf(fp1, "%02x:", remain_data->content[k]&0xff);
 				}
-				fprintf(fp1, "\n");
-				fprintf(fp4, "\nFOUND\n");*/
+				fprintf(fp1, "\n");*/
 			}
 			
 			if (pp != playload_len-1) {
@@ -605,29 +609,22 @@ pack_SHA(char *playload, int playload_len)
 				pp = part->index[i];
 				int index_start = 0;
 				int index_end = 0;
+				//printf("pp:%d\n", pp);
 				if (i == 2) {
 					chunk_merge(remain_data, playload, 0, pp);
 					index_start = 0;
 					index_end = remain_data->end-1;
 					len = remain_data->end;
-                    long begin_time, end_time;
-                    begin_time = getCurrentTime();
+					//printf("what1\n");
 					calculate_sha(remain_data->content, 0, remain_data->end-1, res);
-                    end_time = getCurrentTime();
-                    count_sec += end_time - begin_time;
-                    //printf("%ld, %ld, %lu\n", begin_time, end_time, count_sec);
 					chunk_clean(remain_data);
 				}
 				else {
 					index_start = part->index[i-1] + 1;
 					index_end = part->index[i];
 					len = part->index[i] - part->index[i-1];
-                    long begin_time, end_time;
-                    begin_time = getCurrentTime();
+					//printf("what2\n");
 					calculate_sha(playload, part->index[i-1] + 1, part->index[i], res);
-                    end_time = getCurrentTime();
-                    count_sec += end_time - begin_time;
-                    //printf("%ld, %ld, %lu\n", begin_time, end_time, count_sec);
 				}
 
 				if (Hashmap_get(map, res) == NULL) {
@@ -635,20 +632,6 @@ pack_SHA(char *playload, int playload_len)
 					check_mem(hashmap_key);
 					Hashmap_set(map, hashmap_key, hashmap_key);
 					debug("set it");
-	                /*
-                    int write_len = index_end - index_start + 1;
-                    if (i == 2) {
-                        if ( write(f_write, remain_data->content + index_start, write_len) != write_len) {
-                            printf("write error\n");
-                            exit(-1);
-                        }
-                    } 
-                    else {
-                        if ( write(f_write, playload + index_start, write_len) != write_len) {
-                            printf("write error\n");
-                            exit(-1);
-                        }
-                    }*/
 					
 					int k;/*
 					fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
@@ -668,34 +651,14 @@ pack_SHA(char *playload, int playload_len)
 				else {
 					debug("find it");
 					save_len += len;
-                    /*
-                    int write_len = index_end - index_start + 1;
-                    if (i == 2) {
-                        if ( write(f_write, remain_data->content + index_start, write_len) != write_len) {
-                            printf("write error\n");
-                            exit(-1);
-                        }
-                    } 
-                    else {
-                        if ( write(f_write, playload + index_start, write_len) != write_len) {
-                            printf("write error\n");
-                            exit(-1);
-                        }
-                    }*/
-					
 					
 					int k;/*
 					fprintf(fp1, "%d|%d|%d|%d\nsha|", count_packet-1, len, index_start, index_end);
-				    //just test
-                    fprintf(fp4, "%d|%d|%d|%d\n", count_packet-1, len, index_start, index_end);
 					for (k = 0; k < 20; k++) {
 						//printf("%02x:", digest[i]);
 						fprintf(fp1, "%02x:", res[k]&0xff);
-						fprintf(fp4, "%02x:", res[k]&0xff);
 					}
 					fprintf(fp1, "\n");
-					fprintf(fp4, "\n");
-					fprintf(fp4, "FOUND\n");
 					for (k = index_start; k <= index_end; k++) {
 						if (i == 2)
 							fprintf(fp1, "%02x:", remain_data->content[k]&0xff);
@@ -790,7 +753,7 @@ printPcap(void *data, struct pcap_header *ph)
      				 * small packet, pass it.
      				 */
 					if (len >= chunk_num) {
-						//fprintf(fp1, "%d|%d|%u\n", count_packet, len, ntohl(tcph->seq));
+						fprintf(fp1, "%d|%d|%u\n", count_packet, len, ntohl(tcph->seq));
 						part_clean(part);
 						//get the data parting point
 						pack_calculate_part(play_data, len, Q, R, RM, zero_value, chunk_num);
@@ -835,7 +798,6 @@ text_test(const char* filename, long Q, int R, long RM, int  zero_value, int chu
 		printf("something is error.\n");
 }
 
-    
 int
 main(int argc, const char *argv[])
 {
@@ -888,11 +850,6 @@ main(int argc, const char *argv[])
 	fp2 = fopen("result", "w");
 	fp3 = fopen("char_set", "w");
 	fp4 = fopen("char_get", "w");
-    
-    f_write = open("bin/end_prof", O_CREAT | O_WRONLY, S_IRUSR);
-    if (f_write == -1)
-        goto error;
-
 	buff = (void *) malloc(MAX_ETH_FRAME);
 
 	for (count = 1;; count++) {
@@ -926,7 +883,7 @@ main(int argc, const char *argv[])
 					
 
 	remain_SHA();
-	printf("sha_time is:%lu, total size is:%lu, save size is:%lu, add rm size is:%lu, compress rate is:%f %% \n", count_sec/(1000*1000), sum_len, save_len, rm_len, 100*((float)(save_len+rm_len)/(float)sum_len));
+	printf("total size is:%lu, save size is:%lu, add rm size is:%lu, compress rate is:%f %% \n", sum_len, save_len, rm_len, 100*((float)(save_len+rm_len)/(float)sum_len));
 	
 	
 	/*
@@ -946,7 +903,6 @@ main(int argc, const char *argv[])
 		//fclose(fp2);
 		fclose(fp3);
 		fclose(fp4);
-        close(f_write);
 		free(buff);
 		return ret;
 }
