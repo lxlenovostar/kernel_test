@@ -5,7 +5,8 @@ PREFIX?=/usr/local
 SOURCES=$(wildcard src/**/*.c)
 OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
 
-SOURCESMAIN=$(wildcard src/*.c)
+#SOURCESMAIN=$(wildcard src/winn_pack.c)
+SOURCESMAIN=$(wildcard src/pack.c)
 OBJECTSMAIN=$(patsubst %.c,%,$(SOURCESMAIN))
 
 TEST_SRC=$(wildcard tests/*_tests.c)
