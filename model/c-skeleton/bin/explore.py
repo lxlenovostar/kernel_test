@@ -18,6 +18,8 @@ def getsd():
 		data.append(float(dummy_i))
 	print stdDeviation(data)
 
+value = 20000 
+
 def main():
 	"""
 	read the data file.
@@ -42,6 +44,10 @@ def main():
 			for i in range(len(point)):
 				if i == 0:
 					dis = remain + int(point[0])
+					if dis >= value:
+						print dis
+						print 'what1', data, point[0], remain
+						#exit(-1)
 					result.append(dis)
 					pre = point[0]
 		
@@ -49,18 +55,26 @@ def main():
 						remain = int(data_len) - int(point[i])			
 				elif i == len(point) - 1:
 					dis = int(point[i]) - int(pre)
+					if dis >= value:
+						print dis
+						print 'what2', data, point[i], pre
 					if dis == 0:
 						print 'error: ' + str(i) + ' ' + pre
 					result.append(dis)
-					remain = int(data_len) - int(point[i])			
+					remain = int(data_len) - int(point[i])
+					#print 'rem1', remain			
 				else:
 					dis = int(point[i]) - int(pre)
+					if dis >= value:
+						print dis
+						print 'what3', data, point[i], pre
 					if dis == 0:
 						print 'error: ' + str(i) + ' ' + pre 
 					result.append(dis)
 					pre = point[i]					
 		else:
 			remain += int(data_len)
+			#print 'rem2', data, split_data, point, remain			
 
 	fw = open('data', 'w')
 	for i in result:
