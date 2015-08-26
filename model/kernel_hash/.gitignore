@@ -1,0 +1,13 @@
+*.out
+tags
+*.cmd
+*.ko
+.tmp_versions
+Module.markers
+Module.symvers
+modules.order
+ws_symbols_address.h
+*.o
+*.mod.c
+*.unsigned
+
