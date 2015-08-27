@@ -11,8 +11,39 @@ MODULE_LICENSE("Dual BSD/GPL");
 static int hello_init(void)
 {
     struct scatterlist sg;
+    struct crypto_hash *tfm;
     struct hash_desc desc;
-    char *plaintext = "plaintext goes here";    
+    unsigned char output[SHA1_LENGTH];
+    unsigned char buf = "plaintext goes here";
+    int len = strlen(buf);    
+    int i;
+
+    printk(KERN_INFO "sha1: %s\n", __FUNCTION__);
+
+    memset(buf, 'A', 10);
+    memset(output, 0x00, SHA1_LENGTH);
+
+    tfm = crypto_alloc_hash("sha1", 0, CRYPTO_ALG_ASYNC);
+
+    desc.tfm = tfm;
+    desc.flags = 0;
+
+    sg_init_one(&sg, buf, len);
+    crypto_hash_init(&desc);
+
+    crypto_hash_update(&desc, &sg, len);
+    crypto_hash_final(&desc, output);
+
+    for (i = 0; i < 20; i++) {
+        printk(KERN_DEBUG "%02x:", output[i]&0xff);
+    }
+
+    crypto_free_hash(tfm);
+
+    /*
+    struct scatterlist sg;
+    struct hash_desc desc;
+    char *plaintext = "laintext goes here";    
     size_t len = strlen(plaintext);
     unsigned char output[SHA1_LENGTH];
     int i;
@@ -29,9 +60,10 @@ static int hello_init(void)
     crypto_free_hash(desc.tfm);
 
     for (i = 0; i < 20; i++) {
-        printk(KERN_ERR "%d-%d\n", output[i], i);
+        printk("%02x:", output[i]&0xff);
     }
-    /*
+    printk(KERN_ERR "\n");
+    
     memset(buf, 'A', 10);
     memset(output, 0x00, SHA1_LENGTH);
 
