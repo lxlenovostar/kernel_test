@@ -14,12 +14,14 @@ EXTRA_CFLAGS += -I$(LDDINC)
 #line; the second pass is by the kbuild system, which is
 #initiated by the parameterized "make" in the default target.
 ifneq ($(KERNELRELEASE),)
-$(APP_NAME)-objs := $(WS_OBJS)
 obj-m	:= $(APP_NAME).o
+$(APP_NAME)-objs := $(WS_OBJS)
 
 else
+
 #find all source file.
-WS_CFILES   = $(shell find -name "*.c")
+#WS_CFILES   = $(shell find -name "*.c")
+WS_CFILES   = $(shell find -maxdepth 1 -name "*.c")
 #get the object file.
 export WS_OBJS = $(WS_CFILES:.c=.o)
 
@@ -31,7 +33,6 @@ PWD := $(shell pwd)
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) LDDINC=$(PWD) modules
 endif
-
 
 .PHONY : clean tags
 clean:
