@@ -6,7 +6,7 @@
 #include <linux/net.h>
 #include <linux/tcp.h>
 
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_LOG(format, args...) printk(format, ## args)

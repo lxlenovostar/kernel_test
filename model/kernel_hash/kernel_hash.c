@@ -20,12 +20,13 @@ static int minit(void)
 		printk("Failed to register nf_in %s.\n", THIS_MODULE->name);
 		goto err_nf_reg_in;
 	}    
-	
+	goto out;	
+
 err_nf_reg_in:
 	nf_unregister_hook(&nf_in_ops);
 err_nf_reg_out:
 	nf_unregister_hook(&nf_out_ops);
-
+out:
 	return err;    
 }
 

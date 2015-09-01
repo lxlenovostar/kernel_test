@@ -19,16 +19,28 @@ static unsigned int nf_out(
 		const struct net_device *out,
 		int (*okfn)(struct sk_buff *))
 {
+	skb_linearize(skb);
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	struct tcphdr *tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 	char *data = NULL;
 	size_t data_len = 0;
+	unsigned short dport;
+	int i;
 	
 	if (iph->protocol != IPPROTO_TCP)
 		return NF_ACCEPT;
-	
-	data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
-	data_len = iph->tot_len - (iph->ihl << 2) + (tcph->doff << 2);
+
+	dport = tcph->dest;
+
+	if (likely(ntohs(dport) == 8888)) {	
+		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
+		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
+		printk(KERN_INFO "data_len is %lu, iph_tot is%lu, iph is%lu, tcph is%lu", data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
+		for (i = 0; i < data_len; ++i)
+			printk(KERN_INFO "data is:%02x\n", data[i]&0xff );
+	}
+
+	return NF_ACCEPT;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
