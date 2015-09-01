@@ -7,14 +7,14 @@ public class Brute{
         int N = in.readInt();
 
         Point[] points = new Point[N];
-        //StdDraw.setXscale(0, 32768);
-        //StdDraw.setYscale(0, 32768);
+        StdDraw.setXscale(0, 32768);
+        StdDraw.setYscale(0, 32768);
 
         for (int i = 0; i < N; i++) {
             int x = in.readInt();
             int y = in.readInt();
             points[i] = new Point(x, y);
-            //points[i].draw();
+            points[i].draw();
         }
 
         // ponints must implement Comparable interface
@@ -37,7 +37,7 @@ public class Brute{
                                 && slopePR == slopePS) {
                             // points are aligned
                             StdOut.printf("%s -> %s -> %s -> %s\n", p, q, r, s);
-                            //p.drawTo(s);
+                            p.drawTo(s);
                         }
                     }
                 }
