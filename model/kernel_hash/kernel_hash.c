@@ -60,7 +60,7 @@ static void mexit(void)
 {
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
-	printk("Exit %s.\n", THIS_MODULE->name);
+	printk(KERN_INFO "Exit %s.\n", THIS_MODULE->name);
 }
 
 module_init(minit);

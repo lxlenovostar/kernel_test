@@ -1,8 +1,8 @@
 #include <linux/err.h>
 #include "chunk.h"
 
-int step = 32; //控制块长
-int delay_time = 0;
+#define STEP 32
+int step = STEP - 1; //控制块长
 
 /*
  * Compute hash for a string.
@@ -23,6 +23,7 @@ unsigned long pack_hash(char *key, int M, int R, long Q)
 void calculate_partition(char *playload, int playload_len, struct kfifo *fifo) 
 {
 	int i;
+	int delay_time = 0;
 	unsigned long txthash = pack_hash(playload, chunk_num, R, Q);
 
 	/*
@@ -38,7 +39,7 @@ void calculate_partition(char *playload, int playload_len, struct kfifo *fifo)
 			int pos = chunk_num - 1;
 			//kfifo_in(fifo, &pos, sizeof(pos));
 			kfifo_put(fifo, (unsigned char *)&pos, sizeof(pos));
-			printk(KERN_INFO "pos is:%d", pos);
+			printk(KERN_INFO "pos is:%d->%lu", pos, txthash);
 			delay_time = step;
 		}
 	} else {
@@ -55,7 +56,7 @@ void calculate_partition(char *playload, int playload_len, struct kfifo *fifo)
 				//if (check_data_point(playload, Q, R, i)) {
 				//kfifo_in(fifo, &i, sizeof(i));
 				kfifo_put(fifo, (unsigned char *)&i, sizeof(i));
-				printk(KERN_INFO "i is:%d", i);
+				printk(KERN_INFO "i is:%d->%lu", i, txthash);
 				delay_time = step;
 			}
 		} else {

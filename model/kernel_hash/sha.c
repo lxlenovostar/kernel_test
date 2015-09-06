@@ -77,11 +77,14 @@ int ecryptfs_calculate_sha1(char *dst, char *src, int len) {
         goto out;
     }
 	crypto_free_hash(desc.tfm);
-    
+   
+	/* 
+    printk("\n");
 	for (i = 0; i < 20; i++) {
-        printk(KERN_INFO "%02x-%d\n", dst[i]&0xff, i);
+        printk("%02x:", dst[i]&0xff);
     }
-
+    printk("\n");
+	*/
 out:
     return rc;
 }

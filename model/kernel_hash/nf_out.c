@@ -8,6 +8,81 @@
 #include <net/inet_hashtables.h>
 #include "debug.h"
 #include "chunk.h"
+#include "sha.h"
+
+rwlock_t my_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
+
+/*
+void add_hash(int user_id, char *name) {
+    struct my_struct *s;
+    HASH_FIND_INT(users, &user_id, s);  
+    if (s==NULL) {
+      s = (struct my_struct*)malloc(sizeof(struct my_struct));
+      s->id = user_id;
+      HASH_ADD_INT( users, id, s );  
+    }
+    strcpy(s->name, name);
+}
+*/
+
+void build_hash(char *src, int start, int end, int length) 
+{
+	/*
+     * Fixup: use slab maybe effectiver than kmalloc.
+     */
+	//uint8_t dst[20] = {0};
+	uint8_t *dst = kmalloc(sizeof(uint8_t)*20, GFP_KERNEL);
+	ecryptfs_calculate_sha1(dst, src + start, (end - start + 1));
+}
+
+void get_partition(char *data, int length)
+{
+	struct kfifo *fifo = NULL;
+	spinlock_t lock = SPIN_LOCK_UNLOCKED;
+	int fifo_i; 
+	int fifo_part;
+	int value;
+
+	/*
+	 * Fixup: alloc kfifo everytime.
+     */	
+	fifo = kfifo_alloc(KFIFOLEN, GFP_KERNEL, &lock);
+	if (unlikely(fifo == NULL)) {
+		printk(KERN_ERR "alloc kfifo failed.");
+		BUG();
+	}	
+
+	if (length > chunk_num) {	
+		calculate_partition(data, length, fifo);
+
+		fifo_part = kfifo_len(fifo);
+
+		printk(KERN_INFO "fifo_len is:%d", fifo_part/sizeof(int));
+		int start_pos = 0;
+		int end_pos = 0;
+		for (fifo_i = 0; fifo_i < fifo_part/sizeof(value); ++fifo_i) {
+			kfifo_get(fifo, (unsigned char *)&value, sizeof(value));
+		
+			printk(KERN_INFO "fifo_i is:%d", fifo_i);
+			if (fifo_i == 0) {
+				start_pos = 0;
+				end_pos = value;
+				printk(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
+				//ecryptfs_calculate_sha1(dst, data + start_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, end_pos, length);
+			} 
+			else {
+				start_pos = end_pos + 1;
+				end_pos = value;
+				printk(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
+				//ecryptfs_calculate_sha1(dst, data + start_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, end_pos, length);
+			}
+		}			
+	}
+
+	kfifo_free(fifo);	
+}
 
 static unsigned int nf_out(
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)
@@ -41,38 +116,7 @@ static unsigned int nf_out(
 		//for (i = 0; i < data_len; ++i)
 			//printk(KERN_INFO "data is:%02x", data[i]&0xff);
 
-		/*
-         * get partition point.
-         */
-		struct kfifo *fifo = NULL;
-		spinlock_t lock = SPIN_LOCK_UNLOCKED;
-		int fifo_i; 
-		int fifo_part;
-		int value;
-
-		/*
-		 * Fixup: alloc kfifo everytime.
-         */	
-		fifo = kfifo_alloc(KFIFOLEN, GFP_KERNEL, &lock);
-		if (unlikely(fifo == NULL)) {
-			printk(KERN_ERR "alloc kfifo failed.");
-			BUG();
-		}	
-
-		if (data_len > chunk_num) {	
-			calculate_partition(data, data_len, fifo);
-	
-			fifo_part = kfifo_len(fifo);
-
-			printk("fifo_len is:%d", fifo_part/sizeof(int));
-			for (fifo_i = 0; fifo_i < fifo_part/sizeof(value); ++fifo_i) {
-				kfifo_get(fifo, (unsigned char *)&value, sizeof(value));
-				printk("fifo_len is:%d, partition is:%d->\n", fifo_part/sizeof(int), (int)value);
-				//printk(KERN_INFO "what i is:%d, len is:%d->", fifo_i, fifo_part/sizeof(int));
-			}			
-		}
-
-		kfifo_free(fifo);	
+		get_partition(data, data_len);
 	}
 
 	return NF_ACCEPT;
@@ -80,7 +124,7 @@ static unsigned int nf_out(
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
 static unsigned int nf_out_p(unsigned int hooknum,
-		struct sk_buff **skb,
+		struct sk_buff **skb
 		const struct net_device *in,
 		const struct net_device *out,
 		int (*okfn) (struct sk_buff *))
