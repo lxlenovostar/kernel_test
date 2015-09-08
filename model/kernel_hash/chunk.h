@@ -1,7 +1,10 @@
 #include <linux/kfifo.h>
 #include "uthash.h"
 
+#define SHALEN 20
 #define KFIFOLEN (1024*sizeof(int))
+//#define MEMLIMIT (2*100*1024*1024)  /* Memory limit is 200M. */
+#define MEMLIMIT (10*1024*1024)  /* Memory limit is 10M. */
 
 extern unsigned long RM;
 extern unsigned long zero_value;
@@ -10,11 +13,14 @@ extern unsigned long Q;
 extern unsigned long R;
 //extern int R = 10;
 extern int chunk_num;  //控制最小值
+extern struct tcp_chunk *hash_head;
+extern unsigned long save_num;
+
  
 struct tcp_chunk {
-	uint8_t sha[20];            /* key */ 
-    char name[10];
-    UT_hash_handle hh;          /* makes this structure hashable */ 
+	uint8_t *sha;                     /* key */ 
+    int id;                           /* file contetnt position */
+    UT_hash_handle hh;                /* makes this structure hashable */ 
 };
 
 void calculate_partition(char *playload, int playload_len, struct kfifo *fifo);

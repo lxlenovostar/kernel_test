@@ -90,10 +90,18 @@ typedef unsigned char uint8_t;
 #define uthash_fatal(msg) BUG()        /* fatal error (out of memory,etc) */
 #endif
 #ifndef uthash_malloc
-#define uthash_malloc(sz) malloc(sz)      /* malloc fcn                      */
+//#define uthash_malloc(sz) malloc(sz)      /* malloc fcn                      */
+/*
+ * lix update it.
+ */
+#define uthash_malloc(sz) kmalloc(sz, GFP_KERNEL)      /* malloc fcn                      */
 #endif
 #ifndef uthash_free
-#define uthash_free(ptr,sz) free(ptr)     /* free fcn                        */
+/*
+ * lix update it.
+ */
+//#define uthash_free(ptr,sz) free(ptr)     /* free fcn                        */
+#define uthash_free(ptr,sz) kfree(ptr)     /* free fcn                        */
 #endif
 
 #ifndef uthash_noexpand_fyi
@@ -102,6 +110,18 @@ typedef unsigned char uint8_t;
 #ifndef uthash_expand_fyi
 #define uthash_expand_fyi(tbl)            /* can be defined to log expands   */
 #endif
+
+/*
+ * lix update it.
+ **/
+//#define BUCKETS_LEN 997
+//#define BUCKETS_LEN 1999
+//#define BUCKETS_LEN 3989
+//#define BUCKETS_LEN 7993
+//#define BUCKETS_LEN 15991
+//#define BUCKETS_LEN 31991
+//#define BUCKETS_LEN 63997
+#define BUCKETS_LEN 127997
 
 /* initial number of buckets */
 #define HASH_INITIAL_NUM_BUCKETS 32U     /* initial number of buckets        */

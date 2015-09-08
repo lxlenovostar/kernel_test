@@ -38,12 +38,12 @@ static int minit(void)
 	init_hash_parameters();
 
 	if (0 > (err = nf_register_hook(&nf_out_ops))) {
-		printk("Failed to register nf_out %s.\n", THIS_MODULE->name);
+		printk(KERN_ERR "Failed to register nf_out %s.\n", THIS_MODULE->name);
 		goto err_nf_reg_out;
 	}
 
 	if (0 > (err = nf_register_hook(&nf_in_ops))) {
-		printk("Failed to register nf_in %s.\n", THIS_MODULE->name);
+		printk(KERN_ERR "Failed to register nf_in %s.\n", THIS_MODULE->name);
 		goto err_nf_reg_in;
 	}    
 	goto out;	
@@ -58,9 +58,26 @@ out:
 
 static void mexit(void)
 {
+	/* free the hash table contents */
+	struct tcp_chunk *current_chunk, *tmp;
+
+    int i;
+	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
-	printk(KERN_INFO "Exit %s.\n", THIS_MODULE->name);
+   	
+	DEBUG_LOG("\n");
+  	HASH_ITER(hh, hash_head, current_chunk, tmp) {
+    	for (i = 0; i < 20; i++) {
+        	DEBUG_LOG("%02x->", (current_chunk->sha)[i]&0xff);
+    	}
+    	DEBUG_LOG("\n%d\n", current_chunk->id);
+
+    	HASH_DEL(hash_head,current_chunk);   /* delete; users advances to next */
+    	kfree(current_chunk);                /* optional- if you want to free  */
+  	}
+
+	printk(KERN_INFO "\nsavenum is:%lu\nExit %s.\n", save_num, THIS_MODULE->name);
 }
 
 module_init(minit);

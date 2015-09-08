@@ -16,6 +16,6 @@
 
 #define PRINT_LEN	64
 
-extern void print_skb(struct sk_buff *skb);
+extern void printT(struct sk_buff *skb);
 
 #endif
