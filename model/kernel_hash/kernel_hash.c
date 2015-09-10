@@ -36,6 +36,8 @@ static int minit(void)
 	int err = 0;
 
 	init_hash_parameters();
+	
+	printk(KERN_INFO "\nStart %s.\n", THIS_MODULE->name);
 
 	if (0 > (err = nf_register_hook(&nf_out_ops))) {
 		printk(KERN_ERR "Failed to register nf_out %s.\n", THIS_MODULE->name);

@@ -1,7 +1,12 @@
 #include <linux/crypto.h>
 #include <linux/err.h>
 #include <linux/scatterlist.h>
+#include <linux/semaphore.h>
 #include "sha.h"
+
+spinlock_t sha_lock = SPIN_LOCK_UNLOCKED;
+//DEFINE_MUTEX(sha_lock);
+//DECLARE_MUTEX(hash_mutex);
 
 /**
  * ecryptfs_calculate_sha - calculates the SHA-1 of @src
@@ -15,47 +20,17 @@
 int ecryptfs_calculate_sha1(char *dst, char *src, int len) {
 	/*
      * http://lxr.oss.org.cn/source/fs/ecryptfs/crypto.c?v=2.6.30
-     */
+     * http://lxr.oss.org.cn/source/net/ipv4/tcp.c?v=2.6.30#L2667
+	 */
 	struct scatterlist sg;
 	struct hash_desc desc;
 	
 	int rc = 0;
 	int i; 
-	//char hashtext[SHA1_LENGTH];
 
-	//way 1		
-	/*
-	char *plaintext = NULL;
-	printk(KERN_INFO "valid=%s\n", virt_addr_valid(plaintext) ? "true" : "false");
-	plaintext = "c";
-	size_t len = strlen(plaintext);
-	*/
-
-	//way 2
-	/*
-	char *plaintext = kmalloc(sizeof(char), GFP_KERNEL);
-	printk(KERN_INFO "valid=%s\n", virt_addr_valid(plaintext) ? "true" : "false");
-	*plaintext = 'c'; 	
-	printk(KERN_INFO "valid=%s\n", virt_addr_valid(plaintext) ? "true" : "false");
-	size_t len = 1;
-	*/
-
-	// way 3.
-	/*	
-	char plaintext[1] = {'c'};
-	size_t len = 1;
-	*/
-
-	// way 4.
-	/*
-	char *plaintext = (char *)__get_free_page(GFP_KERNEL);
-	memcpy(plaintext, "c", 1);
-	size_t len = 1;
-	*/
-
-    //memset(hashtext, 0x00, SHA1_LENGTH);
-    //printk(KERN_INFO "sha1: %s\n", __FUNCTION__);
-	//printk(KERN_INFO "valid=%s PAGE=%lu, plaintext=%lu, %d , %s\n", virt_addr_valid(plaintext) ? "true" : "false", PAGE_OFFSET, (unsigned long)plaintext, (unsigned long)plaintext - PAGE_OFFSET, ((unsigned long)plaintext > __START_KERNEL_map) ? "true" : "false");
+	//mutex_lock(&sha_lock);
+	//down(&hash_mutex);
+	spin_lock_bh(&sha_lock);
 
 	sg_init_one(&sg, (u8 *)src, len);
 	desc.tfm = crypto_alloc_hash("sha1", 0, CRYPTO_ALG_ASYNC);
@@ -64,28 +39,27 @@ int ecryptfs_calculate_sha1(char *dst, char *src, int len) {
 	rc = crypto_hash_init(&desc);
 	if (rc) {
 		printk(KERN_ERR "%s: Error initializing crypto hash; rc = [%d]\n", __func__, rc);
+		BUG();
      	goto out;
     }
 	rc = crypto_hash_update(&desc, &sg, len);
 	if (rc) {
     	printk(KERN_ERR "%s: Error updating crypto hash; rc = [%d]\n", __func__, rc);
+		BUG();
         goto out;
     }
 	rc = crypto_hash_final(&desc, dst);
 	if (rc) {
     	printk(KERN_ERR "%s: Error finalizing crypto hash; rc = [%d]\n", __func__, rc);
+		BUG();
         goto out;
     }
 	crypto_free_hash(desc.tfm);
    
-	/* 
-    printk("\n");
-	for (i = 0; i < 20; i++) {
-        printk("%02x:", dst[i]&0xff);
-    }
-    printk("\n");
-	*/
 out:
+	//mutex_unlock(&sha_lock);
+	//up(&hash_mutex);
+	spin_unlock_bh(&sha_lock);
     return rc;
 }
 

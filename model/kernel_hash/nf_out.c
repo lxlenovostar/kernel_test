@@ -14,28 +14,33 @@ struct tcp_chunk *hash_head = NULL;
 unsigned long save_num = 0;
 rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 spinlock_t hash_lock = SPIN_LOCK_UNLOCKED;
+//DECLARE_MUTEX(hash_mutex);
 int i = 0;                             /* just for test*/
 
 void hand_hash(uint8_t dst[], size_t len) 
 {
 	struct tcp_chunk *element;
-
-	read_lock(&hash_rwlock);
+	
+	//down(&hash_mutex);
+	//spin_lock_bh(&hash_lock);
+	//read_lock(&hash_rwlock);
 	HASH_FIND_STR(hash_head, dst, element);  /* dst already in the hash? */
-	read_unlock(&hash_rwlock);
+	//read_unlock(&hash_rwlock);
     if (element == NULL) {
 		element = (struct tcp_chunk*)kmalloc(sizeof(struct tcp_chunk), GFP_KERNEL);
     	element->sha = dst;
     	element->id = i++;
-		write_lock(&hash_rwlock);
+		//write_lock(&hash_rwlock);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
-		write_unlock(&hash_rwlock);
+		//write_unlock(&hash_rwlock);
     } else {
-		spin_lock(&hash_lock);
+		//spin_lock(&hash_lock);
 		save_num += len;
-		spin_unlock(&hash_lock);
+		//spin_unlock(&hash_lock);
 		//DEBUG_LOG("\n save len is:%d\n", len);
 	}
+	//spin_unlock_bh(&hash_lock);
+	//up(&hash_mutex);
 }
 
 void build_hash(char *src, int start, int end, int length) 
@@ -43,11 +48,12 @@ void build_hash(char *src, int start, int end, int length)
 	/*
      * Fixup: use slab maybe effectiver than kmalloc.
      */
-	uint8_t *dst = kmalloc(sizeof(uint8_t)*(SHALEN+1), GFP_KERNEL);
-	memset(dst, '\0', SHALEN+1);
+	//uint8_t *dst = kmalloc(sizeof(uint8_t)*(SHALEN+1), GFP_ATOMIC);
+	//memset(dst, '\0', SHALEN+1);
+	char dst[20];
 	ecryptfs_calculate_sha1(dst, src + start, (end - start + 1));
 	
-	hand_hash(dst, length); 
+	//hand_hash(dst, length); 
 }
 
 void get_partition(char *data, int length)
@@ -61,7 +67,7 @@ void get_partition(char *data, int length)
 	/*
 	 * Fixup: alloc kfifo everytime.
      */	
-	fifo = kfifo_alloc(KFIFOLEN, GFP_KERNEL, &lock);
+	fifo = kfifo_alloc(KFIFOLEN, GFP_ATOMIC, &lock);
 	if (unlikely(fifo == NULL)) {
 		printk(KERN_ERR "alloc kfifo failed.");
 		BUG();
@@ -82,15 +88,13 @@ void get_partition(char *data, int length)
 				start_pos = 0;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				//ecryptfs_calculate_sha1(dst, data + start_pos, (end_pos - start_pos + 1));
 				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
 			} 
 			else {
 				start_pos = end_pos + 1;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				//ecryptfs_calculate_sha1(dst, data + start_pos, (end_pos - start_pos + 1));
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				//build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
 			}
 		}
 		
@@ -99,13 +103,13 @@ void get_partition(char *data, int length)
 				start_pos = end_pos + 1;
 				end_pos = length - 1;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				//build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
 			}
 		} else {
 			start_pos = 0;
 			end_pos = length - 1;
 			DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-			build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+			//build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
 		}			
 	}
 
