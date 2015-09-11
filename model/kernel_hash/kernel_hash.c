@@ -7,6 +7,7 @@
 #include "debug.h"
 #include "nf.h"
 #include "chunk.h"
+#include "sha.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -48,7 +49,13 @@ static int minit(void)
 		printk(KERN_ERR "Failed to register nf_in %s.\n", THIS_MODULE->name);
 		goto err_nf_reg_in;
 	}    
-	goto out;	
+	
+	if (tcp_alloc_sha1sig_pool() == NULL) { 
+		printk(KERN_ERR "Failed to alloc sha1 pool %s.\n", THIS_MODULE->name);
+		goto err_nf_reg_in;
+	}    
+
+	goto out;
 
 err_nf_reg_in:
 	nf_unregister_hook(&nf_in_ops);
@@ -62,11 +69,12 @@ static void mexit(void)
 {
 	/* free the hash table contents */
 	struct tcp_chunk *current_chunk, *tmp;
-
+	uint8_t *sha;
     int i;
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
+	tcp_free_sha1sig_pool();
    	
 	DEBUG_LOG("\n");
   	HASH_ITER(hh, hash_head, current_chunk, tmp) {
@@ -76,7 +84,10 @@ static void mexit(void)
     	DEBUG_LOG("\n%d\n", current_chunk->id);
 
     	HASH_DEL(hash_head,current_chunk);   /* delete; users advances to next */
-    	kfree(current_chunk);                /* optional- if you want to free  */
+    	
+		sha = current_chunk->sha;
+		kfree(current_chunk);                
+    	kfree(sha);                
   	}
 
 	printk(KERN_INFO "\nsavenum is:%lu\nExit %s.\n", save_num, THIS_MODULE->name);
