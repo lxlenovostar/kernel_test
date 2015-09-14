@@ -37,6 +37,8 @@ static int minit(void)
 	int err = 0;
 
 	init_hash_parameters();
+	percpu_counter_init(&save_num, 0);
+	percpu_counter_init(&sum_num, 0);
 	
 	printk(KERN_INFO "\nStart %s.\n", THIS_MODULE->name);
 
@@ -71,6 +73,7 @@ static void mexit(void)
 	struct tcp_chunk *current_chunk, *tmp;
 	uint8_t *sha;
     int i;
+	unsigned long tmp_save, tmp_sum;
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
@@ -90,7 +93,18 @@ static void mexit(void)
     	kfree(sha);                
   	}
 
-	printk(KERN_INFO "\nsavenum is:%lu\nExit %s.\n", save_num, THIS_MODULE->name);
+	/*	
+	tmp_save = get_cpu_var(save_num);
+	put_cpu_var(save_num);
+	tmp_sum = get_cpu_var(sum_num);
+	put_cpu_var(sum_num);
+	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu\nExit %s.\n", tmp_save, tmp_sum, THIS_MODULE->name);
+	*/
+	
+	tmp_save = percpu_counter_sum(&save_num);
+	tmp_sum =  percpu_counter_sum(&sum_num);
+	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu\nExit %s.\n", tmp_save, tmp_sum, THIS_MODULE->name);
+	
 }
 
 module_init(minit);

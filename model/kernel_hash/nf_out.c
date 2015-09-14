@@ -11,9 +11,15 @@
 #include "sha.h"
 
 struct tcp_chunk *hash_head = NULL;
-unsigned long save_num = 0;
+//unsigned long save_num = 0;
+//unsigned long sum_num = 0;
+//DEFINE_PER_CPU(unsigned long, save_num);
+//DEFINE_PER_CPU(unsigned long, sum_num);
+struct percpu_counter save_num;
+struct percpu_counter sum_num;
 rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
-spinlock_t hash_lock = SPIN_LOCK_UNLOCKED;
+spinlock_t save_lock = SPIN_LOCK_UNLOCKED;
+spinlock_t sum_lock = SPIN_LOCK_UNLOCKED;
 
 void hand_hash(uint8_t dst[], size_t len) 
 {
@@ -29,10 +35,25 @@ void hand_hash(uint8_t dst[], size_t len)
 		write_lock_bh(&hash_rwlock);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
 		write_unlock_bh(&hash_rwlock);
+		/*spin_lock_bh(&sum_lock);
+		sum_num += len;
+		spin_unlock_bh(&sum_lock);*/
+		/*get_cpu_var(sum_num) += len;
+		put_cpu_var(sum_num);*/
+		percpu_counter_add(&sum_num, len);
     } else {
-		spin_lock_bh(&hash_lock);
+		/*spin_lock_bh(&save_lock);
 		save_num += len;
-		spin_unlock_bh(&hash_lock);
+		spin_unlock_bh(&save_lock);
+		spin_lock_bh(&sum_lock);
+		sum_num += len;
+		spin_unlock_bh(&sum_lock);*/
+		/*get_cpu_var(sum_num) += len;
+		put_cpu_var(sum_num);
+		get_cpu_var(save_num) += len;
+		put_cpu_var(save_num);*/
+		percpu_counter_add(&sum_num, len);
+		percpu_counter_add(&save_num, len);
 		DEBUG_LOG("\n save len is:%d\n", len);
 	}
 }
@@ -52,7 +73,13 @@ void build_hash(char *src, int start, int end, int length)
         BUG();
 	}
 	
-	hand_hash(dst, length); 
+	hand_hash(dst, length);
+    	
+	/*	
+	ecryptfs_calculate_sha1(dst, src + start, (end - start + 1)); 
+	hand_hash(dst, length);
+	*/
+
 }
 
 void get_partition(char *data, int length)
@@ -141,7 +168,12 @@ static unsigned int nf_out(
 
 	if (likely(ntohs(dport) == 8888)) {	
 		if (HASH_OVERHEAD(hh, hash_head) >= MEMLIMIT) {
+			//DEBUG_LOG(KERN_INFO "Memory is out");
+			printk(KERN_ERR "Memory is out");
 			return NF_ACCEPT;
+		} else {
+			//DEBUG_LOG(KERN_INFO "Memory is %lu", HASH_OVERHEAD(hh, hash_head));
+			printk(KERN_INFO "Memory is %lu", HASH_OVERHEAD(hh, hash_head));
 		}
 
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
