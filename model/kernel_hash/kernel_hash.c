@@ -74,6 +74,9 @@ static void mexit(void)
 	uint8_t *sha;
     int i;
 	unsigned long tmp_save, tmp_sum;
+
+	percpu_counter_destroy(&save_num);
+	percpu_counter_destroy(&sum_num);
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
