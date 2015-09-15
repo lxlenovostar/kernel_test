@@ -20,6 +20,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x14522340, "module_layout" },
 	{ 0x5a34a45c, "__kmalloc" },
 	{ 0xcfadd723, "__percpu_counter_add" },
+	{ 0x9a9985be, "percpu_counter_destroy" },
 	{ 0xd42b7232, "_write_unlock_bh" },
 	{ 0x25ec1b28, "strlen" },
 	{ 0xd691cba2, "malloc_sizes" },
@@ -63,7 +64,7 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "DFD47DB5E2B99D1A1FF77B7");
+MODULE_INFO(srcversion, "A4DBC7B4DCC5049D4197FAA");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {

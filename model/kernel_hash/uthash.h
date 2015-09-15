@@ -94,7 +94,7 @@ typedef unsigned char uint8_t;
 /*
  * lix update it.
  */
-#define uthash_malloc(sz) kmalloc(sz, GFP_KERNEL)      /* malloc fcn                      */
+#define uthash_malloc(sz) kmalloc(sz, GFP_ATOMIC)      /* malloc fcn                      */
 #endif
 #ifndef uthash_free
 /*

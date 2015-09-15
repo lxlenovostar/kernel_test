@@ -34,11 +34,19 @@ void init_hash_parameters(void)
 
 static int minit(void)
 {
-	int err = 0;
+	int cpu, err = 0;
+	struct timer_list *this;
 
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+	
+	for_each_online_cpu(cpu) {
+		this = &per_cpu(my_timer, cpu);
+		setup_timer(this, prune, (unsigned long) this_list);
+		this->expires = jiffies + (6 + cpu) * HZ;
+		add_timer_on(this, cpu);
+	}
 	
 	printk(KERN_INFO "\nStart %s.\n", THIS_MODULE->name);
 
@@ -72,11 +80,18 @@ static void mexit(void)
 	/* free the hash table contents */
 	struct tcp_chunk *current_chunk, *tmp;
 	uint8_t *sha;
-    int i;
+    int i, cpu;
 	unsigned long tmp_save, tmp_sum;
+	struct timer_list *this;
 
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
+
+	for_each_online_cpu(cpu) {
+		this = &per_cpu(my_timer, cpu);
+		printk("del timer cpu id is %d\n", cpu);
+		del_timer_sync(this);
+	}
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);

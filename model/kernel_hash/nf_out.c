@@ -21,6 +21,25 @@ rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 spinlock_t save_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t sum_lock = SPIN_LOCK_UNLOCKED;
 
+void prune_hash_data(unsigned long data)
+{
+	/*struct free_slab *tmp;
+	struct free_slab *next;
+	struct list_head *tmp_head_free_slab = (struct listhead *) data;
+	if (likely(tmp_head_free_slab->next != NULL)) {
+		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
+						 list) {
+			if (likely(atomic_read(&((tmp->free_mem).users)) == 1)) {
+				list_del(&tmp->list);
+				kmem_cache_free(skbuff_free_cache, tmp);
+				//percpu_counter_inc(&free_packets);
+			}
+		}
+	}*/
+	mod_timer(&get_cpu_var(my_timer), jiffies + 10);
+	put_cpu_var(my_timer);
+}
+
 void hand_hash(uint8_t dst[], size_t len) 
 {
 	struct tcp_chunk *element;
