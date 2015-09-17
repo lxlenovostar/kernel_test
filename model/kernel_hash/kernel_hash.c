@@ -8,6 +8,7 @@
 #include "nf.h"
 #include "chunk.h"
 #include "sha.h"
+#include "hash_lock.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -15,6 +16,16 @@ int zero_num = 6;
 unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
+struct ws_sp_aligned_lock *hash_lock_array;
+
+void initial_sp_hash_table_cache(void) {
+	int idx;
+
+	hash_lock_array = kmalloc(sizeof(struct ws_sp_aligned_lock)*CT_LOCKARRAY_SIZE, GFP_ATOMIC);
+
+	for (idx=0; idx<CT_LOCKARRAY_SIZE; idx++)
+     	rwlock_init(&hash_lock_array[idx].l);
+}
 
 void init_hash_parameters(void)
 {
@@ -40,14 +51,17 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
-	
+	initial_sp_hash_table_cache();
+
+	/*	
 	for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
-		setup_timer(this, prune, (unsigned long) this_list);
+		setup_timer(this, prune, 0);
 		this->expires = jiffies + (6 + cpu) * HZ;
 		add_timer_on(this, cpu);
 	}
-	
+	*/
+
 	printk(KERN_INFO "\nStart %s.\n", THIS_MODULE->name);
 
 	if (0 > (err = nf_register_hook(&nf_out_ops))) {
@@ -86,12 +100,15 @@ static void mexit(void)
 
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
+	kfree(hash_lock_array);
 
+	/*
 	for_each_online_cpu(cpu) {
 		this = &per_cpu(my_timer, cpu);
 		printk("del timer cpu id is %d\n", cpu);
 		del_timer_sync(this);
 	}
+	*/
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);

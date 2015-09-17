@@ -111,18 +111,6 @@ typedef unsigned char uint8_t;
 #define uthash_expand_fyi(tbl)            /* can be defined to log expands   */
 #endif
 
-/*
- * lix update it.
- **/
-//#define BUCKETS_LEN 997
-//#define BUCKETS_LEN 1999
-//#define BUCKETS_LEN 3989
-//#define BUCKETS_LEN 7993
-//#define BUCKETS_LEN 15991
-//#define BUCKETS_LEN 31991
-//#define BUCKETS_LEN 63997
-#define BUCKETS_LEN 127997
-
 /* initial number of buckets */
 #define HASH_INITIAL_NUM_BUCKETS 32U     /* initial number of buckets        */
 #define HASH_INITIAL_NUM_BUCKETS_LOG2 5U /* lg2 of initial number of buckets */
