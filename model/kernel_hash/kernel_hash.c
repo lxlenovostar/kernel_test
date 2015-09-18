@@ -8,7 +8,6 @@
 #include "nf.h"
 #include "chunk.h"
 #include "sha.h"
-#include "hash_lock.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -18,6 +17,7 @@ unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 struct ws_sp_aligned_lock *hash_lock_array;
 
+/*
 void initial_sp_hash_table_cache(void) {
 	int idx;
 
@@ -26,6 +26,7 @@ void initial_sp_hash_table_cache(void) {
 	for (idx=0; idx<CT_LOCKARRAY_SIZE; idx++)
      	rwlock_init(&hash_lock_array[idx].l);
 }
+*/
 
 void init_hash_parameters(void)
 {
@@ -51,7 +52,10 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+	
+	/*
 	initial_sp_hash_table_cache();
+	*/
 
 	/*	
 	for_each_online_cpu(cpu) {
@@ -100,7 +104,10 @@ static void mexit(void)
 
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
+	
+	/*
 	kfree(hash_lock_array);
+	*/
 
 	/*
 	for_each_online_cpu(cpu) {

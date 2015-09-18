@@ -9,11 +9,11 @@
 #include "debug.h"
 #include "chunk.h"
 #include "sha.h"
-#include "hash_lock.h"
 
 struct tcp_chunk *hash_head = NULL;
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
+rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 
 void prune_hash_data(unsigned long data)
 {
@@ -40,65 +40,50 @@ void prune_hash_data(unsigned long data)
 void hand_hash(uint8_t dst[], size_t len) 
 {
 	struct tcp_chunk *element;
-
-	/*		
-	read_lock_bh(&hash_rwlock);
-	HASH_FIND_STR(hash_head, dst, element);  
-	read_unlock_bh(&hash_rwlock);
-	*/
-
+    
+	/*
 	unsigned hf_bkt, hf_hashv;                                              
-    HASH_FCN(dst, (unsigned)strlen(dst), (hash_head)->hh.tbl->num_buckets, hf_hashv, hf_bkt); 
+	HASH_FCN(dst, (unsigned)strlen(dst), (hash_head)->hh.tbl->num_buckets, hf_hashv, hf_bkt); 
 	DEBUG_LOG(KERN_INFO "HASH is:%u and bucket is:%u, num is:%u\n", hf_hashv, hf_hashv&CT_LOCKARRAY_MASK, CT_LOCKARRAY_MASK);
-		
-
+	*/	
 	DEBUG_LOG(KERN_INFO "LOCK 1");
-	ct_write_lock_bh(hf_hashv, hash_lock_array);
-	HASH_FIND_STR(hash_head, dst, element);  
-	ct_write_unlock_bh(hf_hashv, hash_lock_array);
-	
-	DEBUG_LOG(KERN_INFO "LOCK 2");
-	
-		
-    if (element == NULL) {
-		element = (struct tcp_chunk*)kmalloc(sizeof(struct tcp_chunk), GFP_ATOMIC);
-    	element->sha = dst;
-    	element->id = len;
-		
-		ct_write_lock_bh(hf_hashv, hash_lock_array);
-    	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
-		ct_write_unlock_bh(hf_hashv, hash_lock_array);
-		DEBUG_LOG(KERN_INFO "LOCK 3");
-	}
-	
-	DEBUG_LOG(KERN_INFO "LOCK 4");
 
 	/*
 	ct_read_lock_bh(hf_hashv, hash_lock_array);
 	HASH_FIND_STR(hash_head, dst, element);  
 	ct_read_unlock_bh(hf_hashv, hash_lock_array);
+	DEBUG_LOG(KERN_INFO "LOCK 2");
 	*/
-	/*
+
+	read_lock_bh(&hash_rwlock);
+	HASH_FIND_STR(hash_head, dst, element);  
+	read_unlock_bh(&hash_rwlock);
+	DEBUG_LOG(KERN_INFO "LOCK 2");
+
     if (element == NULL) {
 		element = (struct tcp_chunk*)kmalloc(sizeof(struct tcp_chunk), GFP_ATOMIC);
     	element->sha = dst;
     	element->id = len;
+
+		/*
+		ct_write_lock_bh(hf_hashv, hash_lock_array);
+    	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
+		ct_write_unlock_bh(hf_hashv, hash_lock_array);
+		DEBUG_LOG(KERN_INFO "LOCK 3");
+		*/
 		
 		write_lock_bh(&hash_rwlock);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
 		write_unlock_bh(&hash_rwlock);
-
-		ct_write_lock_bh(hf_hashv, hash_lock_array);
-    	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
-		ct_write_unlock_bh(hf_hashv, hash_lock_array);
+		DEBUG_LOG(KERN_INFO "LOCK 3");
 
 		percpu_counter_add(&sum_num, len);
     } else {
 		percpu_counter_add(&sum_num, len);
 		percpu_counter_add(&save_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
+		DEBUG_LOG(KERN_INFO "LOCK 4");
 	}
-	*/
 }
 
 void build_hash(char *src, int start, int end, int length) 
@@ -218,7 +203,7 @@ static unsigned int nf_out(
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	struct tcphdr *tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 
-	get_cpu();
+	//get_cpu();
 	
 	skb_linearize(skb);
 	
@@ -228,14 +213,17 @@ static unsigned int nf_out(
 	dport = tcph->dest;
 
 	if (likely(ntohs(dport) == 8888)) {	
+		read_lock_bh(&hash_rwlock);
 		if (HASH_OVERHEAD(hh, hash_head) >= MEMLIMIT) {
 			//DEBUG_LOG(KERN_INFO "Memory is out");
 			printk(KERN_ERR "Memory is out");
+			read_unlock_bh(&hash_rwlock);
 			return NF_ACCEPT;
 		} else {
 			//DEBUG_LOG(KERN_INFO "Memory is %lu", HASH_OVERHEAD(hh, hash_head));
-			printk(KERN_INFO "Memory is:%lu, count is:%lu", HASH_OVERHEAD(hh, hash_head), HASH_COUNT(hash_head));
+			printk(KERN_INFO "Memory is:%lu, count is:%u", HASH_OVERHEAD(hh, hash_head), HASH_COUNT(hash_head));
 		}
+		read_unlock_bh(&hash_rwlock);
 
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
@@ -248,9 +236,8 @@ static unsigned int nf_out(
 		get_partition(data, data_len);
 		DEBUG_LOG(KERN_INFO "LOCK 5.5");
 	}
-	DEBUG_LOG(KERN_INFO "LOCK 5.8");
 
-	put_cpu();
+	//put_cpu();
 	return NF_ACCEPT;
 }
 

@@ -4,8 +4,7 @@
 
 #define SHALEN 20
 #define KFIFOLEN (1024*sizeof(int))
-//#define MEMLIMIT (2*100*1024*1024)  /* Memory limit is 200M. */
-#define MEMLIMIT (0.01*1024*1024)  /* Memory limit is 10M. */
+#define MEMLIMIT (2*100*1024*1024)  /* Memory limit is 200M. */
 
 extern unsigned long RM;
 extern unsigned long zero_value;
