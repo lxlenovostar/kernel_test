@@ -31,21 +31,12 @@ void calculate_partition(char *playload, int playload_len, struct kfifo *fifo)
 	 *      BUG;
      */
 
-	/*	
-	printk("\n");
-    for (i = 0; i < playload_len; i++) {
-        printk("%02x:", playload[i]&0xff);
-    }
-    printk("\n");
-	*/
-
 	DEBUG_LOG(KERN_INFO "begin partition; hash value is:%lu.", txthash);
 	if (likely(delay_time == 0)) {
 		if ((txthash & zero_value) == 0) {
 		//if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, (chunk_num - 1))) {
 		//if (check_data_point(playload, Q, R, (chunk_num - 1))) {
 			int pos = chunk_num - 1;
-			//kfifo_in(fifo, &pos, sizeof(pos));
 			kfifo_put(fifo, (unsigned char *)&pos, sizeof(pos));
 			DEBUG_LOG(KERN_INFO "pos is:%d->%lu", pos, txthash);
 			delay_time = step;
@@ -62,7 +53,6 @@ void calculate_partition(char *playload, int playload_len, struct kfifo *fifo)
 			if ((txthash & zero_value) == 0) {
 				//if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, i)) {
 				//if (check_data_point(playload, Q, R, i)) {
-				//kfifo_in(fifo, &i, sizeof(i));
 				kfifo_put(fifo, (unsigned char *)&i, sizeof(i));
 				DEBUG_LOG(KERN_INFO "i is:%d->%lu", i, txthash);
 				delay_time = step;

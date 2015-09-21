@@ -71,7 +71,7 @@ void hand_hash(uint8_t dst[], size_t len)
 		ct_write_unlock_bh(hf_hashv, hash_lock_array);
 		DEBUG_LOG(KERN_INFO "LOCK 3");
 		*/
-		
+
 		write_lock_bh(&hash_rwlock);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
 		write_unlock_bh(&hash_rwlock);
@@ -113,12 +113,6 @@ void build_hash(char *src, int start, int end, int length)
 	}
 
 	hand_hash(dst, length);
-		
-	/*	
-	ecryptfs_calculate_sha1(dst, src + start, (end - start + 1)); 
-	hand_hash(dst, length);
-	*/
-
 }
 
 void get_partition(char *data, int length)

@@ -4,57 +4,57 @@
 #define CT_LOCKARRAY_SIZE  (1<<CT_LOCKARRAY_BITS)
 #define CT_LOCKARRAY_MASK  (CT_LOCKARRAY_SIZE-1)
 
-struct ws_sp_aligned_lock
+struct _aligned_lock
 {
 	rwlock_t	l;
 } __attribute__((__aligned__(SMP_CACHE_BYTES)));
 
-static inline void ct_read_lock(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_read_lock(unsigned key, struct _aligned_lock *_lock_array)
 {
-	read_lock(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	read_lock(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_read_unlock(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_read_unlock(unsigned key, struct _aligned_lock *_lock_array)
 {
-	read_unlock(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	read_unlock(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_write_lock(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_write_lock(unsigned key, struct _aligned_lock *_lock_array)
 {
-	write_lock(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	write_lock(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_write_unlock(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_write_unlock(unsigned key, struct _aligned_lock *_lock_array)
 {
-	write_unlock(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	write_unlock(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_read_lock_bh(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_read_lock_bh(unsigned key, struct _aligned_lock *_lock_array)
 {
-	read_lock_bh(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	read_lock_bh(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_read_unlock_bh(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_read_unlock_bh(unsigned key, struct _aligned_lock *_lock_array)
 {
-	read_unlock_bh(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	read_unlock_bh(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline void ct_write_lock_bh(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_write_lock_bh(unsigned key, struct _aligned_lock *_lock_array)
 {
-	write_lock_bh(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	write_lock_bh(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
-static inline void ct_write_unlock_bh(unsigned key, struct ws_sp_aligned_lock *__ws_lvs_conntbl_lock_array)
+static inline void ct_write_unlock_bh(unsigned key, struct _aligned_lock *_lock_array)
 {
-	write_unlock_bh(&__ws_lvs_conntbl_lock_array[key&CT_LOCKARRAY_MASK].l);
+	write_unlock_bh(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-//struct ws_sp_aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
-extern struct ws_sp_aligned_lock *hash_lock_array;
+//struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
+extern struct _aligned_lock *hash_lock_array;
 
 //void initial_sp_hash_table_cache(void);
 /*
-extern struct ws_sp_aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
-//static struct ws_sp_aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
+extern struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
+//static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 */
 
 /*
