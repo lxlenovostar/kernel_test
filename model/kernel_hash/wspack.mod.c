@@ -18,25 +18,22 @@ static const struct modversion_info ____versions[]
 __used
 __attribute__((section("__versions"))) = {
 	{ 0x14522340, "module_layout" },
-	{ 0x5a34a45c, "__kmalloc" },
+	{ 0xd6ee688f, "vmalloc" },
 	{ 0x9a9985be, "percpu_counter_destroy" },
-	{ 0xd42b7232, "_write_unlock_bh" },
 	{ 0xd691cba2, "malloc_sizes" },
 	{ 0x2bb6fde2, "__kfifo_put" },
 	{ 0xc0a3d105, "find_next_bit" },
 	{ 0x55f2580b, "__alloc_percpu" },
 	{ 0x8dca832f, "__percpu_counter_sum" },
 	{ 0xca975b7a, "nf_register_hook" },
+	{ 0x999e8297, "vfree" },
 	{ 0x712aa29b, "_spin_lock_irqsave" },
 	{ 0xc9ec4e21, "free_percpu" },
 	{ 0xaa1b9b4e, "__pskb_pull_tail" },
 	{ 0x9629486a, "per_cpu__cpu_number" },
 	{ 0xfe7c4287, "nr_cpu_ids" },
-	{ 0xde0bdcff, "memset" },
-	{ 0xa2a1e5c9, "_write_lock_bh" },
 	{ 0x3da5eb6d, "kfifo_alloc" },
 	{ 0xea147363, "printk" },
-	{ 0x2fa5a500, "memcmp" },
 	{ 0xb4390f9a, "mcount" },
 	{ 0xb4ca9447, "__kfifo_get" },
 	{ 0x4b07e779, "_spin_unlock_irqrestore" },
@@ -45,6 +42,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x5a57d155, "__percpu_counter_init" },
 	{ 0x2044fa9e, "kmem_cache_alloc_trace" },
 	{ 0x32047ad5, "__per_cpu_offset" },
+	{ 0xe4a639f8, "kmem_cache_create" },
 	{ 0x7e5a6ea3, "nf_unregister_hook" },
 	{ 0x3aa1dbcf, "_spin_unlock_bh" },
 	{ 0xb6244511, "sg_init_one" },
@@ -60,7 +58,7 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "CF37BAD0D59041B4B7C30F1");
+MODULE_INFO(srcversion, "A94A997A6B6BD084CBA4F9A");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {

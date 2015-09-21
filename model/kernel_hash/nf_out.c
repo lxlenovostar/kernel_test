@@ -39,7 +39,7 @@ void prune_hash_data(unsigned long data)
 
 void hand_hash(uint8_t dst[], size_t len) 
 {
-	struct tcp_chunk *element;
+	//struct tcp_chunk *element;
     
 	/*
 	unsigned hf_bkt, hf_hashv;                                              
@@ -55,6 +55,7 @@ void hand_hash(uint8_t dst[], size_t len)
 	DEBUG_LOG(KERN_INFO "LOCK 2");
 	*/
 
+	/*
 	read_lock_bh(&hash_rwlock);
 	HASH_FIND_STR(hash_head, dst, element);  
 	read_unlock_bh(&hash_rwlock);
@@ -64,13 +65,11 @@ void hand_hash(uint8_t dst[], size_t len)
 		element = (struct tcp_chunk*)kmalloc(sizeof(struct tcp_chunk), GFP_ATOMIC);
     	element->sha = dst;
     	element->id = len;
-
-		/*
+		
 		ct_write_lock_bh(hf_hashv, hash_lock_array);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
 		ct_write_unlock_bh(hf_hashv, hash_lock_array);
 		DEBUG_LOG(KERN_INFO "LOCK 3");
-		*/
 
 		write_lock_bh(&hash_rwlock);
     	HASH_ADD_KEYPTR(hh, hash_head, element->sha, SHALEN, element);
@@ -84,6 +83,7 @@ void hand_hash(uint8_t dst[], size_t len)
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 		DEBUG_LOG(KERN_INFO "LOCK 4");
 	}
+	*/
 }
 
 void build_hash(char *src, int start, int end, int length) 
@@ -207,6 +207,7 @@ static unsigned int nf_out(
 	dport = tcph->dest;
 
 	if (likely(ntohs(dport) == 8888)) {	
+		/*
 		read_lock_bh(&hash_rwlock);
 		if (HASH_OVERHEAD(hh, hash_head) >= MEMLIMIT) {
 			//DEBUG_LOG(KERN_INFO "Memory is out");
@@ -218,6 +219,7 @@ static unsigned int nf_out(
 			printk(KERN_INFO "Memory is:%lu, count is:%u", HASH_OVERHEAD(hh, hash_head), HASH_COUNT(hash_head));
 		}
 		read_unlock_bh(&hash_rwlock);
+		*/
 
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);

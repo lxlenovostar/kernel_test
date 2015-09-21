@@ -8,6 +8,7 @@
 #include "nf.h"
 #include "chunk.h"
 #include "sha.h"
+#include "hash_table.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -52,7 +53,8 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
-	
+
+	initial_hash_table_cache();	
 	/*
 	initial_sp_hash_table_cache();
 	*/
@@ -121,6 +123,7 @@ static void mexit(void)
 	nf_unregister_hook(&nf_out_ops);
 	tcp_free_sha1sig_pool();
    	
+	/*
 	DEBUG_LOG("\n");
   	HASH_ITER(hh, hash_head, current_chunk, tmp) {
     	for (i = 0; i < 20; i++) {
@@ -128,12 +131,13 @@ static void mexit(void)
     	}
     	DEBUG_LOG("\n%d\n", current_chunk->id);
 
-    	HASH_DEL(hash_head,current_chunk);   /* delete; users advances to next */
+    	HASH_DEL(hash_head,current_chunk); 
     	
 		sha = current_chunk->sha;
 		kfree(current_chunk);                
     	kfree(sha);                
   	}
+	*/
 
 	/*	
 	tmp_save = get_cpu_var(save_num);

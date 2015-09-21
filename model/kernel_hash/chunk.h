@@ -1,6 +1,5 @@
 #include <linux/kfifo.h>
 #include <linux/percpu_counter.h>
-#include "uthash.h"
 
 #define SHALEN 20
 #define KFIFOLEN (1024*sizeof(int))
@@ -13,15 +12,16 @@ extern unsigned long Q;
 extern unsigned long R;
 //extern int R = 10;
 extern int chunk_num;  //控制最小值
-extern struct tcp_chunk *hash_head;
 extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
 
- 
+//extern struct tcp_chunk *hash_head;
+/* 
 struct tcp_chunk {
-	uint8_t *sha;                     /* key */ 
-    int id;                           /* file contetnt position */
-    UT_hash_handle hh;                /* makes this structure hashable */ 
+	uint8_t *sha;                      
+    int id;                           
+    UT_hash_handle hh;                
 };
+*/
 
 void calculate_partition(char *playload, int playload_len, struct kfifo *fifo);

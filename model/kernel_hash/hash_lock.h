@@ -49,7 +49,7 @@ static inline void ct_write_unlock_bh(unsigned key, struct _aligned_lock *_lock_
 }
 
 //struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
-extern struct _aligned_lock *hash_lock_array;
+//extern struct _aligned_lock *hash_lock_array;
 
 //void initial_sp_hash_table_cache(void);
 /*
