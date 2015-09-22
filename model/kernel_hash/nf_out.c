@@ -9,6 +9,7 @@
 #include "debug.h"
 #include "chunk.h"
 #include "sha.h"
+#include "hash_table.h"
 
 struct tcp_chunk *hash_head = NULL;
 struct percpu_counter save_num;
@@ -37,7 +38,7 @@ void prune_hash_data(unsigned long data)
 	*/
 }
 
-void hand_hash(uint8_t dst[], size_t len) 
+void hand_hash(uint8_t *dst, size_t len) 
 {
 	//struct tcp_chunk *element;
     
@@ -45,9 +46,25 @@ void hand_hash(uint8_t dst[], size_t len)
 	unsigned hf_bkt, hf_hashv;                                              
 	HASH_FCN(dst, (unsigned)strlen(dst), (hash_head)->hh.tbl->num_buckets, hf_hashv, hf_bkt); 
 	DEBUG_LOG(KERN_INFO "HASH is:%u and bucket is:%u, num is:%u\n", hf_hashv, hf_hashv&CT_LOCKARRAY_MASK, CT_LOCKARRAY_MASK);
-	*/	
+	*/
+	struct hashinfo_item *item;	
 	DEBUG_LOG(KERN_INFO "LOCK 1");
 
+	item = get_hash_item(dst);
+    if (item == NULL) {
+        if (add_hash_info(dst) != 0) {
+			DEBUG_LOG(KERN_INFO "add hash item error");
+            BUG();
+        }   	
+		DEBUG_LOG(KERN_INFO "LOCK 3");
+	}
+	else {
+		percpu_counter_add(&sum_num, len);
+		percpu_counter_add(&save_num, len);
+		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
+		DEBUG_LOG(KERN_INFO "LOCK 4");
+	}
+	
 	/*
 	ct_read_lock_bh(hf_hashv, hash_lock_array);
 	HASH_FIND_STR(hash_head, dst, element);  
@@ -92,8 +109,10 @@ void build_hash(char *src, int start, int end, int length)
      * Fixup: use slab maybe effectiver than kmalloc.
      */
 	int genhash, i;
-	uint8_t *dst = kmalloc(sizeof(uint8_t)*(SHALEN+1), GFP_ATOMIC);
-	memset(dst, '\0', SHALEN+1);
+	uint8_t *dst = kmalloc(sizeof(uint8_t)*SHALEN, GFP_ATOMIC);
+	memset(dst, '\0', SHALEN);
+
+	//static uint8_t dst[SHALEN];
 
 	DEBUG_LOG(KERN_INFO "LOCK 7");
 
@@ -102,17 +121,18 @@ void build_hash(char *src, int start, int end, int length)
 		printk(KERN_ERR "%s\n", __func__);
 		BUG();
 	}
-	
+	/*
 	DEBUG_LOG(KERN_INFO "DATA:");
 	for (i = start; i <= end; i++) {
 		printk("%02x:", src[i]&0xff);
-	}
+	}*/
 	DEBUG_LOG(KERN_INFO "SHA-1:");
 	for (i = 0; i < 20; i++) {
 		printk("%02x:", dst[i]&0xff);
 	}
 
 	hand_hash(dst, length);
+	kfree(dst);
 }
 
 void get_partition(char *data, int length)

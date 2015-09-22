@@ -54,7 +54,8 @@ static int minit(void)
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
 
-	initial_hash_table_cache();	
+	if (0 > (err = initial_hash_table_cache()))
+		goto out;	
 	/*
 	initial_sp_hash_table_cache();
 	*/
@@ -68,7 +69,7 @@ static int minit(void)
 	}
 	*/
 
-	printk(KERN_INFO "\nStart %s.\n", THIS_MODULE->name);
+	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
 
 	if (0 > (err = nf_register_hook(&nf_out_ops))) {
 		printk(KERN_ERR "Failed to register nf_out %s.\n", THIS_MODULE->name);
@@ -118,7 +119,8 @@ static void mexit(void)
 		del_timer_sync(this);
 	}
 	*/
-	
+
+	release_hash_table_cache();	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
 	tcp_free_sha1sig_pool();

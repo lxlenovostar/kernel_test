@@ -7,22 +7,9 @@
 
 #define WS_SP_HASH_TABLE_BITS 20
 
-void inline init_tcp_item(struct hashinfo_item *tcp_item)
-{
-}
-
-void inline release_tcp_item(struct hashinfo_item *tcp_item)
-{
-}
-
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
-unsigned long _ws_timeout_hash_syn = 6*HZ;
-
-/*
- * Connection hash table: for input and output packets lookups of sp
- */
 static struct list_head *hash_tab = NULL;
 
 /* SLAB cache for sp hash */
@@ -39,37 +26,78 @@ static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
     ct_write_lock_bh(hash, hash_lock_array);
     list_add(&cp->c_list, &hash_tab[hash]);
+	atomic_inc(&cp->refcnt);
     ct_write_unlock_bh(hash, hash_lock_array);
     return 1;
 }
 
-/*
-static struct hashinfo_item* hash_new(struct hashinfo *info)
+static inline uint32_t _unhash(uint32_t hash, struct hashinfo_item *cp)
 {
-    uint32_t hash;
+    ct_write_lock_bh(hash, hash_lock_array);
+    list_del(&cp->c_list);
+    atomic_dec(&cp->refcnt);
+    ct_write_unlock_bh(hash, hash_lock_array);
+    return 1;
+}
+
+static struct hashinfo_item* hash_new(uint8_t *info)
+{
+    uint32_t hash, bkt;
     struct hashinfo_item *cp;
-    int hash_count = atomic_read(&hash_count);
-    if (hash_count > hash_max_count){
-        DEBUG_LOG(__FUNCTION__);
+    int hash_count_now = atomic_read(&hash_count);
+    if (hash_count_now > hash_max_count){
+    	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
         return NULL;
     }   
 
     cp = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
     if (cp == NULL) {
-        DEBUG_LOG(__FUNCTION__);
+    	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
         return NULL;
     }   
 
     INIT_LIST_HEAD(&cp->c_list);
+	memcpy(cp->sha1, info, SHA1SIZE);
+	atomic_set(&cp->refcnt, 1);    
     atomic_inc(&hash_count);
-
-    hash = hash_hashkey(tcp_info); //hash function.
-    hash(hash, cp);
-    DEBUG_LOG(__FUNCTION__);
+	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
+    _hash(bkt, cp);
+    DEBUG_LOG(KERN_INFO "%s", __FUNCTION__ );
     
 	return cp; 
 }
-*/
+
+int add_hash_info(uint8_t *info)
+{
+    struct hashinfo_item *cp=NULL;
+
+    cp = hash_new(info);
+    if(cp == NULL)
+        return -1; 
+    return 0;
+}
+
+struct hashinfo_item *get_hash_item(uint8_t *info)
+{
+    uint32_t hash, bkt;
+    struct hashinfo_item *cp;
+	DEBUG_LOG(KERN_INFO "info1 is:%p\n", info);
+	HASH_FCN(info, SHA1SIZE, hash_tab_size, hash, bkt);
+	DEBUG_LOG(KERN_INFO "info2 is:%p\n", info);
+    ct_read_lock_bh(hash, hash_lock_array);
+	DEBUG_LOG(KERN_INFO "info3 is:%p\n", info);
+    list_for_each_entry(cp, &hash_tab[bkt], c_list) {
+		DEBUG_LOG(KERN_INFO "info4 is:%p\n", info);
+		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
+    			DEBUG_LOG(KERN_INFO "%s fuck\n", __FUNCTION__ );
+                atomic_inc(&cp->refcnt);
+                ct_read_unlock_bh(hash, hash_lock_array);
+                return cp; 
+        }   
+    }   
+    ct_read_unlock_bh(hash, hash_lock_array);
+    return NULL;
+}
 
 int initial_hash_table_cache(void)
 {
@@ -107,26 +135,22 @@ int initial_hash_table_cache(void)
     return 0;
 }
 
-static void hash_expire(unsigned long data)
+static void hash_del(struct hashinfo_item *cp)
 {
-    struct sp_tcp_hashinfo_item *cp = (struct sp_tcp_hashinfo_item *)data;
     atomic_inc(&cp->refcnt);
     if (likely(atomic_read(&cp->refcnt) == 2)) {
-        uint32_t hash = ws_sp_hash_hashkey(&cp->tcp_info);
-        ws_sp_unhash(hash, cp);
+        uint32_t hash, bkt;
+		HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
+        _unhash(bkt, cp);
         if (likely(atomic_read(&cp->refcnt) == 1)){
-            if (timer_pending(&cp->timer))
-                del_timer(&cp->timer);
-            atomic_dec(&_ws_sp_hash_count);
-            release_tcp_item(cp);
-            debug_tcp_info(__FUNCTION__, &(cp->tcp_info));
-            kmem_cache_free(_ws_sp_hash_cachep, cp);
+            atomic_dec(&hash_count);
+            kmem_cache_free(hash_cachep, cp);
             return;
         }
-        ws_sp_hash(hash, cp);
+        _hash(bkt, cp);
     }
-    ws_sp_hash_put(cp, _ws_timeout_hash_syn);
-    debug_tcp_info(__FUNCTION__, &cp->tcp_info);
+    atomic_dec(&cp->refcnt);
+    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
 
 static void hash_flush(void)
@@ -138,19 +162,19 @@ flush_again:
     for (idx = 0; idx < hash_tab_size; idx++) {
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry(cp, &hash_tab[idx], c_list) {
-            ws_sp_hash_expire_now(cp);
+            hash_del(cp);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
     }
 
     /* the counter may be not NULL, because maybe some conn entries
-    are run by slow timer handler or unhashed but still referred */
-    if (atomic_read(&_ws_sp_hash_count) != 0) {
+    are unhashed but still referred */
+    if (atomic_read(&hash_count) != 0) {
         schedule();
         goto flush_again;
     }
 
-    DEBUG_ERROR("<<==>> %s\n", __FUNCTION__ );
+    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
 
 void release_hash_table_cache(void)
@@ -160,6 +184,6 @@ void release_hash_table_cache(void)
     kmem_cache_destroy(hash_cachep);
     vfree(hash_tab);
 
-    DEBUG_LOG("<<==>> %s  \n", __FUNCTION__);
+    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__);
 }
 
