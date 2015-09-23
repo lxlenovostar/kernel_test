@@ -18,17 +18,6 @@ unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 struct ws_sp_aligned_lock *hash_lock_array;
 
-/*
-void initial_sp_hash_table_cache(void) {
-	int idx;
-
-	hash_lock_array = kmalloc(sizeof(struct ws_sp_aligned_lock)*CT_LOCKARRAY_SIZE, GFP_ATOMIC);
-
-	for (idx=0; idx<CT_LOCKARRAY_SIZE; idx++)
-     	rwlock_init(&hash_lock_array[idx].l);
-}
-*/
-
 void init_hash_parameters(void)
 {
 	int i;
@@ -47,8 +36,7 @@ void init_hash_parameters(void)
 
 static int minit(void)
 {
-	int cpu, err = 0;
-	struct timer_list *this;
+	int err = 0;
 
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
@@ -56,18 +44,6 @@ static int minit(void)
 
 	if (0 > (err = initial_hash_table_cache()))
 		goto out;	
-	/*
-	initial_sp_hash_table_cache();
-	*/
-
-	/*	
-	for_each_online_cpu(cpu) {
-		this = &per_cpu(my_timer, cpu);
-		setup_timer(this, prune, 0);
-		this->expires = jiffies + (6 + cpu) * HZ;
-		add_timer_on(this, cpu);
-	}
-	*/
 
 	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
 
@@ -99,58 +75,17 @@ out:
 static void mexit(void)
 {
 	/* free the hash table contents */
-	struct tcp_chunk *current_chunk, *tmp;
-	uint8_t *sha;
-    int i, cpu;
 	unsigned long tmp_save, tmp_sum;
-	struct timer_list *this;
-
-	percpu_counter_destroy(&save_num);
-	percpu_counter_destroy(&sum_num);
-	
-	/*
-	kfree(hash_lock_array);
-	*/
-
-	/*
-	for_each_online_cpu(cpu) {
-		this = &per_cpu(my_timer, cpu);
-		printk("del timer cpu id is %d\n", cpu);
-		del_timer_sync(this);
-	}
-	*/
 
 	release_hash_table_cache();	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
 	tcp_free_sha1sig_pool();
-   	
-	/*
-	DEBUG_LOG("\n");
-  	HASH_ITER(hh, hash_head, current_chunk, tmp) {
-    	for (i = 0; i < 20; i++) {
-        	DEBUG_LOG("%02x->", (current_chunk->sha)[i]&0xff);
-    	}
-    	DEBUG_LOG("\n%d\n", current_chunk->id);
-
-    	HASH_DEL(hash_head,current_chunk); 
-    	
-		sha = current_chunk->sha;
-		kfree(current_chunk);                
-    	kfree(sha);                
-  	}
-	*/
-
-	/*	
-	tmp_save = get_cpu_var(save_num);
-	put_cpu_var(save_num);
-	tmp_sum = get_cpu_var(sum_num);
-	put_cpu_var(sum_num);
-	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu\nExit %s.\n", tmp_save, tmp_sum, THIS_MODULE->name);
-	*/
 	
 	tmp_save = percpu_counter_sum(&save_num);
 	tmp_sum =  percpu_counter_sum(&sum_num);
+	percpu_counter_destroy(&save_num);
+	percpu_counter_destroy(&sum_num);
 	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu\nExit %s.\n", tmp_save, tmp_sum, THIS_MODULE->name);
 	
 }
@@ -160,7 +95,7 @@ module_exit(mexit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("lix");
 #ifdef DEBUG
-MODULE_VERSION("1.4.1.debug");
+MODULE_VERSION("0.0.1.debug");
 #else
-MODULE_VERSION("1.4.1");
+MODULE_VERSION("0.0.1");
 #endif

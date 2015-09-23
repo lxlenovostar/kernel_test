@@ -69,6 +69,12 @@ struct hashinfo_item
 	atomic_t refcnt;  
 };
 
+struct hashtable_del
+{
+	struct timer_list flush_timer;
+	struct list_head list;
+};
+
 int initial_hash_table_cache(void);
 void release_hash_table_cache(void);   
 struct hashinfo_item *get_hash_item(uint8_t *info);

@@ -22,6 +22,7 @@ uint32_t hash_max_count = 100*1000*1000;
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 
+
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
     ct_write_lock_bh(hash, hash_lock_array);
@@ -36,6 +37,14 @@ static inline uint32_t _unhash(uint32_t hash, struct hashinfo_item *cp)
     ct_write_lock_bh(hash, hash_lock_array);
     list_del(&cp->c_list);
     atomic_dec(&cp->refcnt);
+    ct_write_unlock_bh(hash, hash_lock_array);
+    return 1;
+}
+
+static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
+{
+    ct_write_lock_bh(hash, hash_lock_array);
+	atomic_set(&cp->refcnt, 1);
     ct_write_unlock_bh(hash, hash_lock_array);
     return 1;
 }
@@ -58,7 +67,7 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 
     INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
-	atomic_set(&cp->refcnt, 1);    
+	atomic_set(&cp->refcnt, 0);    
     atomic_inc(&hash_count);
 	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
     _hash(bkt, cp);
@@ -81,15 +90,11 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 {
     uint32_t hash, bkt;
     struct hashinfo_item *cp;
-	DEBUG_LOG(KERN_INFO "info1 is:%p\n", info);
 	HASH_FCN(info, SHA1SIZE, hash_tab_size, hash, bkt);
-	DEBUG_LOG(KERN_INFO "info2 is:%p\n", info);
     ct_read_lock_bh(hash, hash_lock_array);
-	DEBUG_LOG(KERN_INFO "info3 is:%p\n", info);
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
-		DEBUG_LOG(KERN_INFO "info4 is:%p\n", info);
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
-    			DEBUG_LOG(KERN_INFO "%s fuck\n", __FUNCTION__ );
+    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
                 atomic_inc(&cp->refcnt);
                 ct_read_unlock_bh(hash, hash_lock_array);
                 return cp; 
@@ -153,16 +158,34 @@ static void hash_del(struct hashinfo_item *cp)
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
 
+void hash_expire_now(unsigned long data)
+{
+	uint32_t hash, bkt;
+	struct hashinfo_item *cp = (struct hashinfo_item *)data;
+    HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
+	reset_hash(bkt, cp);
+	hash_del(cp);
+}
+
 static void hash_flush(void)
 {
     int idx;
     struct hashinfo_item *cp;
-
+	struct hashtable_del *watch, *next;
+	static LIST_HEAD(hash_head);
+	
 flush_again:
     for (idx = 0; idx < hash_tab_size; idx++) {
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry(cp, &hash_tab[idx], c_list) {
-            hash_del(cp);
+            //hash_del(cp);
+			struct hashtable_del *item_del;
+			item_del = kmalloc(sizeof(struct hashtable_del), GFP_ATOMIC);
+			setup_timer(&item_del->flush_timer, hash_expire_now, (unsigned long)cp);
+			item_del->flush_timer.expires = jiffies;
+			add_timer(&item_del->flush_timer);
+			INIT_LIST_HEAD(&item_del->list);
+			list_add(&item_del->list, &hash_head);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
     }
@@ -172,7 +195,12 @@ flush_again:
     if (atomic_read(&hash_count) != 0) {
         schedule();
         goto flush_again;
-    }
+    } else {
+		list_for_each_entry_safe(watch, next, &hash_head, list) {
+			list_del(&watch->list);
+			kfree(watch);
+		}
+	}
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }

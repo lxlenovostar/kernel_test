@@ -48,7 +48,6 @@ void hand_hash(uint8_t *dst, size_t len)
 	DEBUG_LOG(KERN_INFO "HASH is:%u and bucket is:%u, num is:%u\n", hf_hashv, hf_hashv&CT_LOCKARRAY_MASK, CT_LOCKARRAY_MASK);
 	*/
 	struct hashinfo_item *item;	
-	DEBUG_LOG(KERN_INFO "LOCK 1");
 
 	item = get_hash_item(dst);
     if (item == NULL) {
@@ -56,13 +55,12 @@ void hand_hash(uint8_t *dst, size_t len)
 			DEBUG_LOG(KERN_INFO "add hash item error");
             BUG();
         }   	
-		DEBUG_LOG(KERN_INFO "LOCK 3");
+		percpu_counter_add(&sum_num, len);
 	}
 	else {
 		percpu_counter_add(&sum_num, len);
 		percpu_counter_add(&save_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
-		DEBUG_LOG(KERN_INFO "LOCK 4");
 	}
 	
 	/*
@@ -114,22 +112,22 @@ void build_hash(char *src, int start, int end, int length)
 
 	//static uint8_t dst[SHALEN];
 
-	DEBUG_LOG(KERN_INFO "LOCK 7");
 
 	genhash = tcp_v4_sha1_hash_data(dst, src + start, (end - start + 1));
 	if (genhash) {
-		printk(KERN_ERR "%s\n", __func__);
+		DEBUG_LOG(KERN_ERR "%s\n", __func__);
 		BUG();
 	}
-	/*
+	
 	DEBUG_LOG(KERN_INFO "DATA:");
 	for (i = start; i <= end; i++) {
-		printk("%02x:", src[i]&0xff);
-	}*/
+		DEBUG_LOG("%02x:", src[i]&0xff);
+	}
 	DEBUG_LOG(KERN_INFO "SHA-1:");
 	for (i = 0; i < 20; i++) {
-		printk("%02x:", dst[i]&0xff);
+		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
+	
 
 	hand_hash(dst, length);
 	kfree(dst);
@@ -142,8 +140,6 @@ void get_partition(char *data, int length)
 	int fifo_i, fifo_part, value, fifo_len; 
 	int start_pos = 0;
 	int end_pos = 0;
-
-	DEBUG_LOG(KERN_INFO "LOCK 6");
 
 	if (length > chunk_num) {	
 		/*
@@ -195,9 +191,6 @@ void get_partition(char *data, int length)
 	
 		kfifo_free(fifo);	
 	}
-	
-	DEBUG_LOG(KERN_INFO "LOCK 6.8");
-
 }
 
 static unsigned int nf_out(
@@ -247,10 +240,7 @@ static unsigned int nf_out(
 		//for (i = 0; i < data_len; ++i)
 			//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 	
-		DEBUG_LOG(KERN_INFO "LOCK 5");
-
 		get_partition(data, data_len);
-		DEBUG_LOG(KERN_INFO "LOCK 5.5");
 	}
 
 	//put_cpu();
