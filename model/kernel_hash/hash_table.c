@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-
+unsigned long timeout_hash_del = 3*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -23,6 +23,7 @@ uint32_t hash_max_count = 100*1000*1000;
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 
 
+void hash_item_expire(unsigned long data);
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
     ct_write_lock_bh(hash, hash_lock_array);
@@ -48,7 +49,19 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     ct_write_unlock_bh(hash, hash_lock_array);
     return 1;
 }
-
+/*
+static void hash_item_expire(unsigned long data)
+{
+	struct hashinfo_item *cp = (struct hashinfo_item *)data;
+	if (likely(atomic_read(&cp->refcnt) == 1)) {
+		hash_del_item(cp);
+	}
+	else {
+    	atomic_dec(&cp->refcnt);
+		mod_timer(&cp->timer, jiffies + timeout_hash_del);
+	}
+}
+*/
 static struct hashinfo_item* hash_new(uint8_t *info)
 {
     uint32_t hash, bkt;
@@ -59,6 +72,9 @@ static struct hashinfo_item* hash_new(uint8_t *info)
         return NULL;
     }   
 
+	/*
+     * initial the hash item.
+     */
     cp = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
     if (cp == NULL) {
     	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
@@ -68,11 +84,22 @@ static struct hashinfo_item* hash_new(uint8_t *info)
     INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, 0);    
-    atomic_inc(&hash_count);
+	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
+	cp->timer.expires = jiffies + timeout_hash_del;
+	add_timer(&cp->timer);
+    
+	/*
+     * total hash item.
+     */
+	atomic_inc(&hash_count);
+
+	/*
+     * insert into the hash table.
+     */
 	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
     _hash(bkt, cp);
+
     DEBUG_LOG(KERN_INFO "%s", __FUNCTION__ );
-    
 	return cp; 
 }
 
@@ -140,7 +167,7 @@ int initial_hash_table_cache(void)
     return 0;
 }
 
-static void hash_del(struct hashinfo_item *cp)
+static void hash_del_item(struct hashinfo_item *cp)
 {
     atomic_inc(&cp->refcnt);
     if (likely(atomic_read(&cp->refcnt) == 2)) {
@@ -148,7 +175,9 @@ static void hash_del(struct hashinfo_item *cp)
 		HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
         _unhash(bkt, cp);
         if (likely(atomic_read(&cp->refcnt) == 1)){
-            atomic_dec(&hash_count);
+            if (timer_pending(&cp->timer))
+            	del_timer(&cp->timer);
+			atomic_dec(&hash_count);
             kmem_cache_free(hash_cachep, cp);
             return;
         }
@@ -164,7 +193,7 @@ void hash_expire_now(unsigned long data)
 	struct hashinfo_item *cp = (struct hashinfo_item *)data;
     HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
 	reset_hash(bkt, cp);
-	hash_del(cp);
+	hash_del_item(cp);
 }
 
 static void hash_flush(void)
@@ -178,7 +207,6 @@ flush_again:
     for (idx = 0; idx < hash_tab_size; idx++) {
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry(cp, &hash_tab[idx], c_list) {
-            //hash_del(cp);
 			struct hashtable_del *item_del;
 			item_del = kmalloc(sizeof(struct hashtable_del), GFP_ATOMIC);
 			setup_timer(&item_del->flush_timer, hash_expire_now, (unsigned long)cp);
@@ -214,4 +242,24 @@ void release_hash_table_cache(void)
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__);
 }
+
+void hash_item_expire(unsigned long data)
+{
+	struct hashinfo_item *cp = (struct hashinfo_item *)data;
+    DEBUG_LOG(KERN_INFO "count is:%d\n", atomic_read(&hash_count));
+	if (likely(atomic_read(&cp->refcnt) == 1)) {
+		/*
+         * delete it.
+         */
+		hash_del_item(cp);
+	}
+	else {
+		/*
+         * mod timer and desc refcnt.
+         */
+    	atomic_dec(&cp->refcnt);
+		mod_timer(&cp->timer, jiffies + timeout_hash_del);
+	}
+}
+
 

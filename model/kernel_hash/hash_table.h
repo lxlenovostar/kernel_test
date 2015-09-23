@@ -64,9 +64,10 @@ do {                                                                            
 
 struct hashinfo_item
 {
-	struct list_head c_list;
 	uint8_t sha1[SHA1SIZE];
 	atomic_t refcnt;  
+	struct timer_list timer; /* Expiration timer */ 
+	struct list_head c_list;
 };
 
 struct hashtable_del
