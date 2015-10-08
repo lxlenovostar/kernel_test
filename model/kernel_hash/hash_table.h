@@ -72,7 +72,7 @@ struct hashinfo_item
 
 struct hashtable_del
 {
-	struct timer_list flush_timer;
+	struct timer_list flush_timer; /*not release item immediatly, because we hold the lock now.*/
 	struct list_head list;
 };
 

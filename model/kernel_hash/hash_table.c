@@ -49,19 +49,7 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     ct_write_unlock_bh(hash, hash_lock_array);
     return 1;
 }
-/*
-static void hash_item_expire(unsigned long data)
-{
-	struct hashinfo_item *cp = (struct hashinfo_item *)data;
-	if (likely(atomic_read(&cp->refcnt) == 1)) {
-		hash_del_item(cp);
-	}
-	else {
-    	atomic_dec(&cp->refcnt);
-		mod_timer(&cp->timer, jiffies + timeout_hash_del);
-	}
-}
-*/
+
 static struct hashinfo_item* hash_new(uint8_t *info)
 {
     uint32_t hash, bkt;
@@ -209,6 +197,10 @@ flush_again:
         list_for_each_entry(cp, &hash_tab[idx], c_list) {
 			struct hashtable_del *item_del;
 			item_del = kmalloc(sizeof(struct hashtable_del), GFP_ATOMIC);
+			/*
+			 * Fixup:
+             * Actually we can delete it now not use timer.
+             */
 			setup_timer(&item_del->flush_timer, hash_expire_now, (unsigned long)cp);
 			item_del->flush_timer.expires = jiffies;
 			add_timer(&item_del->flush_timer);
