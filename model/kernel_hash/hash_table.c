@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-unsigned long timeout_hash_del = 9*HZ;
+unsigned long timeout_hash_del = 18*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -19,8 +19,7 @@ static struct kmem_cache * release_hash_cachep;
 
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
-//uint32_t hash_max_count = 100*1000*1000;
-uint32_t hash_max_count = 10000;
+uint32_t hash_max_count = 100*1000*1000;
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];

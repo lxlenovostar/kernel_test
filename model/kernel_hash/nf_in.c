@@ -16,28 +16,6 @@ struct percpu_counter save_num;
 struct percpu_counter sum_num;
 rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 
-void prune_hash_data(unsigned long data)
-{
-	/*struct free_slab *tmp;
-	struct free_slab *next;
-	struct list_head *tmp_head_free_slab = (struct listhead *) data;
-	if (likely(tmp_head_free_slab->next != NULL)) {
-		list_for_each_entry_safe_reverse(tmp, next, tmp_head_free_slab,
-						 list) {
-			if (likely(atomic_read(&((tmp->free_mem).users)) == 1)) {
-				list_del(&tmp->list);
-				kmem_cache_free(skbuff_free_cache, tmp);
-				//percpu_counter_inc(&free_packets);
-			}
-		}
-	}*/
-
-	/*
-	mod_timer(&get_cpu_var(my_timer), jiffies + 10);
-	put_cpu_var(my_timer);
-	*/
-}
-
 void hand_hash(uint8_t *dst, size_t len) 
 {
 	struct hashinfo_item *item;	
@@ -51,8 +29,9 @@ void hand_hash(uint8_t *dst, size_t len)
 		percpu_counter_add(&sum_num, len);
 	}
 	else {
+		if (len > (SHALEN + 2))
+			percpu_counter_add(&save_num, len);
 		percpu_counter_add(&sum_num, len);
-		percpu_counter_add(&save_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 	}
 }
@@ -83,7 +62,6 @@ void build_hash(char *src, int start, int end, int length)
 	for (i = 0; i < 20; i++) {
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
-	
 
 	hand_hash(dst, length);
 	kfree(dst);
