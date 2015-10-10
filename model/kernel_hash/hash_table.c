@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-unsigned long timeout_hash_del = 18*HZ;
+unsigned long timeout_hash_del = 60*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -197,6 +197,7 @@ void hash_expire_now(unsigned long data)
 	struct hashinfo_item *cp = (struct hashinfo_item *)data;
     HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
 	reset_hash(bkt, cp);
+    
 	hash_del_item(cp);
 }
 
