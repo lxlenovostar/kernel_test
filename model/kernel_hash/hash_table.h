@@ -4,6 +4,7 @@
 #include <linux/spinlock.h>
 
 #define CACHE_NAME "hash_cache"
+#define RELEASE_CACHE_NAME "release_hash_cache"
 #define SHA1SIZE 20
 
 #define HASH_JEN_MIX(a,b,c)                                                      \

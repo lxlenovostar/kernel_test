@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-unsigned long timeout_hash_del = 3*HZ;
+unsigned long timeout_hash_del = 9*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -15,9 +15,12 @@ static struct list_head *hash_tab = NULL;
 /* SLAB cache for sp hash */
 static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
+static struct kmem_cache * release_hash_cachep;
+
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
-uint32_t hash_max_count = 100*1000*1000;
+//uint32_t hash_max_count = 100*1000*1000;
+uint32_t hash_max_count = 10000;
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
@@ -141,10 +144,24 @@ int initial_hash_table_cache(void)
 
     if (!hash_cachep) {
         vfree(hash_tab);
-        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create ws_lvs_conn error\n",
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create  error\n",
                 __FUNCTION__);
         return -ENOMEM;
     }
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    release_hash_cachep = kmem_cache_create(RELEASE_CACHE_NAME, sizeof(struct hashtable_del), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+#else
+    release_hash_cachep = kmem_cache_create(RELEASE_CACHE_NAME, sizeof(struct hashtable_del), 0, SLAB_HWCACHE_ALIGN, NULL);
+#endif
+
+    if (!release_hash_cachep) {
+        vfree(hash_tab);
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
 
     for (idx=0; idx<hash_tab_size; idx++)
         INIT_LIST_HEAD(&hash_tab[idx]);
@@ -196,11 +213,13 @@ flush_again:
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry(cp, &hash_tab[idx], c_list) {
 			struct hashtable_del *item_del;
-			item_del = kmalloc(sizeof(struct hashtable_del), GFP_ATOMIC);
-			/*
-			 * Fixup:
-             * Actually we can delete it now not use timer.
-             */
+    
+			item_del = kmem_cache_zalloc(release_hash_cachep, GFP_ATOMIC);  
+    		if (item_del == NULL) {
+    			DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+        		BUG();
+    		}   
+
 			setup_timer(&item_del->flush_timer, hash_expire_now, (unsigned long)cp);
 			item_del->flush_timer.expires = jiffies;
 			add_timer(&item_del->flush_timer);
@@ -218,7 +237,7 @@ flush_again:
     } else {
 		list_for_each_entry_safe(watch, next, &hash_head, list) {
 			list_del(&watch->list);
-			kfree(watch);
+            kmem_cache_free(release_hash_cachep, watch);
 		}
 	}
 
@@ -230,6 +249,7 @@ void release_hash_table_cache(void)
     hash_flush();
 
     kmem_cache_destroy(hash_cachep);
+    kmem_cache_destroy(release_hash_cachep);
     vfree(hash_tab);
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__);

@@ -204,7 +204,7 @@ struct nf_hook_ops nf_in_ops = {
 	.pf		= PF_INET,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
 	.hook           = nf_in,
-	.hooknum        = NF_INET_PRE_ROUTING,
+	.hooknum        = NF_INET_LOCAL_IN,
 #else
 	.hook           = nf_in_p,
 	.hooknum        = NF_IP_PRE_ROUTING,
