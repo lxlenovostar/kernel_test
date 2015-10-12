@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-unsigned long timeout_hash_del = 20*HZ;
+unsigned long timeout_hash_del = 30*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -22,6 +22,7 @@ uint32_t hash_max_count = 100*1000*1000;
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 
+struct timer_list print_memory;
 
 void hash_item_expire(unsigned long data);
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
@@ -71,7 +72,7 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 
     INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
-	atomic_set(&cp->refcnt, 0);    
+	atomic_set(&cp->refcnt, 10);    
 	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
 	cp->timer.expires = jiffies + timeout_hash_del;
 	add_timer(&cp->timer);
@@ -110,13 +111,23 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
     			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
-                atomic_inc(&cp->refcnt);
+                atomic_add(10, &cp->refcnt);
                 ct_read_unlock_bh(hash, hash_lock_array);
                 return cp; 
         }   
     }   
     ct_read_unlock_bh(hash, hash_lock_array);
     return NULL;
+}
+
+void print_memory_usage(unsigned long data)
+{
+	int slot_size = hash_tab_size * sizeof(struct list_head);
+    uint32_t hash_count_now = atomic_read(&hash_count);
+	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
+
+	printk(KERN_INFO "memory usage is:%dMb, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
+	mod_timer(&print_memory, jiffies + 10*HZ);
 }
 
 int initial_hash_table_cache(void)
@@ -152,7 +163,12 @@ int initial_hash_table_cache(void)
     for (idx=0; idx<CT_LOCKARRAY_SIZE; idx++)
         rwlock_init(&hash_lock_array[idx].l);
 
-    return 0;
+	init_timer(&print_memory);
+	print_memory.expires = jiffies + 10*HZ;
+	print_memory.data = 0;
+	print_memory.function = print_memory_usage;
+    add_timer(&print_memory);
+	return 0;
 }
 
 static void hash_del_item(struct hashinfo_item *cp)
@@ -173,16 +189,6 @@ static void hash_del_item(struct hashinfo_item *cp)
     }
     atomic_dec(&cp->refcnt);
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-}
-
-void hash_expire_now(unsigned long data)
-{
-	uint32_t hash, bkt;
-	struct hashinfo_item *cp = (struct hashinfo_item *)data;
-    HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
-	reset_hash(bkt, cp);
-    
-	hash_del_item(cp);
 }
 
 static void hash_flush(void)
@@ -207,7 +213,10 @@ static void hash_flush(void)
 
 void release_hash_table_cache(void)
 {
+	
     hash_flush();
+	
+	del_timer_sync(&print_memory);
 
     kmem_cache_destroy(hash_cachep);
     vfree(hash_tab);
@@ -233,5 +242,3 @@ void hash_item_expire(unsigned long data)
 		mod_timer(&cp->timer, jiffies + timeout_hash_del);
 	}
 }
-
-

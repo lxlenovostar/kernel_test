@@ -30,7 +30,7 @@ void hand_hash(uint8_t *dst, size_t len)
 	}
 	else {
 		if (len > (SHALEN + 2))
-			percpu_counter_add(&save_num, len);
+			percpu_counter_add(&save_num, (len - SHALEN - 2));
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 	}
@@ -190,28 +190,3 @@ struct nf_hook_ops nf_in_ops = {
 #endif
 	.priority       = NF_IP_PRI_FIRST,
 };
-
-/*
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
-static unsigned int nf_out_p(unsigned int hooknum,
-		struct sk_buff **skb
-		const struct net_device *in,
-		const struct net_device *out,
-		int (*okfn) (struct sk_buff *))
-{
-	return nf_out(hooknum, *skb, in, out, okfn);
-}
-#endif
-
-struct nf_hook_ops nf_out_ops = {
-	.list		= { NULL, NULL},
-	.pf		= PF_INET,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
-	.hook           = nf_out,
-	.hooknum        = NF_INET_POST_ROUTING,
-#else
-	.hook           = nf_out_p,
-	.hooknum        = NF_IP_POST_ROUTING,
-#endif
-	.priority       = NF_IP_PRI_LAST,
-};*/
