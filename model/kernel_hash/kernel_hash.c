@@ -77,9 +77,9 @@ static void mexit(void)
 	/* free the hash table contents */
 	unsigned long tmp_save, tmp_sum;
 
-	release_hash_table_cache();	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
+	release_hash_table_cache();	
 	tcp_free_sha1sig_pool();
 	
 	tmp_save = percpu_counter_sum(&save_num);

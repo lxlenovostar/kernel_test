@@ -6,7 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-unsigned long timeout_hash_del = 60*HZ;
+unsigned long timeout_hash_del = 20*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -14,8 +14,6 @@ static struct list_head *hash_tab = NULL;
 
 /* SLAB cache for sp hash */
 static struct kmem_cache * hash_cachep/* __read_mostly*/;
-
-static struct kmem_cache * release_hash_cachep;
 
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
@@ -148,20 +146,6 @@ int initial_hash_table_cache(void)
         return -ENOMEM;
     }
 
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
-    release_hash_cachep = kmem_cache_create(RELEASE_CACHE_NAME, sizeof(struct hashtable_del), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
-#else
-    release_hash_cachep = kmem_cache_create(RELEASE_CACHE_NAME, sizeof(struct hashtable_del), 0, SLAB_HWCACHE_ALIGN, NULL);
-#endif
-
-    if (!release_hash_cachep) {
-        vfree(hash_tab);
-        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create  error\n",
-                __FUNCTION__);
-        return -ENOMEM;
-    }
-
-
     for (idx=0; idx<hash_tab_size; idx++)
         INIT_LIST_HEAD(&hash_tab[idx]);
 
@@ -204,42 +188,19 @@ void hash_expire_now(unsigned long data)
 static void hash_flush(void)
 {
     int idx;
-    struct hashinfo_item *cp;
-	struct hashtable_del *watch, *next;
-	static LIST_HEAD(hash_head);
-	
-flush_again:
-    for (idx = 0; idx < hash_tab_size; idx++) {
-        ct_write_lock_bh(idx, hash_lock_array);
-        list_for_each_entry(cp, &hash_tab[idx], c_list) {
-			struct hashtable_del *item_del;
+    struct hashinfo_item *cp, *next;
     
-			item_del = kmem_cache_zalloc(release_hash_cachep, GFP_ATOMIC);  
-    		if (item_del == NULL) {
-    			DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-        		BUG();
-    		}   
-
-			setup_timer(&item_del->flush_timer, hash_expire_now, (unsigned long)cp);
-			item_del->flush_timer.expires = jiffies;
-			add_timer(&item_del->flush_timer);
-			INIT_LIST_HEAD(&item_del->list);
-			list_add(&item_del->list, &hash_head);
+	for (idx = 0; idx < hash_tab_size; idx++) {
+        ct_write_lock_bh(idx, hash_lock_array);
+        list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
+    		list_del(&cp->c_list);
+            if (timer_pending(&cp->timer))
+            	del_timer(&cp->timer);
+			atomic_dec(&hash_count);
+            kmem_cache_free(hash_cachep, cp);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
     }
-
-    /* the counter may be not NULL, because maybe some conn entries
-    are unhashed but still referred */
-    if (atomic_read(&hash_count) != 0) {
-        schedule();
-        goto flush_again;
-    } else {
-		list_for_each_entry_safe(watch, next, &hash_head, list) {
-			list_del(&watch->list);
-            kmem_cache_free(release_hash_cachep, watch);
-		}
-	}
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
@@ -249,7 +210,6 @@ void release_hash_table_cache(void)
     hash_flush();
 
     kmem_cache_destroy(hash_cachep);
-    kmem_cache_destroy(release_hash_cachep);
     vfree(hash_tab);
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__);

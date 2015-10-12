@@ -140,7 +140,7 @@ static unsigned int nf_in(
 {
 	char *data = NULL;
 	size_t data_len = 0;
-	unsigned short sport;
+	unsigned short sport, dport;
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	struct tcphdr *tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 	
@@ -152,6 +152,7 @@ static unsigned int nf_in(
 		return NF_ACCEPT;
 
 	sport = tcph->source;
+	dport = tcph->dest;
 
 	if (likely(ntohs(sport) == 80)) {	
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
