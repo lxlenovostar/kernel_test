@@ -1,12 +1,15 @@
 #include <asm/types.h>
 #include <linux/version.h>
 #include <linux/mm.h>
+#include <linux/limits.h>
 #include "hash_lock.h"
 #include "hash_table.h"
 #include "debug.h"
+#include "chunk.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-#define ITEM_CITE 20
+#define ITEM_CITE_ADD 10
+#define ITEM_CITE_FIND 10
 unsigned long timeout_hash_del = 30*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -18,7 +21,7 @@ static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
-uint32_t hash_max_count = 1024*1024*1024*1 / sizeof(struct hashinfo_item);/*1GB hash_table memory usage.*/
+unsigned long long hash_max_count = (1024*1024*1024*1) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
@@ -73,7 +76,7 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 
     INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
-	atomic_set(&cp->refcnt, ITEM_CITE);    
+	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
 	cp->timer.expires = jiffies + timeout_hash_del;
 	add_timer(&cp->timer);
@@ -112,7 +115,7 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
     			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
-                atomic_add(ITEM_CITE, &cp->refcnt);
+                atomic_add(ITEM_CITE_FIND, &cp->refcnt);
                 ct_read_unlock_bh(hash, hash_lock_array);
                 return cp; 
         }   
@@ -123,12 +126,17 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 
 void print_memory_usage(unsigned long data)
 {
+	unsigned long tmp_save, tmp_sum;	
 	int slot_size = hash_tab_size * sizeof(struct list_head);
     uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
+	tmp_save = percpu_counter_read(&save_num);
+	tmp_sum =  percpu_counter_read(&sum_num);
 
-	printk(KERN_INFO "memory usage is:%dMB, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
-	mod_timer(&print_memory, jiffies + 10*HZ);
+	printk(KERN_INFO "max hash count is:%llu and max ull is:%llu, %s", hash_max_count, ULLONG_MAX, (hash_max_count>ULLONG_MAX)?"gt":"lt");
+
+	printk(KERN_INFO "memory usage is:%dMB, item number is:%u, save bytes is:%lu, all bytes is:%lu, Cache ratio is:%lu%%", (item_size + slot_size)/1024/1024, hash_count_now, tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
+	mod_timer(&print_memory, jiffies + 60*HZ);
 }
 
 int initial_hash_table_cache(void)

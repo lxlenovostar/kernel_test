@@ -12,9 +12,9 @@
 #include "hash_table.h"
 
 struct tcp_chunk *hash_head = NULL;
+rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
-rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 
 void hand_hash(uint8_t *dst, size_t len) 
 {
