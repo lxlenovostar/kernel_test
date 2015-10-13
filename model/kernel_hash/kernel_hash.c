@@ -86,7 +86,7 @@ static void mexit(void)
 	tmp_sum =  percpu_counter_sum(&sum_num);
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
-	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu\nExit %s.\n", tmp_save, tmp_sum, THIS_MODULE->name);
+	printk(KERN_INFO "\nsavenum is:%lu; sumnum is:%lu,%lu(Mb)\nExit %s.\n", tmp_save, tmp_sum, (tmp_sum /1024 /1024 *8),THIS_MODULE->name);
 	
 }
 

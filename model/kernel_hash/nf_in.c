@@ -23,8 +23,7 @@ void hand_hash(uint8_t *dst, size_t len)
 	item = get_hash_item(dst);
     if (item == NULL) {
         if (add_hash_info(dst) != 0) {
-			DEBUG_LOG(KERN_INFO "add hash item error");
-            BUG();
+			printk(KERN_ERR "%s:add hash item error", __FUNCTION__);
         }   	
 		percpu_counter_add(&sum_num, len);
 	}
@@ -47,11 +46,10 @@ void build_hash(char *src, int start, int end, int length)
 
 	//static uint8_t dst[SHALEN];
 
-
 	genhash = tcp_v4_sha1_hash_data(dst, src + start, (end - start + 1));
 	if (genhash) {
-		DEBUG_LOG(KERN_ERR "%s\n", __func__);
-		BUG();
+		printk(KERN_ERR "%s:calculate SHA-1 failed.", __func__);
+		return;
 	}
 	
 	DEBUG_LOG(KERN_INFO "DATA:");
@@ -80,9 +78,9 @@ void get_partition(char *data, int length)
 	     * Fixup: alloc kfifo everytime.
 	     */	
 		fifo = kfifo_alloc(KFIFOLEN, GFP_ATOMIC, &lock);
-		if (unlikely(fifo == NULL)) {
-			printk(KERN_ERR "alloc kfifo failed.");
-			BUG();
+		if (IS_ERR(fifo)) {
+			printk(KERN_ERR "Out of memory allocating kfifo failed.");
+			return;
 		}
 	
 		calculate_partition(data, length, fifo);

@@ -182,9 +182,8 @@ int tcp_v4_sha1_hash_data(char *sha1_hash, char *src, int len)
 
     if (tcp_sha1_hash_data(hp, src, len))
         goto clear_hash;
-    //if (tcp_md5_hash_skb_data(hp, skb, th->doff << 2))
-    //    goto clear_hash;
-    if (crypto_hash_final(desc, sha1_hash))
+    
+	if (crypto_hash_final(desc, sha1_hash))
         goto clear_hash;
 
     tcp_put_sha1sig_pool();

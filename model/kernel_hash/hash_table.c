@@ -6,6 +6,7 @@
 #include "debug.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
+#define ITEM_CITE 20
 unsigned long timeout_hash_del = 30*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -17,7 +18,7 @@ static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
-uint32_t hash_max_count = 100*1000*1000;
+uint32_t hash_max_count = 1024*1024*1024*1 / sizeof(struct hashinfo_item);/*1GB hash_table memory usage.*/
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
@@ -72,7 +73,7 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 
     INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
-	atomic_set(&cp->refcnt, 10);    
+	atomic_set(&cp->refcnt, ITEM_CITE);    
 	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
 	cp->timer.expires = jiffies + timeout_hash_del;
 	add_timer(&cp->timer);
@@ -111,7 +112,7 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
     			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
-                atomic_add(10, &cp->refcnt);
+                atomic_add(ITEM_CITE, &cp->refcnt);
                 ct_read_unlock_bh(hash, hash_lock_array);
                 return cp; 
         }   
@@ -126,7 +127,7 @@ void print_memory_usage(unsigned long data)
     uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 
-	printk(KERN_INFO "memory usage is:%dMb, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
+	printk(KERN_INFO "memory usage is:%dMB, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
 	mod_timer(&print_memory, jiffies + 10*HZ);
 }
 
