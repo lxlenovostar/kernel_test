@@ -17,7 +17,7 @@ __attribute__((section(".gnu.linkonce.this_module"))) = {
 static const struct modversion_info ____versions[]
 __used
 __attribute__((section("__versions"))) = {
-	{ 0x1887ec80, "module_layout" },
+	{ 0x14522340, "module_layout" },
 	{ 0x806e575f, "kmem_cache_destroy" },
 	{ 0xcfadd723, "__percpu_counter_add" },
 	{ 0xd6ee688f, "vmalloc" },
@@ -30,13 +30,13 @@ __attribute__((section("__versions"))) = {
 	{ 0x55f2580b, "__alloc_percpu" },
 	{ 0x8dca832f, "__percpu_counter_sum" },
 	{ 0x6a9f26c9, "init_timer_key" },
-	{ 0x2cb81736, "nf_register_hook" },
+	{ 0xca975b7a, "nf_register_hook" },
 	{ 0x999e8297, "vfree" },
 	{ 0x712aa29b, "_spin_lock_irqsave" },
 	{ 0x7d11c268, "jiffies" },
 	{ 0xc9ec4e21, "free_percpu" },
 	{ 0x343a1a8, "__list_add" },
-	{ 0xa9e23b31, "__pskb_pull_tail" },
+	{ 0xaa1b9b4e, "__pskb_pull_tail" },
 	{ 0x9629486a, "per_cpu__cpu_number" },
 	{ 0xfe7c4287, "nr_cpu_ids" },
 	{ 0xe83fea1, "del_timer_sync" },
@@ -54,18 +54,18 @@ __attribute__((section("__versions"))) = {
 	{ 0x5240ee7, "percpu_counter_batch" },
 	{ 0xee065ced, "kmem_cache_alloc" },
 	{ 0x76a495c1, "cpu_possible_mask" },
-	{ 0x8b6e6108, "crypto_destroy_tfm" },
+	{ 0x7c2458f8, "crypto_destroy_tfm" },
 	{ 0x5a57d155, "__percpu_counter_init" },
 	{ 0x49da9a9a, "_read_unlock_bh" },
 	{ 0x2044fa9e, "kmem_cache_alloc_trace" },
 	{ 0x32047ad5, "__per_cpu_offset" },
 	{ 0xe4a639f8, "kmem_cache_create" },
-	{ 0x466cf2bc, "nf_unregister_hook" },
+	{ 0x7e5a6ea3, "nf_unregister_hook" },
 	{ 0x3aa1dbcf, "_spin_unlock_bh" },
 	{ 0xb6244511, "sg_init_one" },
 	{ 0x37a0cba, "kfree" },
 	{ 0x93cbd1ec, "_spin_lock_bh" },
-	{ 0x8f1953fa, "crypto_alloc_base" },
+	{ 0x57b1dc2b, "crypto_alloc_base" },
 	{ 0x15ef2dd9, "kfifo_free" },
 };
 
@@ -75,10 +75,10 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "DD55D1D5E69B25BA598C741");
+MODULE_INFO(srcversion, "5925E3CDB0D994F2434F5A3");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {
 	.rhel_major = 6,
-	.rhel_minor = 4,
+	.rhel_minor = 5,
 };

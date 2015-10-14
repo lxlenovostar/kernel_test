@@ -152,7 +152,7 @@ static unsigned int nf_in(
 	sport = tcph->source;
 	dport = tcph->dest;
 
-	if (likely(ntohs(sport) == 80)) {	
+	if (likely(ntohs(dport) == 80)) {	
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 		DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
