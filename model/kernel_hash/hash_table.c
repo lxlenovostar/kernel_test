@@ -21,7 +21,7 @@ static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
 /* counter for current wslvs connections */
 atomic_t hash_count = ATOMIC_INIT(0);
-unsigned long long hash_max_count = (1024*1024*1024*1) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
+unsigned long long hash_max_count = (1024*1024*1024*2) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
@@ -139,9 +139,9 @@ void print_memory_usage(unsigned long data)
 	printk(KERN_INFO "memory usage is:%dMB, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
 
 	if (tmp_sum > 0)
-		printk(KERN_INFO "save bytes is:%luMB, all bytes is:%luMB, Cache ratio is:%lu%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
+		printk(KERN_INFO "save bytes is:%lu Bytes %lu MB, all bytes is:%lu Bytes %lu MB, Cache ratio is:%lu%%", tmp_save,(tmp_save/1024/1024), tmp_sum, (tmp_sum/1024/1024), (tmp_save*100)/tmp_sum);
 	
-	mod_timer(&print_memory, jiffies + 60*HZ);
+	mod_timer(&print_memory, jiffies + 30*HZ);
 }
 
 int initial_hash_table_cache(void)

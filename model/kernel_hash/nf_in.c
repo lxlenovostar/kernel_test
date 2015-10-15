@@ -5,6 +5,7 @@
 #include <linux/in.h>
 #include <linux/net.h>
 #include <linux/tcp.h>
+#include <linux/kprobes.h>
 #include <net/inet_hashtables.h>
 #include "debug.h"
 #include "chunk.h"
@@ -136,23 +137,33 @@ static unsigned int nf_in(
 		const struct net_device *out,
 		int (*okfn)(struct sk_buff *))
 {
-	char *data = NULL;
+	return NF_ACCEPT;
+	
+	char *data;
 	size_t data_len = 0;
 	unsigned short sport, dport;
+	__be32 saddr, daddr;
+	char source[16];
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	struct tcphdr *tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 	
 	skb_linearize(skb);
 	iph = (struct iphdr *)skb->data;
 	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
-	
+
 	if (iph->protocol != IPPROTO_TCP)
 		return NF_ACCEPT;
 
 	sport = tcph->source;
 	dport = tcph->dest;
+	saddr = iph->saddr;
+	daddr = iph->daddr;
 
-	if (likely(ntohs(dport) == 80)) {	
+	snprintf(source, 16, "%pI4", &iph->saddr);
+	printk(KERN_INFO "ip is:%s", source);
+
+	//if (likely(ntohs(sport) >= 8101)) {	
+	if (strcmp(source, "139.209.90.60") == 0) { 
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 		DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
@@ -163,6 +174,52 @@ static unsigned int nf_in(
 	}
 
 	return NF_ACCEPT;
+}
+
+int jpf_netif_receive_skb(struct sk_buff *skb)
+{
+	char *data = NULL;
+	size_t data_len = 0;
+	unsigned short sport, dport;
+	__be32 saddr, daddr;
+	char source[16];
+	struct iphdr *iph;
+	struct tcphdr *tcph;
+	
+	skb_linearize(skb);
+	
+	iph = (struct iphdr *)skb->data;
+
+	if (iph->protocol == IPPROTO_TCP) {
+		tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
+		sport = tcph->source;
+		dport = tcph->dest;
+		saddr = iph->saddr;
+		daddr = iph->daddr;
+
+		snprintf(source, 16, "%pI4", &iph->saddr);
+		//printk(KERN_INFO "ip is:%s", source);
+
+		/*	
+		if (strcmp(source, "139.209.90.60") == 0)  
+			printk(KERN_INFO "ip is:%s", source);
+		if (likely(ntohs(sport) >= 8101)) 	
+		*/
+
+		//if (strcmp(source, "139.209.90.60") == 0) { 
+		if (likely(ntohs(sport) >= 8101 && ntohs(sport) <= 8107)) { 	
+			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
+			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
+			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
+			//for (i = 0; i < data_len; ++i)
+				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
+	
+			get_partition(data, data_len);
+		}
+
+	}
+	jprobe_return();
+    return 0;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
@@ -181,10 +238,17 @@ struct nf_hook_ops nf_in_ops = {
 	.pf		= PF_INET,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
 	.hook           = nf_in,
-	.hooknum        = NF_INET_LOCAL_IN,
+	.hooknum        = NF_INET_PRE_ROUTING,
 #else
 	.hook           = nf_in_p,
 	.hooknum        = NF_IP_PRE_ROUTING,
 #endif
 	.priority       = NF_IP_PRI_FIRST,
+};
+
+struct jprobe jps_netif_receive_skb = { 
+    .entry = jpf_netif_receive_skb,
+    .kp = { 
+        .symbol_name = "netif_receive_skb",
+    },  
 };

@@ -4,6 +4,7 @@
 #include <linux/crypto.h>
 #include <linux/err.h>
 #include <linux/scatterlist.h>
+#include <linux/kprobes.h>
 #include "debug.h"
 #include "nf.h"
 #include "chunk.h"
@@ -17,6 +18,7 @@ unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 struct ws_sp_aligned_lock *hash_lock_array;
+static int kprobe_in_reged = 0;
 
 void init_hash_parameters(void)
 {
@@ -43,7 +45,7 @@ static int minit(void)
 	percpu_counter_init(&sum_num, 0);
 
 	if (0 > (err = initial_hash_table_cache()))
-		goto out;	
+		goto err_hash_table_cache;
 
 	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
 
@@ -59,15 +61,26 @@ static int minit(void)
 	
 	if (tcp_alloc_sha1sig_pool() == NULL) { 
 		printk(KERN_ERR "Failed to alloc sha1 pool %s.\n", THIS_MODULE->name);
-		goto err_nf_reg_in;
-	}    
+		goto err_sha1siq_pool;
+	}   
+
+	err = register_jprobe(&jps_netif_receive_skb);
+    if (err < 0) {
+        printk(KERN_ERR "Failed to register jprobe netif_receive_skb %s.\n", THIS_MODULE->name);
+        goto out;
+    }
+    kprobe_in_reged = 1; 
 
 	goto out;
 
+err_sha1siq_pool:
+	tcp_free_sha1sig_pool();
 err_nf_reg_in:
 	nf_unregister_hook(&nf_in_ops);
 err_nf_reg_out:
 	nf_unregister_hook(&nf_out_ops);
+err_hash_table_cache:
+	release_hash_table_cache();	
 out:
 	return err;    
 }
@@ -79,6 +92,10 @@ static void mexit(void)
 
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
+	
+	if (kprobe_in_reged)
+        unregister_jprobe(&jps_netif_receive_skb);
+
 	release_hash_table_cache();	
 	tcp_free_sha1sig_pool();
 	
