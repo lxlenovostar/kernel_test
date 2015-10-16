@@ -176,7 +176,9 @@ static unsigned int nf_in(
 	return NF_ACCEPT;
 }
 
-int jpf_netif_receive_skb(struct sk_buff *skb)
+//int jpf_netif_receive_skb(struct sk_buff *skb)
+int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct vlan_group *grp, u16 vlan_tci, int polling)
+//int jpf_vlan_hwaccel_rx(struct sk_buff *skb)
 {
 	char *data = NULL;
 	size_t data_len = 0;
@@ -186,9 +188,13 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	
-	skb_linearize(skb);
-	
+	//skb_linearize(skb);
 	iph = (struct iphdr *)skb->data;
+		
+	printk(KERN_INFO "Hello world");
+	snprintf(source, 16, "%pI4", &iph->daddr);
+	printk(KERN_INFO "ip is:%s", source);
+	
 
 	if (iph->protocol == IPPROTO_TCP) {
 		tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
@@ -197,8 +203,8 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 
-		snprintf(source, 16, "%pI4", &iph->saddr);
-		//printk(KERN_INFO "ip is:%s", source);
+		snprintf(source, 16, "%pI4", &iph->daddr);
+		printk(KERN_INFO "ip is:%s", source);
 
 		/*	
 		if (strcmp(source, "139.209.90.60") == 0)  
@@ -206,8 +212,9 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		if (likely(ntohs(sport) >= 8101)) 	
 		*/
 
+		/*
 		//if (strcmp(source, "139.209.90.60") == 0) { 
-		if (likely(ntohs(sport) >= 8101 && ntohs(sport) <= 8107)) { 	
+		if (ntohs(sport) == 80 && strcmp(source, "139.209.90.60") == 0) { 	
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
@@ -215,7 +222,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 	
 			get_partition(data, data_len);
-		}
+		}*/
 
 	}
 	jprobe_return();
@@ -247,8 +254,11 @@ struct nf_hook_ops nf_in_ops = {
 };
 
 struct jprobe jps_netif_receive_skb = { 
-    .entry = jpf_netif_receive_skb,
+    //.entry = jpf_netif_receive_skb,
+    .entry = jpf_vlan_hwaccel_rx,
     .kp = { 
-        .symbol_name = "netif_receive_skb",
+        //.symbol_name = "netif_receive_skb",
+        .symbol_name = "__vlan_hwaccel_rx",
+        //.symbol_name = "vlan_hwaccel_do_receive",
     },  
 };
