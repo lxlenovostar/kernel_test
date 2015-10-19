@@ -137,15 +137,15 @@ static unsigned int nf_in(
 		const struct net_device *out,
 		int (*okfn)(struct sk_buff *))
 {
-	return NF_ACCEPT;
-	
 	char *data;
 	size_t data_len = 0;
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
-	char source[16];
-	struct iphdr *iph = (struct iphdr *)skb->data;
-	struct tcphdr *tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
+	char dsthost[16];
+	struct iphdr *iph;
+	struct tcphdr *tcph;
+	
+	return NF_ACCEPT;
 	
 	skb_linearize(skb);
 	iph = (struct iphdr *)skb->data;
@@ -159,11 +159,10 @@ static unsigned int nf_in(
 	saddr = iph->saddr;
 	daddr = iph->daddr;
 
-	snprintf(source, 16, "%pI4", &iph->saddr);
-	printk(KERN_INFO "ip is:%s", source);
+	snprintf(dsthost, 16, "%pI4", &iph->saddr);
+	//printk(KERN_INFO "ip is:%s", dsthost);
 
-	//if (likely(ntohs(sport) >= 8101)) {	
-	if (strcmp(source, "139.209.90.60") == 0) { 
+	if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 		DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
@@ -176,57 +175,49 @@ static unsigned int nf_in(
 	return NF_ACCEPT;
 }
 
-//int jpf_netif_receive_skb(struct sk_buff *skb)
-int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct vlan_group *grp, u16 vlan_tci, int polling)
+//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct vlan_group *grp, u16 vlan_tci, int polling)
 //int jpf_vlan_hwaccel_rx(struct sk_buff *skb)
+//int jpf_vlan_hwaccel_rx(struct napi_struct *napi, struct vlan_group *grp, unsigned int vlan_tci, struct sk_buff *skb)
+//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+int jpf_netif_receive_skb(struct sk_buff *skb)
 {
 	char *data = NULL;
 	size_t data_len = 0;
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
-	char source[16];
+	char dsthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	
-	//skb_linearize(skb);
+	skb_linearize(skb);
 	iph = (struct iphdr *)skb->data;
-		
-	printk(KERN_INFO "Hello world");
-	snprintf(source, 16, "%pI4", &iph->daddr);
-	printk(KERN_INFO "ip is:%s", source);
-	
+	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 
 	if (iph->protocol == IPPROTO_TCP) {
-		tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 		sport = tcph->source;
 		dport = tcph->dest;
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 
-		snprintf(source, 16, "%pI4", &iph->daddr);
-		printk(KERN_INFO "ip is:%s", source);
-
-		/*	
-		if (strcmp(source, "139.209.90.60") == 0)  
-			printk(KERN_INFO "ip is:%s", source);
-		if (likely(ntohs(sport) >= 8101)) 	
-		*/
-
+		snprintf(dsthost, 16, "%pI4", &daddr);
 		/*
-		//if (strcmp(source, "139.209.90.60") == 0) { 
-		if (ntohs(sport) == 80 && strcmp(source, "139.209.90.60") == 0) { 	
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
+			printk(KERN_INFO "ip is:%s", dsthost);
+		*/
+		
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
-	
+		
 			get_partition(data, data_len);
-		}*/
-
+		}
 	}
 	jprobe_return();
-    return 0;
+	return 0;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
@@ -254,11 +245,16 @@ struct nf_hook_ops nf_in_ops = {
 };
 
 struct jprobe jps_netif_receive_skb = { 
-    //.entry = jpf_netif_receive_skb,
-    .entry = jpf_vlan_hwaccel_rx,
+    .entry = jpf_netif_receive_skb,
+    //.entry = jpf_vlan_hwaccel_rx,
     .kp = { 
-        //.symbol_name = "netif_receive_skb",
-        .symbol_name = "__vlan_hwaccel_rx",
+        .symbol_name = "netif_receive_skb",
+        //.symbol_name = "__vlan_hwaccel_rx",
         //.symbol_name = "vlan_hwaccel_do_receive",
+        //.symbol_name = "vlan_gro_receive",
+        //.symbol_name = "vlan_tx_tag_present",
+        //.symbol_name = "__vlan_hwaccel_rx",
+        //.symbol_name = "ip_rcv",
+        //.symbol_name = "packet_rcv",
     },  
 };
