@@ -57,42 +57,42 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
 
 static struct hashinfo_item* hash_new(uint8_t *info)
 {
-    uint32_t hash, bkt;
-    struct hashinfo_item *cp;
-    int hash_count_now = atomic_read(&hash_count);
-    if (hash_count_now > hash_max_count){
-    	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-        return NULL;
-    }   
+   	uint32_t hash, bkt;
+   	struct hashinfo_item *cp;
+   	int hash_count_now = atomic_read(&hash_count);
+   	if (hash_count_now > hash_max_count){
+   		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+       	return NULL;
+   	}   
 
-	/*
-     * initial the hash item.
-     */
-    cp = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
-    if (cp == NULL) {
-    	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-        return NULL;
-    }   
+   	/*
+   	* initial the hash item.
+   	*/
+   	cp = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
+   	if (cp == NULL) {
+   		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+       	return NULL;
+   	}   
 
-    INIT_LIST_HEAD(&cp->c_list);
+	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
 	cp->timer.expires = jiffies + timeout_hash_del;
 	add_timer(&cp->timer);
     
-	/*
-     * total hash item.
-     */
+   	/*
+   	* total hash item.
+   	*/
 	atomic_inc(&hash_count);
 
 	/*
-     * insert into the hash table.
-     */
+   	* insert into the hash table.
+   	*/
 	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
-    _hash(bkt, cp);
+   	_hash(bkt, cp);
 
-    DEBUG_LOG(KERN_INFO "%s", __FUNCTION__ );
+   	DEBUG_LOG(KERN_INFO "%s", __FUNCTION__ );
 	return cp; 
 }
 
@@ -110,14 +110,15 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 {
     uint32_t hash, bkt;
     struct hashinfo_item *cp;
+
 	HASH_FCN(info, SHA1SIZE, hash_tab_size, hash, bkt);
     ct_read_lock_bh(hash, hash_lock_array);
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
-    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
-                atomic_add(ITEM_CITE_FIND, &cp->refcnt);
-                ct_read_unlock_bh(hash, hash_lock_array);
-                return cp; 
+   			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
+            atomic_add(ITEM_CITE_FIND, &cp->refcnt);
+            ct_read_unlock_bh(hash, hash_lock_array);
+            return cp; 
         }   
     }   
     ct_read_unlock_bh(hash, hash_lock_array);
@@ -128,7 +129,7 @@ void print_memory_usage(unsigned long data)
 {
 	unsigned long tmp_save, tmp_sum;	
 	int slot_size = hash_tab_size * sizeof(struct list_head);
-    uint32_t hash_count_now = atomic_read(&hash_count);
+   	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	tmp_save = percpu_counter_read(&save_num);
 	tmp_sum =  percpu_counter_read(&sum_num);

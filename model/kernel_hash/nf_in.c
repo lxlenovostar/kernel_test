@@ -39,8 +39,8 @@ void hand_hash(uint8_t *dst, size_t len)
 void build_hash(char *src, int start, int end, int length) 
 {
 	/*
-     * Fixup: use slab maybe effectiver than kmalloc.
-     */
+     	 * Fixup: use slab maybe effectiver than kmalloc.
+         */
 	int genhash, i;
 	uint8_t *dst = kmalloc(sizeof(uint8_t)*SHALEN, GFP_ATOMIC);
 	memset(dst, '\0', SHALEN);
@@ -175,12 +175,6 @@ static unsigned int nf_in(
 	return NF_ACCEPT;
 }
 
-//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct vlan_group *grp, u16 vlan_tci, int polling)
-//int jpf_vlan_hwaccel_rx(struct sk_buff *skb)
-//int jpf_vlan_hwaccel_rx(struct napi_struct *napi, struct vlan_group *grp, unsigned int vlan_tci, struct sk_buff *skb)
-//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
-//int jpf_vlan_hwaccel_rx(struct igb_q_vector *q_vector, struct sk_buff *skb, u16 vlan_tag)
-//int jpf_vlan_hwaccel_rx(struct napi_struct *napi, struct sk_buff *skb)
 int jpf_netif_receive_skb(struct sk_buff *skb)
 {
 	char *data = NULL;
@@ -192,8 +186,10 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	struct tcphdr *tcph;
 	
 	skb_linearize(skb);
-	iph = (struct iphdr *)(skb->data + 4);
-	tcph = (struct tcphdr *)((skb->data + 4) + (iph->ihl << 2));
+	//iph = (struct iphdr *)(skb->data + 4);
+	//tcph = (struct tcphdr *)((skb->data + 4) + (iph->ihl << 2));
+	iph = (struct iphdr *)skb->data;
+	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
 
 	if (iph->protocol == IPPROTO_TCP) {
 		sport = tcph->source;
@@ -202,22 +198,20 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		daddr = iph->daddr;
 
 		snprintf(dsthost, 16, "%pI4", &daddr);
-		
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
-			printk(KERN_INFO "ip is:%s", dsthost);
-		
 	
 		/*	
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
+			printk(KERN_INFO "ip is:%s", dsthost);
+		*/
+			
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
-		
 			get_partition(data, data_len);
 		//}
-		*/
 	}
 	jprobe_return();
 	return 0;
