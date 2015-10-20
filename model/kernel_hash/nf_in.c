@@ -179,7 +179,8 @@ static unsigned int nf_in(
 //int jpf_vlan_hwaccel_rx(struct sk_buff *skb)
 //int jpf_vlan_hwaccel_rx(struct napi_struct *napi, struct vlan_group *grp, unsigned int vlan_tci, struct sk_buff *skb)
 //int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
-//int jpf_vlan_hwaccel_rx(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+//int jpf_vlan_hwaccel_rx(struct igb_q_vector *q_vector, struct sk_buff *skb, u16 vlan_tag)
+//int jpf_vlan_hwaccel_rx(struct napi_struct *napi, struct sk_buff *skb)
 int jpf_netif_receive_skb(struct sk_buff *skb)
 {
 	char *data = NULL;
@@ -191,8 +192,8 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	struct tcphdr *tcph;
 	
 	skb_linearize(skb);
-	iph = (struct iphdr *)skb->data;
-	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
+	iph = (struct iphdr *)(skb->data + 4);
+	tcph = (struct tcphdr *)((skb->data + 4) + (iph->ihl << 2));
 
 	if (iph->protocol == IPPROTO_TCP) {
 		sport = tcph->source;
@@ -201,12 +202,13 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		daddr = iph->daddr;
 
 		snprintf(dsthost, 16, "%pI4", &daddr);
-		/*
+		
 		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
 			printk(KERN_INFO "ip is:%s", dsthost);
-		*/
 		
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
+	
+		/*	
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
@@ -214,7 +216,8 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 		
 			get_partition(data, data_len);
-		}
+		//}
+		*/
 	}
 	jprobe_return();
 	return 0;
@@ -256,5 +259,7 @@ struct jprobe jps_netif_receive_skb = {
         //.symbol_name = "__vlan_hwaccel_rx",
         //.symbol_name = "ip_rcv",
         //.symbol_name = "packet_rcv",
+        //.symbol_name = "igb_receive_skb",
+        //.symbol_name = "napi_gro_receive",
     },  
 };
