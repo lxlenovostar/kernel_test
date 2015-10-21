@@ -4,7 +4,7 @@ APP_NAME	:= wspack
 #where they are assigned. The EXTRA_ variables apply to all
 #commands executed in the kbuild makefile.
 #$(EXTRA_CFLAGS) specifies options for compiling C files with $(CC).
-EXTRA_CFLAGS += -I$(LDDINC)
+EXTRA_CFLAGS +=  -I$(LDDINC) -g 
 
 #The check for KERNELRELEASE is used to separate the two parts
 #of the makefile. In the example, kbuild will only see the two
@@ -26,7 +26,8 @@ WS_CFILES   = $(shell find -maxdepth 1 -name "*.c")
 export WS_OBJS = $(WS_CFILES:.c=.o)
 
 #if $KERNELDIR don't assigned, ?= will assign it.
-KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+#KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+KERNELDIR ?= /root/usr/src/kernels/2.6.32-358.6.1.ws5.b.5.2.8
 
 PWD := $(shell pwd)
 

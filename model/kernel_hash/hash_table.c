@@ -26,9 +26,11 @@ unsigned long long hash_max_count = (1024*1024*1024*2) / sizeof(struct hashinfo_
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 
-struct timer_list print_memory;
+static struct timer_list print_memory;
+static struct timer_list *bucket_clear; 
 
 void hash_item_expire(unsigned long data);
+void bucket_clear_item(unsigned long data);
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
     ct_write_lock_bh(hash, hash_lock_array);
@@ -55,7 +57,7 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     return 1;
 }
 
-static struct hashinfo_item* hash_new(uint8_t *info)
+static struct hashinfo_item* hash_new_item(uint8_t *info)
 {
    	uint32_t hash, bkt;
    	struct hashinfo_item *cp;
@@ -77,9 +79,6 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
-	setup_timer(&cp->timer, hash_item_expire, (unsigned long)cp);
-	cp->timer.expires = jiffies + timeout_hash_del;
-	add_timer(&cp->timer);
     
    	/*
    	* total hash item.
@@ -98,9 +97,9 @@ static struct hashinfo_item* hash_new(uint8_t *info)
 
 int add_hash_info(uint8_t *info)
 {
-    struct hashinfo_item *cp=NULL;
+    struct hashinfo_item *cp = NULL;
 
-    cp = hash_new(info);
+    cp = hash_new_item(info);
     if(cp == NULL)
         return -1; 
     return 0;
@@ -142,15 +141,21 @@ void print_memory_usage(unsigned long data)
 	if (tmp_sum > 0)
 		printk(KERN_INFO "save bytes is:%lu Bytes %lu MB, all bytes is:%lu Bytes %lu MB, Cache ratio is:%lu%%", tmp_save,(tmp_save/1024/1024), tmp_sum, (tmp_sum/1024/1024), (tmp_save*100)/tmp_sum);
 	
-	mod_timer(&print_memory, jiffies + 30*HZ);
+	mod_timer(&print_memory, jiffies + timeout_hash_del);
 }
 
 int initial_hash_table_cache(void)
 {
-    int idx;
+    unsigned long idx;
     
 	hash_tab = vmalloc(hash_tab_size * sizeof(struct list_head));
     if (!hash_tab) {
+        DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
+        return -ENOMEM;
+    }
+	
+	bucket_clear  = vmalloc(hash_tab_size * sizeof(struct timer_list));
+    if (!bucket_clear) {
         DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
         return -ENOMEM;
     }
@@ -172,10 +177,10 @@ int initial_hash_table_cache(void)
         return -ENOMEM;
     }
 
-    for (idx=0; idx<hash_tab_size; idx++)
+    for (idx = 0; idx < hash_tab_size; idx++)
         INIT_LIST_HEAD(&hash_tab[idx]);
 
-    for (idx=0; idx<CT_LOCKARRAY_SIZE; idx++)
+    for (idx = 0; idx < CT_LOCKARRAY_SIZE; idx++)
         rwlock_init(&hash_lock_array[idx].l);
 
 	init_timer(&print_memory);
@@ -183,6 +188,14 @@ int initial_hash_table_cache(void)
 	print_memory.data = 0;
 	print_memory.function = print_memory_usage;
     add_timer(&print_memory);
+    
+	for (idx = 0; idx < hash_tab_size; idx++) {
+		init_timer(bucket_clear+idx);
+		(bucket_clear+idx)->expires = jiffies + timeout_hash_del;
+		(bucket_clear+idx)->data = idx;
+		(bucket_clear+idx)->function = bucket_clear_item;
+    	add_timer(bucket_clear+idx);
+	}
 	return 0;
 }
 
@@ -194,8 +207,8 @@ static void hash_del_item(struct hashinfo_item *cp)
 		HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
         _unhash(bkt, cp);
         if (likely(atomic_read(&cp->refcnt) == 1)){
-            if (timer_pending(&cp->timer))
-            	del_timer(&cp->timer);
+            //if (timer_pending(&cp->timer))
+            //	del_timer(&cp->timer);
 			atomic_dec(&hash_count);
             kmem_cache_free(hash_cachep, cp);
             return;
@@ -208,15 +221,15 @@ static void hash_del_item(struct hashinfo_item *cp)
 
 static void hash_flush(void)
 {
-    int idx;
+    unsigned long idx;
     struct hashinfo_item *cp, *next;
     
 	for (idx = 0; idx < hash_tab_size; idx++) {
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
-            if (timer_pending(&cp->timer))
-            	del_timer(&cp->timer);
+            //if (timer_pending(&cp->timer))
+            //	del_timer(&cp->timer);
 			atomic_dec(&hash_count);
             kmem_cache_free(hash_cachep, cp);
         }
@@ -228,10 +241,13 @@ static void hash_flush(void)
 
 void release_hash_table_cache(void)
 {
-	
+	unsigned long idx;
     hash_flush();
 	
 	del_timer_sync(&print_memory);
+	for (idx = 0; idx < hash_tab_size; idx++) {
+		del_timer_sync(bucket_clear+idx);
+	}
 
     kmem_cache_destroy(hash_cachep);
     vfree(hash_tab);
@@ -242,7 +258,7 @@ void release_hash_table_cache(void)
 void hash_item_expire(unsigned long data)
 {
 	struct hashinfo_item *cp = (struct hashinfo_item *)data;
-    DEBUG_LOG(KERN_INFO "count is:%d\n", atomic_read(&hash_count));
+    DEBUG_LOG(KERN_INFO "count is:%d", atomic_read(&hash_count));
 	if (likely(atomic_read(&cp->refcnt) == 1)) {
 		/*
          * delete it.
@@ -254,6 +270,28 @@ void hash_item_expire(unsigned long data)
          * mod timer and desc refcnt.
          */
     	atomic_dec(&cp->refcnt);
-		mod_timer(&cp->timer, jiffies + timeout_hash_del);
+		//mod_timer(&cp->timer, jiffies + timeout_hash_del);
 	}
+}
+
+void bucket_clear_item(unsigned long data)
+{
+    struct hashinfo_item *cp, *next;
+    
+    ct_write_lock_bh(data, hash_lock_array);
+    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+   		if (likely(atomic_read(&cp->refcnt) == 1)) {
+			list_del(&cp->c_list);
+			atomic_dec(&hash_count);
+            kmem_cache_free(hash_cachep, cp);
+			DEBUG_LOG(KERN_INFO "delete it.");
+		}
+		else { 
+    		atomic_dec(&cp->refcnt);
+		}
+	}
+    ct_write_unlock_bh(data, hash_lock_array);
+	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
+
+    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }

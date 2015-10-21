@@ -50,7 +50,7 @@ void calculate_partition(char *playload, int playload_len, struct kfifo *fifo)
 		txthash = (txthash * R + playload[i]) % Q;
 
 		if (delay_time == 0) {
-			if ((txthash & zero_value) == 0) {
+			if (unlikely((txthash & zero_value) == 0)) {
 				//if ((txthash & zero_value) == 0 || check_data_point(playload, Q, R, i)) {
 				//if (check_data_point(playload, Q, R, i)) {
 				kfifo_put(fifo, (unsigned char *)&i, sizeof(i));
