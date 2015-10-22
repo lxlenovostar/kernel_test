@@ -16,18 +16,23 @@ static inline int phys_addr_valid(resource_size_t addr)
   #endif
 }
 
+static int constvalue = 10;
+
 bool __virt_addr_valid(unsigned long x)
 {
 		unsigned long old_x;
 		old_x = x;
 		//The kernel text is mapped into the region starting from__START_KERNEL_MAP
         if (x >= __START_KERNEL_map) {
+                if (x >= MODULES_VADDR && x <= MODULES_END) {
+					printk(KERN_INFO "right here");
+				}
                 x -= __START_KERNEL_map;
                  if (x >= KERNEL_IMAGE_SIZE) {
 						  printk(KERN_INFO "error1 old_x is:%x, start_kernel_map is:%x, new_x is:%d, SIZE is:%d", old_x, __START_KERNEL_map, x, KERNEL_IMAGE_SIZE);
                           return false;
 					}
-                  //x += phys_base;
+                  x += phys_base;
           } else {
                   if (x < PAGE_OFFSET) {
 						  printk(KERN_INFO "error2");
@@ -41,7 +46,7 @@ bool __virt_addr_valid(unsigned long x)
           }
   
           return pfn_valid(x >> PAGE_SHIFT);
-  }
+}
 
 static int minit(void)
 {
@@ -56,14 +61,16 @@ static int minit(void)
 	char hashtext[SHA1_LENGTH];
 
 	//way 1		
-	/*
+	
 	char *plaintext = NULL;
 	printk(KERN_INFO "valid=%s\n", virt_addr_valid(plaintext) ? "true" : "false");
 	plaintext = "c";
+	printk(KERN_INFO "valid=%s\n", virt_addr_valid(plaintext) ? "true" : "false");
 	size_t len = strlen(plaintext);
-	*/
+	
 
 	//way 2
+	/*
 	char *plaintext = kmalloc(sizeof(char), GFP_KERNEL);
 	printk(KERN_INFO "valid=%s\n", __virt_addr_valid(plaintext) ? "true" : "false");
 	plaintext = "c"; 	
@@ -71,7 +78,8 @@ static int minit(void)
 	if (plaintext >= MODULES_VADDR && plaintext <= MODULES_END)
 		printk(KERN_INFO "valid ok\n");
 	size_t len = 1;
-	
+	printk(KERN_INFO "valid=%s\n", __virt_addr_valid(constvalue) ? "true" : "false");
+	*/
 
 	// way 3.
 	/*	
