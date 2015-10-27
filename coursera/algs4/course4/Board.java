@@ -12,7 +12,6 @@ public class Board {
             for (int j = 0; j < N; j++)
                 i_blocks[i][j] = blocks[i][j];                    
     }          
-    
  
     public int dimension()                 // board dimension N
     {
@@ -35,7 +34,23 @@ public class Board {
 
     public int manhattan()                 // sum of Manhattan distances between blocks and goal
     {
+        int i, j, m_row, m_col, right_row, right_col, orig_row, orig_col;
+        int mh = 0;
+        
+        for (int i = 1; i <= this.dimension(); i++)
+            for (int j = 1; j < this.distances(); j++) {
+                if (i_blocks[i-1][j-1] != ((j-1)*this.dimension()+i)) {
+                    right_row = i_blocks[i-1][j-1] / this.dimension();
+                    right_col = i_blocks[i-1][j-1] % this.dimension();
+                    orig_row = i;
+                    orig_col = j;
+                    m_row = (right_row > orig_row) ? (right_row - orig_row) : (orig_row - right_row);        
+                    m_col = (right_col > orig_col) ? (right_col - orig_col) : (orig_col - right_col);
+                    mh += (m_row + m_col);
+                }
+            }
 
+        return mh;
     }
 
     public boolean isGoal()                // is this board the goal board?
