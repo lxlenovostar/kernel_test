@@ -1,15 +1,20 @@
+//https://github.com/merwan/algs4/blob/master/8-puzzle/src/Board.java
+
+//import edu.princeton.cs.algs4.*;
+import java.util.*;
 public class Board {
     // construct a board from an N-by-N array of blocks
     // (where blocks[i][j] = block in row i, column j)
-    int[][] i_blocks;
-    int N;
+    private final int[][] i_blocks;
+    private final int N;
 
     public Board(int[][] blocks) {
         int i, j;
 
         N = blocks.length;
-        for (int i = 0; i < N; i++)
-            for (int j = 0; j < N; j++)
+        i_blocks = new int[N][N];
+        for (i = 0; i < N; i++)
+            for (j = 0; j < N; j++)
                 i_blocks[i][j] = blocks[i][j];                    
     }          
  
@@ -23,9 +28,9 @@ public class Board {
         int i, j;
         int num = 0;
     
-        for (int i = 1; i <= this.dimension(); i++)
-            for (int j = 0; j < this.distances(); j++) {
-                if (i_blocks[i-1][j] != 0 && i_blocks[i-1][j] != (j*this.dimension()+i))
+        for (i = 1; i <= this.dimension(); i++)
+            for (j = 1; j <= this.dimension(); j++) {
+                if (i_blocks[i-1][j-1] != 0 && i_blocks[i-1][j-1] != ((j-1)*this.dimension()+i))
                     ++num;     
             }
          
@@ -37,8 +42,8 @@ public class Board {
         int i, j, m_row, m_col, right_row, right_col, orig_row, orig_col;
         int mh = 0;
         
-        for (int i = 1; i <= this.dimension(); i++)
-            for (int j = 1; j < this.distances(); j++) {
+        for (i = 1; i <= this.dimension(); i++)
+            for (j = 1; j < this.dimension(); j++) {
                 if (i_blocks[i-1][j-1] != ((j-1)*this.dimension()+i)) {
                     right_row = i_blocks[i-1][j-1] / this.dimension();
                     right_col = i_blocks[i-1][j-1] % this.dimension();
@@ -58,15 +63,15 @@ public class Board {
         int i, j;
         boolean result;
 
-        result = FALSE;
-        for (int i = 1; i <= this.dimension(); i++)
-            for (int j = 0; j < this.distances(); j++) {
-                if (i = this.dimension() && j == (this.dimension() - 1) && i_blocks[i-1][j] == 0) {
-                    result = TRUE;
+        result = false;
+        for (i = 1; i <= this.dimension(); i++)
+            for (j = 1; j <= this.dimension(); j++) {
+                if (i == this.dimension() && j == this.dimension() && i_blocks[i][j] == 0) {
+                    result = true;
                     return result;
                 }                
     
-                if (i_blocks[i-1][j] != (j*this.dimension()+i)) {
+                if (i_blocks[i-1][j-1] != ((j-1)*this.dimension()+i)) {
                     return result;
                 }
             }    
@@ -77,54 +82,33 @@ public class Board {
     public Board twin()                    // a board that is obtained by exchanging any pair of blocks
     {
         int i, j;
-        boolean flag;
-        int num = 0;
-        int mis_array1[2];
-        int mis_array2[2];
-        int count = 0;
-        flag = FALSE;
+        int[][] twin = new int[N][N];
+        int row, col;
+
+        Random randrow = new Random();
+        row = randrow.nextInt(N);
+        Random randcol = new Random();
+        col = randcol.nextInt(N-1);   
+
+        //StdOut.printf("row is:%d; col is:%d\n", row, col);
         
-        for (int i = 1; i <= this.dimension(); i++)
-            for (int j = 0; j < this.distances(); j++) {
-                count++;
+        for (i = 0; i < this.dimension(); ++i)
+            for (j = 0; j < this.dimension(); ++j) {
+                twin[i][j] = i_blocks[i][j];
+            } 
 
-                if (count == (N*N-1)) {
-                    if (num == 2)
-                        continue;
-                    if (num == 1 || num == 0)
-                        return flag;
-                }
+        
+        Board board = new Board(twin);        
+        board.swap(row, col, row, col+1);
 
-                if (i_blocks[i-1][j] != (j*this.dimension()+i)) {
-                    num++;
-
-                    if (num > 2)
-                        return flag;
-                    
-                    if (num == 1) {
-                        mis_array1[0] = j*this.dimension()+i;
-                        mis_array1[1] = i_blocks[i-1][j];
-                    }
-                    else {
-                        mis_array2[0] = j*this.dimension()+i;
-                        mis_array2[1] = i_blocks[i-1][j];
-                    }
-                }
-        }
-
-        if (mis_array1[0] == mis_array2[1] && mis_array1[1] == mis_array2[0]) {
-            flag = True;
-            return flag;
-        }
-        else 
-            return flag;
+        return board;
     }
     
     public boolean equals(Object y)        // does this board equal y?
     {
         int i, j;
         int dim = this.dimension();
-        boolean flag = FALSE;
+        boolean flag = false;
         Board y_cmp = (Board)y;
 
         if (dim != y_cmp.dimension())
@@ -133,36 +117,96 @@ public class Board {
         for (i = 0; i < dim; ++i)
             for (j = 0; j < dim; ++j) {
                 if (i_blocks[i][j] != y_cmp.i_blocks[i][j])
-                    return falg;
+                    return flag;
             }        
 
-        return TRUE;
+        return true;
     }
 
-    public Iterable<Board> neighbors()     // all neighboring boards
-    {
-        int i, j;
-        int row, col;
+    private boolean swap(int i, int j, int it, int jt) {
+        if (it < 0 || it >= N || jt < 0 || jt >= N) {
+            return false;
+        }
+        int temp = i_blocks[i][j];
+        i_blocks[i][j] = i_blocks[it][jt];
+        i_blocks[it][jt] = temp;
+        return true;
+    } 
 
-        row = 0;
-        col = 0;
-        
-        for (i = 0; i < this.dimension(); ++i)
-            for (j = 0; j < this.dimension(); ++j) {
+    public Iterable<Board> neighbors() {
+        int i0 = 0, j0 = 0;
+        boolean found = false;
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
                 if (i_blocks[i][j] == 0) {
-                    row = i;
-                    col = j;
+                    i0 = i;
+                    j0 = j;
+                    found = true;
                     break;
-                }              
+                }
             }
+            if (found) {
+                break;
+            }
+        }
 
-        /*
-         * 上下左右怎么操作
-         */
-         
+        Stack<Board> boards = new Stack<Board>();
+        
+        Board board = new Board(i_blocks);        
+        boolean isNeighbor = board.swap(i0, j0, i0 - 1, j0);
+        if (isNeighbor) {
+            boards.push(board);
+        }
+
+        board = new Board(i_blocks);
+        isNeighbor = board.swap(i0, j0, i0, j0 - 1);
+        if (isNeighbor) {
+            boards.push(board);
+        }
+
+        board = new Board(i_blocks);
+        isNeighbor = board.swap(i0, j0, i0 + 1, j0);
+        if (isNeighbor) {
+            boards.push(board);
+        }
+
+        board = new Board(i_blocks);
+        isNeighbor = board.swap(i0, j0, i0, j0 + 1);
+        if (isNeighbor) {
+            boards.push(board);
+        }
+
+        return boards; 
     }
 
-    public String toString()               // string representation of this board (in the output format specified below)
 
-    public static void main(String[] args) // unit tests (not graded)
+    // string representation of this board (in the output format specified below)
+    public String toString()               
+    {
+        StringBuilder s = new StringBuilder();
+        s.append(N + "\n");
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                s.append(String.format("%2d ", i_blocks[i][j]));
+            }
+            s.append("\n");
+        }
+        return s.toString();
+    }
+   
+    /* 
+    public static void main(String[] args)
+    {        
+        // create initial board from file
+        In in = new In(args[0]);
+        int N = in.readInt();
+        int[][] blocks = new int[N][N];
+    
+        for (int i = 0; i < N; i++)
+            for (int j = 0; j < N; j++)
+                blocks[i][j] = in.readInt();
+        Board initial = new Board(blocks);
+        StdOut.printf("%s", initial.toString());
+    }*/ 
 }
+
