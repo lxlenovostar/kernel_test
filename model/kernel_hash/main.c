@@ -11,6 +11,7 @@
 #include "sha.h"
 #include "hash_table.h"
 #include "bitmap.h"
+#include "slab_cache.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -18,9 +19,9 @@ int zero_num = 6;
 unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
-struct ws_sp_aligned_lock *hash_lock_array;
 static int kprobe_in_reged = 0;
 unsigned long *percpu_ptr; // percpu-BITMAP
+struct kmem_cache * hash_item_data; /* __read_mostly*/
 
 void init_hash_parameters(void)
 {
@@ -45,6 +46,9 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+
+	if (0 > (err = alloc_slab()))
+		goto err_alloc_slab;
 
 	if (0 > (err = alloc_bitmap()))
 		goto err_bitmap;
@@ -88,7 +92,8 @@ err_hash_table_cache:
 	release_hash_table_cache();
 err_bitmap:
 	free_bitmap();
-	
+err_alloc_slab:
+	free_slab();
 out:
 	return err;    
 }
@@ -105,6 +110,7 @@ static void mexit(void)
         unregister_jprobe(&jps_netif_receive_skb);
 
 	release_hash_table_cache();
+	free_slab();
 	free_bitmap();	
 	tcp_free_sha1sig_pool();
 	

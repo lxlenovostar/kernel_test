@@ -13,11 +13,12 @@ int alloc_bitmap() {
 	for_each_online_cpu(cpu) {
 		this = *per_cpu_ptr(percpu_ptr, cpu);
 		//alloc memory for every percpu-value.
-		this = vmalloc(chunk_num);
+		this = vmalloc(chunk_num/8);	//a bit for a chunk.
 		if (!this) {
 			printk(KERN_ERR "alloc bitmap failed.");
 			return -ENOMEM;
-		}	
+		}
+		bitmap_zero(this, chunk_num);	
 	}
 
 	return 0;	

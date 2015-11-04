@@ -4,7 +4,6 @@
 #include <linux/spinlock.h>
 
 #define CACHE_NAME "hash_cache"
-#define RELEASE_CACHE_NAME "release_hash_cache"
 #define SHA1SIZE 20
 
 #define HASH_JEN_MIX(a,b,c)                                                      \
@@ -63,11 +62,23 @@ do {                                                                            
 
 #define HASH_FCN HASH_JEN
 
+
 struct hashinfo_item
 {
 	uint8_t sha1[SHA1SIZE];
 	atomic_t refcnt;  
 	struct list_head c_list;
+	int cpuid;				//stor file: newfile0
+	unsigned long start;	//the start position in bitmap
+	int len;				//the length of data
+	/*
+	 * 0: just in memory.
+     * 1: in disk, not in memory. 
+	 * 2: this data should store in memory and disk.
+	 * 3: this data should delete.
+     */
+	int flag_cahce; 	
+	char *data;				//store data in memory	
 };
 
 struct hashtable_del

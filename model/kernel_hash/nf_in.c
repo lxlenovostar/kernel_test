@@ -11,6 +11,7 @@
 #include "chunk.h"
 #include "sha.h"
 #include "hash_table.h"
+#include "slab_cache.h"
 
 struct tcp_chunk *hash_head = NULL;
 rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
@@ -39,11 +40,24 @@ void hand_hash(uint8_t *dst, size_t len)
 void build_hash(char *src, int start, int end, int length) 
 {
 	/*
-     	 * Fixup: use slab maybe effectiver than kmalloc.
-         */
+     * Fixup: use slab maybe effectiver than kmalloc.
+     */
 	int genhash, i;
-	uint8_t *dst = kmalloc(sizeof(uint8_t)*SHALEN, GFP_ATOMIC);
-	memset(dst, '\0', SHALEN);
+	//uint8_t *dst = kmalloc(sizeof(uint8_t)*SHALEN, GFP_ATOMIC);
+	//memset(dst, '\0', SHALEN);
+	uint8_t *dst;
+
+	/*
+     * the length of data <= 22, we can pass it.
+     */
+	if (length <= (SHALEN + 2))
+		return;	
+
+	dst = kmem_cache_zalloc(hash_item_data, GFP_ATOMIC);  
+   	if (dst == NULL) {
+   		DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+       	BUG();
+   	}   
 
 	//static uint8_t dst[SHALEN];
 
@@ -63,7 +77,8 @@ void build_hash(char *src, int start, int end, int length)
 	}
 
 	hand_hash(dst, length);
-	kfree(dst);
+	//kfree(dst);
+	kmem_cache_free(hash_item_data, dst);
 }
 
 void get_partition(char *data, int length)
@@ -205,14 +220,14 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len);
-		//}
+		}
 	}
 	jprobe_return();
 	return 0;

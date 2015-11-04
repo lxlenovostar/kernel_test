@@ -16,10 +16,10 @@ uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
 static struct list_head *hash_tab = NULL;
 
-/* SLAB cache for sp hash */
+/* SLAB cache for hash item */
 static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
-/* counter for current wslvs connections */
+/* counter for hash item */
 atomic_t hash_count = ATOMIC_INIT(0);
 unsigned long long hash_max_count = (1024*1024*1024*2) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
 
@@ -227,8 +227,6 @@ static void hash_flush(void)
         ct_write_lock_bh(idx, hash_lock_array);
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
-            //if (timer_pending(&cp->timer))
-            //	del_timer(&cp->timer);
 			atomic_dec(&hash_count);
             kmem_cache_free(hash_cachep, cp);
         }
