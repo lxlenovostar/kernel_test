@@ -175,8 +175,8 @@ static unsigned int nf_in(
 	return NF_ACCEPT;
 }
 
-//int jpf_netif_receive_skb(struct sk_buff *skb)
-int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+//int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+int jpf_netif_receive_skb(struct sk_buff *skb)
 {
 	char *data = NULL;
 	size_t data_len = 0;
@@ -243,16 +243,16 @@ struct nf_hook_ops nf_in_ops = {
 };
 
 struct jprobe jps_netif_receive_skb = { 
-    //.entry = jpf_netif_receive_skb,
-    .entry = jpf_ip_rcv,
+    .entry = jpf_netif_receive_skb,
+    //.entry = jpf_ip_rcv,
     .kp = { 
-        //.symbol_name = "netif_receive_skb",
+        .symbol_name = "netif_receive_skb",
         //.symbol_name = "__vlan_hwaccel_rx",
         //.symbol_name = "vlan_hwaccel_do_receive",
         //.symbol_name = "vlan_gro_receive",
         //.symbol_name = "vlan_tx_tag_present",
         //.symbol_name = "__vlan_hwaccel_rx",
-        .symbol_name = "ip_rcv",
+        //.symbol_name = "ip_rcv",
         //.symbol_name = "packet_rcv",
         //.symbol_name = "igb_receive_skb",
         //.symbol_name = "napi_gro_receive",

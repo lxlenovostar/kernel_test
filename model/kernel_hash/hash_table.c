@@ -133,8 +133,7 @@ void print_memory_usage(unsigned long data)
 	tmp_save = percpu_counter_read(&save_num);
 	tmp_sum =  percpu_counter_read(&sum_num);
 
-	printk(KERN_INFO "max hash count is:%llu and max ull is:%llu, %s", hash_max_count, ULLONG_MAX, (hash_max_count>ULLONG_MAX)?"gt":"lt");
-		
+	//printk(KERN_INFO "max hash count is:%llu and max ull is:%llu, %s", hash_max_count, ULLONG_MAX, (hash_max_count>ULLONG_MAX)?"gt":"lt");
 
 	printk(KERN_INFO "memory usage is:%dMB, item number is:%u", (item_size + slot_size)/1024/1024, hash_count_now);
 

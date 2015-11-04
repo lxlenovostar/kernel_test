@@ -10,6 +10,7 @@
 #include "chunk.h"
 #include "sha.h"
 #include "hash_table.h"
+#include "bitmap.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -19,6 +20,7 @@ unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 struct ws_sp_aligned_lock *hash_lock_array;
 static int kprobe_in_reged = 0;
+unsigned long *percpu_ptr; // percpu-BITMAP
 
 void init_hash_parameters(void)
 {
@@ -43,6 +45,9 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+
+	if (0 > (err = alloc_bitmap()))
+		goto err_bitmap;
 
 	if (0 > (err = initial_hash_table_cache()))
 		goto err_hash_table_cache;
@@ -80,7 +85,10 @@ err_nf_reg_in:
 err_nf_reg_out:
 	nf_unregister_hook(&nf_out_ops);
 err_hash_table_cache:
-	release_hash_table_cache();	
+	release_hash_table_cache();
+err_bitmap:
+	free_bitmap();
+	
 out:
 	return err;    
 }
@@ -96,7 +104,8 @@ static void mexit(void)
 	if (kprobe_in_reged)
         unregister_jprobe(&jps_netif_receive_skb);
 
-	release_hash_table_cache();	
+	release_hash_table_cache();
+	free_bitmap();	
 	tcp_free_sha1sig_pool();
 	
 	tmp_save = percpu_counter_sum(&save_num);
