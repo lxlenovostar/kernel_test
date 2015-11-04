@@ -201,7 +201,11 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	
+	/*
+     * TODO: this maybe need fix it.
+     */
 	skb_linearize(skb);
+
 	//iph = (struct iphdr *)(skb->data + 4);
 	//tcph = (struct tcphdr *)((skb->data + 4) + (iph->ihl << 2));
 	iph = (struct iphdr *)skb->data;

@@ -349,6 +349,7 @@ void bucket_clear_item(unsigned long data)
      * work join in workqueue.
      */
 	if (flag) { 
+		//TODO: we need a slab in here.
 		work = (wr_work_t *)kmalloc(sizeof(wr_work_t), GFP_ATOMIC);
 		if (work) {
 			INIT_WORK((struct work_struct *)work, wr_file);
