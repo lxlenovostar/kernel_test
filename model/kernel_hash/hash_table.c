@@ -10,6 +10,7 @@
 #define WS_SP_HASH_TABLE_BITS 20
 #define ITEM_CITE_ADD 10
 #define ITEM_CITE_FIND 10
+#define ITEM_DISK_LIMIT 10
 unsigned long timeout_hash_del = 30*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -57,7 +58,22 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     return 1;
 }
 
-static struct hashinfo_item* hash_new_item(uint8_t *info)
+//TODO: we can use slab
+static void alloc_data_memory(struct hashinfo_item *cp)
+{
+	cp->data = kmalloc(cp->len, GFP_ATOMIC);
+	if (!cp->data) {
+        DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
+		BUG();	//TODO:	maybe other good way fix it.
+	}
+}
+
+static void free_data_memory(struct hashinfo_item *cp) 
+{
+	kfree(cp->data);	
+}
+
+static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t len_value)
 {
    	uint32_t hash, bkt;
    	struct hashinfo_item *cp;
@@ -68,26 +84,34 @@ static struct hashinfo_item* hash_new_item(uint8_t *info)
    	}   
 
    	/*
-   	* initial the hash item.
-   	*/
+   	 * initial the hash item.
+   	 */
    	cp = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
    	if (cp == NULL) {
    		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
        	return NULL;
    	}   
 
+	/*
+     * handle the value.
+     */
+	cp->len = len_value;
+	alloc_data_memory(cp);
+	memcpy(cp->data, value, cp->len);
+
+	
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
     
    	/*
-   	* total hash item.
-   	*/
+   	 * total hash item.
+   	 */
 	atomic_inc(&hash_count);
 
 	/*
-   	* insert into the hash table.
-   	*/
+   	 * insert into the hash table.
+   	 */
 	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
    	_hash(bkt, cp);
 
@@ -95,11 +119,11 @@ static struct hashinfo_item* hash_new_item(uint8_t *info)
 	return cp; 
 }
 
-int add_hash_info(uint8_t *info)
+int add_hash_info(uint8_t *info, char *value, size_t len_value)
 {
     struct hashinfo_item *cp = NULL;
 
-    cp = hash_new_item(info);
+    cp = hash_new_item(info, value, len_value);
     if(cp == NULL)
         return -1; 
     return 0;
@@ -209,6 +233,7 @@ static void hash_del_item(struct hashinfo_item *cp)
             //if (timer_pending(&cp->timer))
             //	del_timer(&cp->timer);
 			atomic_dec(&hash_count);
+			free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
             return;
         }
@@ -228,6 +253,7 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
+			free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
@@ -252,6 +278,9 @@ void release_hash_table_cache(void)
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__);
 }
 
+/*
+ * this for every item timer, we don't use it now.
+ */
 void hash_item_expire(unsigned long data)
 {
 	struct hashinfo_item *cp = (struct hashinfo_item *)data;
@@ -271,6 +300,68 @@ void hash_item_expire(unsigned long data)
 	}
 }
 
+static void wr_file(struct work_struct *work)
+{
+	struct hashinfo_item *cp, *next;
+    
+    ct_write_lock_bh(data, hash_lock_array);
+    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		/*
+         * 如果引用计数是0，设置位图空间，将此节点从hash表移除
+         * 如果引用计数大于阀值，设置位图空间，并将此节点数据存入文件, 内存中的data设置为NULL
+         */
+   		if (likely(atomic_read(&cp->refcnt) == 1)) {
+			list_del(&cp->c_list);
+			atomic_dec(&hash_count);
+			free_data_memory(cp);
+            kmem_cache_free(hash_cachep, cp);
+			DEBUG_LOG(KERN_INFO "delete it.");
+		}
+		else { 
+    		atomic_dec(&cp->refcnt);
+		}
+	}
+    ct_write_unlock_bh(data, hash_lock_array);
+
+	wr_work_t *wr_work = (wr_work_t *)work;
+	printk("my_work.x %lu\n", wr_work->index);
+	kfree((void *)work);
+}
+
+void bucket_clear_item(unsigned long data)
+{
+    struct hashinfo_item *cp, *next;
+	wr_work_t *work;
+    int flag = 0;
+
+    ct_write_lock_bh(data, hash_lock_array);
+    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		atomic_dec(&cp->refcnt);
+		
+		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
+			flag = 1;
+		} 
+	}
+    ct_write_unlock_bh(data, hash_lock_array);
+	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
+
+	/*
+     * work join in workqueue.
+     */
+	if (flag) { 
+		work = (wr_work_t *)kmalloc(sizeof(wr_work_t), GFP_ATOMIC);
+		if (work) {
+			INIT_WORK((struct work_struct *)work, wr_file);
+			work->index = data;
+			queue_work(writeread_wq, (struct work_struct *)work);
+		}	else {
+			BUG();
+		}
+	}
+    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+}
+
+/*
 void bucket_clear_item(unsigned long data)
 {
     struct hashinfo_item *cp, *next;
@@ -280,6 +371,7 @@ void bucket_clear_item(unsigned long data)
    		if (likely(atomic_read(&cp->refcnt) == 1)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
+			free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
 		}
@@ -291,4 +383,4 @@ void bucket_clear_item(unsigned long data)
 	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
 
     DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-}
+}*/

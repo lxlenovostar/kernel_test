@@ -90,5 +90,5 @@ struct hashtable_del
 int initial_hash_table_cache(void);
 void release_hash_table_cache(void);   
 struct hashinfo_item *get_hash_item(uint8_t *info);
-int add_hash_info(uint8_t *info);
+int add_hash_info(uint8_t *info, char *value, size_t len_value);
 #endif 

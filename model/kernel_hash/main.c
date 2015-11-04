@@ -20,8 +20,9 @@ unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 static int kprobe_in_reged = 0;
-unsigned long *percpu_ptr; // percpu-BITMAP
+unsigned long *percpu_bitmap; // percpu-BITMAP
 struct kmem_cache * hash_item_data; /* __read_mostly*/
+struct workqueue_struct *writeread_wq; // for read/write file
 
 void init_hash_parameters(void)
 {
@@ -46,6 +47,11 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+
+	writeread_wq = create_workqueue("wr_queue");
+	
+	if (!writeread_wq)
+		return -1;
 
 	if (0 > (err = alloc_slab()))
 		goto err_alloc_slab;
@@ -103,6 +109,9 @@ static void mexit(void)
 	/* free the hash table contents */
 	unsigned long tmp_save, tmp_sum;
 
+	flush_workqueue(writeread_wq);
+	destroy_workqueue(writeread_wq);
+	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
 	

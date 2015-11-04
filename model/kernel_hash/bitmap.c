@@ -8,10 +8,10 @@ int alloc_bitmap() {
 	unsigned long file_size = (FILESIZE * 1024 * 1024 * 1024);
 	unsigned long chunk_num = file_size / CHUNKSIZE;
 	
-	percpu_ptr = alloc_percpu(unsigned long);
+	percpu_bitmap = alloc_percpu(unsigned long);
 
 	for_each_online_cpu(cpu) {
-		this = *per_cpu_ptr(percpu_ptr, cpu);
+		this = *per_cpu_ptr(percpu_bitmap, cpu);
 		//alloc memory for every percpu-value.
 		this = vmalloc(chunk_num/8);	//a bit for a chunk.
 		if (!this) {
@@ -28,15 +28,15 @@ void free_bitmap() {
 	int cpu;
 	unsigned long *this;
 	
-	if (percpu_ptr) {
+	if (percpu_bitmap) {
 		for_each_online_cpu(cpu) {
-			this = *per_cpu_ptr(percpu_ptr, cpu);
+			this = *per_cpu_ptr(percpu_bitmap, cpu);
 		
 			if (this)
 				vfree(this);	
 		}
 	}
 	
-	if (percpu_ptr)
-		free_percpu(percpu_ptr);
+	if (percpu_bitmap)
+		free_percpu(percpu_bitmap);
 }

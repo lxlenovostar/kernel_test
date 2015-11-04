@@ -14,6 +14,13 @@ extern unsigned long R;
 extern int chunk_num;  //控制最小值
 extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
+extern struct workqueue_struct *writeread_wq; // for read/write file
+
+typedef struct {
+	struct work_struct wr_work;
+	unsigned long      index;
+} wr_work_t;
+
 
 //extern struct tcp_chunk *hash_head;
 /* 
