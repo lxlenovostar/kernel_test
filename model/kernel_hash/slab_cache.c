@@ -22,23 +22,54 @@ int alloc_slab(void)
         return -ENOMEM;
     }
 
-	/*
 	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
-    slab_work = kmem_cache_create(CACHE_SLAB_WORK, 
-            SHALEN,
+    slab_chunk1 = kmem_cache_create(CACHE_SLAB_CHUNK1, 
+            CHUNKSTEP,
             0, SLAB_HWCACHE_ALIGN, NULL, NULL);
 	#else
-    slab_work = kmem_cache_create(CACHE_SLAB_WORK,
-           	SHALEN,
+    slab_chunk1 = kmem_cache_create(CACHE_SLAB_CHUNK1,
+           	CHUNKSTEP,
             0, SLAB_HWCACHE_ALIGN, NULL);
 	#endif
 
-    if (!slab_work) {
-        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for workqueue  error\n",
+    if (!slab_chunk1) {
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for chunk1  error\n",
                 __FUNCTION__);
         return -ENOMEM;
     }
-	*/
+
+	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    slab_chunk2 = kmem_cache_create(CACHE_SLAB_CHUNK2, 
+            CHUNKSTEP*2,
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+	#else
+    slab_chunk2 = kmem_cache_create(CACHE_SLAB_CHUNK2,
+           	CHUNKSTEP*2,
+            0, SLAB_HWCACHE_ALIGN, NULL);
+	#endif
+
+    if (!slab_chunk2) {
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for chunk2  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
+	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    slab_chunk3 = kmem_cache_create(CACHE_SLAB_CHUNK3, 
+            CHUNKSTEP*3,
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+	#else
+    slab_chunk3 = kmem_cache_create(CACHE_SLAB_CHUNK3,
+           	CHUNKSTEP*3,
+            0, SLAB_HWCACHE_ALIGN, NULL);
+	#endif
+
+    if (!slab_chunk3) {
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for chunk3  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
 
 	return 0;
 }
@@ -46,5 +77,7 @@ int alloc_slab(void)
 void free_slab()
 {
     kmem_cache_destroy(hash_item_data);
-    //kmem_cache_destroy(slab_work);
+    kmem_cache_destroy(slab_chunk1);
+    kmem_cache_destroy(slab_chunk2);
+    kmem_cache_destroy(slab_chunk3);
 }

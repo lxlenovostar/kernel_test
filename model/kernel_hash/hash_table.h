@@ -77,6 +77,13 @@ struct hashinfo_item
      */
 	int flag_cahce; 	
 	char *data;				//store data in memory	
+	/*
+     * 0: kmalloc
+     * 1: SLAB CHUNKSTEP
+	 * 2: SLAB CHUNKSTEP*2
+     * 3: SLAB CHUNKSTEP*3 
+     */
+	int mem_style;
 };
 
 struct hashtable_del

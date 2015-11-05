@@ -33,7 +33,11 @@ static struct timer_list *bucket_clear;
 void hash_item_expire(unsigned long data);
 void bucket_clear_item(unsigned long data);
 
-//w_work_t *w_work[1<<WS_SP_HASH_TABLE_BITS];
+w_work_t w_work[1<<WS_SP_HASH_TABLE_BITS];
+
+struct kmem_cache * slab_chunk1;
+struct kmem_cache * slab_chunk2;
+struct kmem_cache * slab_chunk3;
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -61,19 +65,55 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     return 1;
 }
 
-//TODO: we can use slab
-static void alloc_data_memory(struct hashinfo_item *cp)
+static void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	cp->data = kmalloc(cp->len, GFP_ATOMIC);
-	if (!cp->data) {
-        DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
-		BUG();	//TODO:	maybe other good way fix it.
+	if (length < CHUNKSTEP) {
+		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
+		if (!cp->data) {
+        	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
+			BUG();	//TODO:	maybe other good way fix it.
+		}
+		cp->mem_style = 1;
+	} else if (length < CHUNKSTEP*2) {
+		cp->data  = kmem_cache_zalloc(slab_chunk2, GFP_ATOMIC);  
+		if (!cp->data) {
+        	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
+			BUG();	//TODO:	maybe other good way fix it.
+		}
+		cp->mem_style = 2;
+	} else if (length < CHUNKSTEP*3) {
+		cp->data  = kmem_cache_zalloc(slab_chunk3, GFP_ATOMIC);  
+		if (!cp->data) {
+        	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
+			BUG();	//TODO:	maybe other good way fix it.
+		}
+		cp->mem_style = 3;
+	} else {	
+		cp->data = kmalloc(cp->len, GFP_ATOMIC);
+		if (!cp->data) {
+        	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
+			BUG();	//TODO:	maybe other good way fix it.
+		}
+		cp->mem_style = 0;
 	}
+	 
 }
 
 static void free_data_memory(struct hashinfo_item *cp) 
 {
-	kfree(cp->data);	
+	if (cp->mem_style == 0) {
+		kfree(cp->data);	
+	} else if (cp->mem_style == 1) {
+		kmem_cache_free(slab_chunk1, cp->data);
+	} else if (cp->mem_style == 2) {
+		kmem_cache_free(slab_chunk2, cp->data);
+	} else if (cp->mem_style == 3) {
+		kmem_cache_free(slab_chunk3, cp->data);
+	} else {
+		//do nothing.
+        DEBUG_LOG(KERN_ERR"****** %s : you can't arrive here.\n", __FUNCTION__);
+		BUG();	//TODO:	maybe other good way fix it.
+	}
 }
 
 static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t len_value)
@@ -99,7 +139,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
      * handle the value.
      */
 	cp->len = len_value;
-	alloc_data_memory(cp);
+	alloc_data_memory(cp, len_value);
 	memcpy(cp->data, value, cp->len);
 
 	
@@ -328,7 +368,6 @@ static void wr_file(struct work_struct *work)
 	*/
 }
 
-w_work_t w_work[1<<WS_SP_HASH_TABLE_BITS];
 
 void bucket_clear_item(unsigned long data)
 {
