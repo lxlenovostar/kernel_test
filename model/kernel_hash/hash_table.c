@@ -32,6 +32,9 @@ static struct timer_list *bucket_clear;
 
 void hash_item_expire(unsigned long data);
 void bucket_clear_item(unsigned long data);
+
+//w_work_t *w_work[1<<WS_SP_HASH_TABLE_BITS];
+
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
     ct_write_lock_bh(hash, hash_lock_array);
@@ -299,67 +302,72 @@ void hash_item_expire(unsigned long data)
 		//mod_timer(&cp->timer, jiffies + timeout_hash_del);
 	}
 }
-
+/*
+ * write file.
+ */
 static void wr_file(struct work_struct *work)
 {
 	struct hashinfo_item *cp, *next;
+	w_work_t *_work = (w_work_t *)work;
+	unsigned long data = _work->index;
+
+	//printk("my_work.x %lu\n", _work->index);
+	//kmem_cache_free(slab_work, wr_work);
+	//kfree((void *)(_work));
     
+	/*
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		/*
-         * 如果引用计数是0，设置位图空间，将此节点从hash表移除
-         * 如果引用计数大于阀值，设置位图空间，并将此节点数据存入文件, 内存中的data设置为NULL
-         */
-   		if (likely(atomic_read(&cp->refcnt) == 1)) {
-			list_del(&cp->c_list);
-			atomic_dec(&hash_count);
-			free_data_memory(cp);
-            kmem_cache_free(hash_cachep, cp);
-			DEBUG_LOG(KERN_INFO "delete it.");
-		}
-		else { 
-    		atomic_dec(&cp->refcnt);
+        //  如果引用计数大于阀值，设置位图空间，并将此节点数据存入文件, 内存中的data设置为NULL
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
 		}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 
-	wr_work_t *wr_work = (wr_work_t *)work;
-	printk("my_work.x %lu\n", wr_work->index);
-	kfree((void *)work);
+	kfree((void *)wr_work);
+	*/
 }
+
+w_work_t w_work[1<<WS_SP_HASH_TABLE_BITS];
 
 void bucket_clear_item(unsigned long data)
 {
     struct hashinfo_item *cp, *next;
-	wr_work_t *work;
     int flag = 0;
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		atomic_dec(&cp->refcnt);
-		
+
+   		if (likely(atomic_read(&cp->refcnt) == 0)) {
+			list_del(&cp->c_list);
+			atomic_dec(&hash_count);
+			free_data_memory(cp);
+			//TODO:清空位图
+            kmem_cache_free(hash_cachep, cp);
+			DEBUG_LOG(KERN_INFO "delete it.");
+		}
+	
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
 			flag = 1;
 		} 
 	}
     ct_write_unlock_bh(data, hash_lock_array);
-	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
 
 	/*
      * work join in workqueue.
      */
 	if (flag) { 
-		//TODO: we need a slab in here.
-		work = (wr_work_t *)kmalloc(sizeof(wr_work_t), GFP_ATOMIC);
-		if (work) {
-			INIT_WORK((struct work_struct *)work, wr_file);
-			work->index = data;
-			queue_work(writeread_wq, (struct work_struct *)work);
-		}	else {
-			BUG();
-		}
+		if (!work_pending((struct work_struct *)(w_work+data))) {
+			INIT_WORK((struct work_struct *)(w_work+data), wr_file);
+			(w_work+data)->index = data;
+			queue_work(writeread_wq, (struct work_struct *)(w_work+data));
+		} 
 	}
-    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+	
+	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
+    
+	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
 
 /*

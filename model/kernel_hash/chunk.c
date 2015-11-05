@@ -2,8 +2,7 @@
 #include "debug.h"
 #include "chunk.h"
 
-#define STEP 32
-int step = STEP - 1; //控制块长
+int step = CHUNKSTEP - 1; //控制块长
 
 /*
  * Compute hash for a string.

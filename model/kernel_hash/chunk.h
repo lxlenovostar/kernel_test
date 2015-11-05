@@ -1,6 +1,7 @@
 #include <linux/kfifo.h>
 #include <linux/percpu_counter.h>
 
+#define CHUNKSTEP 32
 #define SHALEN 20
 #define KFIFOLEN (1024*sizeof(int))
 #define MEMLIMIT (2*100*1024*1024)  /* Memory limit is 200M. */
@@ -19,7 +20,7 @@ extern struct workqueue_struct *writeread_wq; // for read/write file
 typedef struct {
 	struct work_struct wr_work;
 	unsigned long      index;
-} wr_work_t;
+} w_work_t;
 
 
 //extern struct tcp_chunk *hash_head;

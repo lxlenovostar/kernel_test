@@ -73,9 +73,7 @@ struct hashinfo_item
 	int len;				//the length of data
 	/*
 	 * 0: just in memory.
-     * 1: in disk, not in memory. 
-	 * 2: this data should store in memory and disk.
-	 * 3: this data should delete.
+     * 1: just in disk. 
      */
 	int flag_cahce; 	
 	char *data;				//store data in memory	
