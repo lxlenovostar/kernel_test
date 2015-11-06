@@ -20,9 +20,10 @@ unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 static int kprobe_in_reged = 0;
-unsigned long *percpu_bitmap; // percpu-BITMAP
 struct kmem_cache * hash_item_data; /* __read_mostly*/
 struct workqueue_struct *writeread_wq; // for read/write file
+//extern unsigned long *bitmap;
+DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 
 void init_hash_parameters(void)
 {

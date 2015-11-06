@@ -6,12 +6,13 @@
 #include "hash_table.h"
 #include "debug.h"
 #include "chunk.h"
+#include "bitmap.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
 #define ITEM_CITE_ADD 10
 #define ITEM_CITE_FIND 10
 #define ITEM_DISK_LIMIT 10
-unsigned long timeout_hash_del = 30*HZ;
+unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -38,6 +39,10 @@ w_work_t w_work[1<<WS_SP_HASH_TABLE_BITS];
 struct kmem_cache * slab_chunk1;
 struct kmem_cache * slab_chunk2;
 struct kmem_cache * slab_chunk3;
+extern unsigned long bitmap_size;
+//extern unsigned long *bitmap;
+DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
+DECLARE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -141,7 +146,8 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	cp->len = len_value;
 	alloc_data_memory(cp, len_value);
 	memcpy(cp->data, value, cp->len);
-
+	
+	cp->flag_cahce = 0;	
 	
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
@@ -343,29 +349,64 @@ void hash_item_expire(unsigned long data)
 	}
 }
 /*
- * write file.
+ * write file and free data in the memory.
  */
 static void wr_file(struct work_struct *work)
 {
 	struct hashinfo_item *cp, *next;
 	w_work_t *_work = (w_work_t *)work;
 	unsigned long data = _work->index;
-
-	//printk("my_work.x %lu\n", _work->index);
-	//kmem_cache_free(slab_work, wr_work);
-	//kfree((void *)(_work));
-    
+	int num, find_index, cpu, i;
+	int page_index = 0;
+	
 	/*
+     * 程序启动阶段，预先分配per-cpu的PAGE。
+     */
+ 	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-        //  如果引用计数大于阀值，设置位图空间，并将此节点数据存入文件, 内存中的data设置为NULL
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
+			if (cp->len <= CHUNKSTEP)
+				num = 1;
+			else
+				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+						
+			/*
+             * 2.将DATA拷贝到PAGE
+             */
+			find_index = bitmap_find_next_zero_area(per_cpu(bitmap, cpu), bitmap_size, per_cpu(bitmap_index, cpu), num, 0);
+			if (find_index > bitmap_size) {
+				//TODO: 后续这里处理特殊处理，将一些零散的数据整合到一块。
+				BUG();
+			}
+
+			/*
+             * set bitmap.
+             */
+			for (i = 0; i < num; ++i) {
+				set_bit(per_cpu(bitmap_index, cpu) + i, per_cpu(bitmap, cpu));	
+			} 
+
+			/*
+			 * update bitmap index for next item.
+			 */
+			per_cpu(bitmap_index, cpu) += num;
+
+			/*
+			 * set the status of item. 2 stands for data will write to file.
+			 */
+			cp->flag_cahce = 2;
 		}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
+	put_cpu();
+	/*
+     * 写文件
+     */
 
-	kfree((void *)wr_work);
-	*/
+	/*
+     *释放数据的内存空间 设置标志位置
+     */
 }
 
 
@@ -373,25 +414,38 @@ void bucket_clear_item(unsigned long data)
 {
     struct hashinfo_item *cp, *next;
     int flag = 0;
+	int i, num, cpu;
 
+ 	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		atomic_dec(&cp->refcnt);
-
-   		if (likely(atomic_read(&cp->refcnt) == 0)) {
+   		if (atomic_dec_and_test(&cp->refcnt)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
 			free_data_memory(cp);
-			//TODO:清空位图
+			if (cp->flag_cahce == 1 || cp->flag_cahce == 2) {
+				if (cp->len <= CHUNKSTEP)
+					num = 1;
+				else
+					num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+			
+				for (i = 0; i < num; ++i) {
+					clear_bit(per_cpu(bitmap_index, cpu) + i, per_cpu(bitmap, cpu));	
+				} 
+			
+			}
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
 		}
 	
+		atomic_dec(&cp->refcnt);
+		
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
 			flag = 1;
 		} 
 	}
     ct_write_unlock_bh(data, hash_lock_array);
+	put_cpu();
 
 	/*
      * work join in workqueue.
