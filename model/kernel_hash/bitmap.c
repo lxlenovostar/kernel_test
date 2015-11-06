@@ -9,7 +9,6 @@ unsigned long bitmap_size = 0;
 
 int alloc_bitmap() {
 	int cpu;
-	unsigned long *this;
 	unsigned long file_size = (FILESIZE * 1024 * 1024 * 1024);
 	unsigned long chunk_num = file_size / CHUNKSIZE;
 	bitmap_size = chunk_num / 8;
@@ -17,14 +16,13 @@ int alloc_bitmap() {
 	//bitmap = alloc_percpu(unsigned long);
 
 	for_each_online_cpu(cpu) {
-		this = per_cpu(bitmap, cpu);
 		//alloc memory for every percpu-value.
-		this = vmalloc(bitmap_size);	//a bit for a chunk.
-		if (!this) {
+		per_cpu(bitmap, cpu) = vmalloc(bitmap_size);	//a bit for a chunk.
+		if (!per_cpu(bitmap, cpu)) {
 			printk(KERN_ERR "alloc bitmap failed.");
 			return -ENOMEM;
 		}
-		bitmap_zero(this, bitmap_size);
+		bitmap_zero(per_cpu(bitmap, cpu), bitmap_size);
 		per_cpu(bitmap_index, cpu) = 0;	
 	}
 
@@ -33,13 +31,11 @@ int alloc_bitmap() {
 
 void free_bitmap() {
 	int cpu;
-	unsigned long *this;
 	
 	for_each_online_cpu(cpu) {
-		this = per_cpu(bitmap, cpu);
 		
-		if (this)
-			vfree(this);	
+		if (per_cpu(bitmap, cpu))
+			vfree(per_cpu(bitmap, cpu));	
 	}	
 }
 
