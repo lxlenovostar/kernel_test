@@ -43,6 +43,7 @@ extern unsigned long bitmap_size;
 //extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DECLARE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
+DECLARE_PER_CPU(unsigned long *, w_cache_page); //percpu page for write file. 
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -358,6 +359,7 @@ static void wr_file(struct work_struct *work)
 	unsigned long data = _work->index;
 	int num, find_index, cpu, i;
 	int page_index = 0;
+	size_t all_size = 0;
 	
 	/*
      * 程序启动阶段，预先分配per-cpu的PAGE。
@@ -396,6 +398,21 @@ static void wr_file(struct work_struct *work)
 			 * set the status of item. 2 stands for data will write to file.
 			 */
 			cp->flag_cahce = 2;
+
+			/*
+			 * cp->data copy to a page.
+			 */
+			if (all_size + cp->len <= PAGE_SIZE) {
+				memcpy(per_cpu(w_cache_page, cpu) + page_index, cp->data, cp->len);
+				page_index += num*CHUNKSTEP;
+			}
+			else {
+				//分配一个新的页, 索引重新设置0，这里要考虑 需要分配多个页面的情况。
+				page_index = 0;
+				
+			}
+
+
 		}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
@@ -404,8 +421,8 @@ static void wr_file(struct work_struct *work)
      * 写文件
      */
 
-	/*
-     *释放数据的内存空间 设置标志位置
+	/* 再次循环链表。如果标志为是2，就释放数据的空间，
+     *设置标志位置为1.
      */
 }
 

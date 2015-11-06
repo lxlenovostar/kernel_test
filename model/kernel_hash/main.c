@@ -12,6 +12,7 @@
 #include "hash_table.h"
 #include "bitmap.h"
 #include "slab_cache.h"
+#include "alloc_mem.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
@@ -24,6 +25,7 @@ struct kmem_cache * hash_item_data; /* __read_mostly*/
 struct workqueue_struct *writeread_wq; // for read/write file
 //extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
+DECLARE_PER_CPU(unsigned long *, w_cache_page); //percpu page for write file. 
 
 void init_hash_parameters(void)
 {
@@ -53,6 +55,9 @@ static int minit(void)
 	
 	if (!writeread_wq)
 		return -1;
+	
+	if (0 > (err = alloc_percpu_page()))
+		goto err_alloc_cache;
 
 	if (0 > (err = alloc_slab()))
 		goto err_alloc_slab;
@@ -101,6 +106,8 @@ err_bitmap:
 	free_bitmap();
 err_alloc_slab:
 	free_slab();
+err_alloc_cache:
+	free_percpu_page();
 out:
 	return err;    
 }
@@ -120,6 +127,7 @@ static void mexit(void)
         unregister_jprobe(&jps_netif_receive_skb);
 
 	release_hash_table_cache();
+	free_percpu_page();
 	free_slab();
 	free_bitmap();	
 	tcp_free_sha1sig_pool();

@@ -12,8 +12,6 @@ int alloc_bitmap() {
 	unsigned long file_size = (FILESIZE * 1024 * 1024 * 1024);
 	unsigned long chunk_num = file_size / CHUNKSIZE;
 	bitmap_size = chunk_num / 8;
-	
-	//bitmap = alloc_percpu(unsigned long);
 
 	for_each_online_cpu(cpu) {
 		//alloc memory for every percpu-value.
@@ -33,7 +31,6 @@ void free_bitmap() {
 	int cpu;
 	
 	for_each_online_cpu(cpu) {
-		
 		if (per_cpu(bitmap, cpu))
 			vfree(per_cpu(bitmap, cpu));	
 	}	
