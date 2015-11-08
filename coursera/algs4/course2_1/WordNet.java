@@ -1,5 +1,5 @@
 
-//import edu.princeton.cs.algs4.*;
+import edu.princeton.cs.algs4.*;
 import java.util.*;
 public class WordNet {
     private ST<String, Integer> st;
@@ -39,7 +39,11 @@ public class WordNet {
                 G.addEdge(v, Integer.parseInt(a[i]));
             }
         }
-        
+
+        DirectedCycle finder = new DirectedCycle(G);
+        if (finder.hasCycle()) 
+            throw new IllegalArgumentException("find cycle");       
+ 
         sap = new SAP(G);
     }
     
@@ -61,11 +65,18 @@ public class WordNet {
         return st.contains(word);
     }
     
+    private void validateWordNet(String v) {
+        if (this.isNoun(v) == false)
+            throw new IllegalArgumentException("Not WordNet");
+    }  
+    
     // distance between nounA and nounB (defined below)
     public int distance(String nounA, String nounB)
     {
         validateNULL(nounA);
         validateNULL(nounB);
+        validateWordNet(nounA);
+        validateWordNet(nounB);
         int v = st.get(nounA);
         int w = st.get(nounB);
 
@@ -78,6 +89,8 @@ public class WordNet {
     {
         validateNULL(nounA);
         validateNULL(nounB);
+        validateWordNet(nounA);
+        validateWordNet(nounB);
         int v = st.get(nounA);
         int w = st.get(nounB);
         return   keys[sap.ancestor(v, w)];

@@ -1,4 +1,4 @@
-//import edu.princeton.cs.algs4.*;
+import edu.princeton.cs.algs4.*;
 import java.util.*;
 
 public class Outcast {
@@ -11,11 +11,30 @@ public class Outcast {
 
     public String outcast(String[] nouns)   // given an array of WordNet nouns, return an outcast
     {
+        int out_max = -1;
+        int index = 0;
+        boolean flag = false;
+
         for (int i = 0; i < nouns.length; i++) {
-            if
+            int out_sum = 0; 
+            for (int j = 0; i < nouns.length; i++) {
+                if (i == j)
+                    continue;
+                if (!this.this_wordnet.isNoun(nouns[i]) || !this.this_wordnet.isNoun(nouns[j]))
+                    continue;
+                out_sum += this.this_wordnet.distance(nouns[i], nouns[j]);
         }
-        
-        return "";        
+            if (out_sum > out_max) {
+                out_max = out_sum;
+                index = i;
+                flag = true;
+            }
+        }
+
+        if (flag)
+            return nouns[index];
+        else
+            return "";        
     }    
     
     public static void main(String[] args)  // see test client below}
