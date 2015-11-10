@@ -74,7 +74,7 @@ struct hashinfo_item
 	/*
 	 * 0: just in memory.
      * 1: just in disk.
-     * 2: in memory, writing in disk. 
+     * 2: in memory, will write to disk. 
      */
 	int flag_cahce; 	
 	char *data;				//store data in memory	

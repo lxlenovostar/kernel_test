@@ -7,11 +7,15 @@
 #include "debug.h"
 #include "chunk.h"
 #include "bitmap.h"
+#include "file.h"
 
 #define WS_SP_HASH_TABLE_BITS 20
-#define ITEM_CITE_ADD 10
-#define ITEM_CITE_FIND 10
-#define ITEM_DISK_LIMIT 10
+//#define ITEM_CITE_ADD 10
+//#define ITEM_CITE_FIND 10
+//#define ITEM_DISK_LIMIT 10
+#define ITEM_CITE_ADD 2
+#define ITEM_CITE_FIND 2
+#define ITEM_DISK_LIMIT 2
 unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -43,6 +47,8 @@ extern unsigned long bitmap_size;
 //extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DECLARE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
+DECLARE_PER_CPU(struct file *, reserve_file); 
+DECLARE_PER_CPU(loff_t, loff_file); 
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -356,35 +362,42 @@ static void wr_file(struct work_struct *work)
 {
 	struct hashinfo_item *cp, *next;
 	w_work_t *_work = (w_work_t *)work;
-	int num, find_index, cpu, i;
+	int num, find_index, cpu, i, ret;
 	char *copy_mem;
 	unsigned long mem_index = 0;
-	size_t all_size = 0;
+	unsigned long all_size = 0;
 	unsigned long data = _work->index;
-	unsigned long need_mem = _work->sum;
+	
+ 	cpu = get_cpu();
+    ct_write_lock_bh(data, hash_lock_array);
+    
+	/*
+	 * sum the all bytes.
+	 */
+	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		if (cp->len <= CHUNKSTEP)
+			num = 1;
+		else
+			num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+		
+		all_size += num*CHUNKSTEP;
+	}
 	
 	/*
-	 * first alloc memory for copy data.
+	 * alloc memory for copy data.
 	 */	
-	copy_mem = vmalloc(need_mem);
+	copy_mem = kzalloc(all_size, GFP_ATOMIC);
     if (!copy_mem) {
         DEBUG_LOG(KERN_ERR"****** %s : vmalloc  copy_mem error\n", __FUNCTION__);
         BUG(); //TODO need update it.
     }
 
- 	cpu = get_cpu();
-    ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
 			if (cp->len <= CHUNKSTEP)
 				num = 1;
 			else
 				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
-		
-			/*
-			 * sum the bytes for copy.
-             */	
-			all_size += num*CHUNKSTEP;
 
 			/*
              * find the bitmap position.
@@ -424,13 +437,28 @@ static void wr_file(struct work_struct *work)
 	put_cpu();
 	
 	/*
-     * 写文件
-     */
+     * write file.
+	 */
+	cpu = get_cpu();
+	ret = kernel_write(per_cpu(reserve_file, cpu), copy_mem, all_size, per_cpu(loff_file, cpu));
+	if (ret < 0) {
+    	printk(KERN_ERR "Error writing file:%d\n", cpu);
+		BUG(); //TODO need updat it.
+	}
+	//TODO: file size maybe so big?
+	per_cpu(loff_file, cpu) += all_size;
+	put_cpu();		
 
-	vfree(copy_mem);
-	/* 再次循环链表。如果标志为是2，就释放数据的空间，
-     *设置标志位置为1.
-     */
+
+	kfree(copy_mem);
+ 	
+    ct_write_lock_bh(data, hash_lock_array);
+	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		free_data_memory(cp);		
+		if (cp->flag_cahce == 2)
+			cp->flag_cahce = 1;
+	}
+    ct_write_unlock_bh(data, hash_lock_array);
 }
 
 void bucket_clear_item(unsigned long data)
@@ -438,7 +466,6 @@ void bucket_clear_item(unsigned long data)
     struct hashinfo_item *cp, *next;
 	int i, num, cpu;
     int flag = 0;
-	unsigned long sum_mem = 0;
 
  	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
@@ -464,16 +491,6 @@ void bucket_clear_item(unsigned long data)
 		}
 	
 		atomic_dec(&cp->refcnt);
-		
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
-			flag = 1;
-
-			if (cp->len <= CHUNKSTEP)
-				num = 1;
-			else
-				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
-			sum_mem += num*CHUNKSTEP;
-		} 
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 	put_cpu();
@@ -485,7 +502,6 @@ void bucket_clear_item(unsigned long data)
 		if (!work_pending((struct work_struct *)(w_work+data))) {
 			INIT_WORK((struct work_struct *)(w_work+data), wr_file);
 			(w_work+data)->index = data;
-			(w_work+data)->sum = sum_mem;
 			queue_work(writeread_wq, (struct work_struct *)(w_work+data));
 		} 
 	}
