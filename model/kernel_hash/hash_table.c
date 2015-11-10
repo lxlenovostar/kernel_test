@@ -43,7 +43,6 @@ extern unsigned long bitmap_size;
 //extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DECLARE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
-DECLARE_PER_CPU(unsigned long *, w_cache_page); //percpu page for write file. 
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -349,6 +348,7 @@ void hash_item_expire(unsigned long data)
 		//mod_timer(&cp->timer, jiffies + timeout_hash_del);
 	}
 }
+
 /*
  * write file and free data in the memory.
  */
@@ -356,14 +356,22 @@ static void wr_file(struct work_struct *work)
 {
 	struct hashinfo_item *cp, *next;
 	w_work_t *_work = (w_work_t *)work;
-	unsigned long data = _work->index;
 	int num, find_index, cpu, i;
-	int page_index = 0;
+	char *copy_mem;
+	unsigned long mem_index = 0;
 	size_t all_size = 0;
+	unsigned long data = _work->index;
+	unsigned long need_mem = _work->sum;
 	
 	/*
-     * 程序启动阶段，预先分配per-cpu的PAGE。
-     */
+	 * first alloc memory for copy data.
+	 */	
+	copy_mem = vmalloc(need_mem);
+    if (!copy_mem) {
+        DEBUG_LOG(KERN_ERR"****** %s : vmalloc  copy_mem error\n", __FUNCTION__);
+        BUG(); //TODO need update it.
+    }
+
  	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
@@ -372,10 +380,15 @@ static void wr_file(struct work_struct *work)
 				num = 1;
 			else
 				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
-						
+		
 			/*
-             * 2.将DATA拷贝到PAGE
-             */
+			 * sum the bytes for copy.
+             */	
+			all_size += num*CHUNKSTEP;
+
+			/*
+             * find the bitmap position.
+             */			
 			find_index = bitmap_find_next_zero_area(per_cpu(bitmap, cpu), bitmap_size, per_cpu(bitmap_index, cpu), num, 0);
 			if (find_index > bitmap_size) {
 				//TODO: 后续这里处理特殊处理，将一些零散的数据整合到一块。
@@ -385,8 +398,9 @@ static void wr_file(struct work_struct *work)
 			/*
              * set bitmap.
              */
+			cp->start = find_index;
 			for (i = 0; i < num; ++i) {
-				set_bit(per_cpu(bitmap_index, cpu) + i, per_cpu(bitmap, cpu));	
+				set_bit(cp->start + i, per_cpu(bitmap, cpu));	
 			} 
 
 			/*
@@ -402,36 +416,29 @@ static void wr_file(struct work_struct *work)
 			/*
 			 * cp->data copy to a page.
 			 */
-			if (all_size + cp->len <= PAGE_SIZE) {
-				memcpy(per_cpu(w_cache_page, cpu) + page_index, cp->data, cp->len);
-				page_index += num*CHUNKSTEP;
-			}
-			else {
-				//分配一个新的页, 索引重新设置0，这里要考虑 需要分配多个页面的情况。
-				page_index = 0;
-				
-			}
-
-
+			memcpy(copy_mem + mem_index, cp->data, cp->len);
+			mem_index += num*CHUNKSTEP;
 		}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 	put_cpu();
+	
 	/*
      * 写文件
      */
 
+	vfree(copy_mem);
 	/* 再次循环链表。如果标志为是2，就释放数据的空间，
      *设置标志位置为1.
      */
 }
 
-
 void bucket_clear_item(unsigned long data)
 {
     struct hashinfo_item *cp, *next;
-    int flag = 0;
 	int i, num, cpu;
+    int flag = 0;
+	unsigned long sum_mem = 0;
 
  	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
@@ -447,18 +454,25 @@ void bucket_clear_item(unsigned long data)
 					num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
 			
 				for (i = 0; i < num; ++i) {
-					clear_bit(per_cpu(bitmap_index, cpu) + i, per_cpu(bitmap, cpu));	
+					clear_bit(cp->start + i, per_cpu(bitmap, cpu));	
 				} 
 			
 			}
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
+			continue;
 		}
 	
 		atomic_dec(&cp->refcnt);
 		
-		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) {
 			flag = 1;
+
+			if (cp->len <= CHUNKSTEP)
+				num = 1;
+			else
+				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+			sum_mem += num*CHUNKSTEP;
 		} 
 	}
     ct_write_unlock_bh(data, hash_lock_array);
@@ -471,6 +485,7 @@ void bucket_clear_item(unsigned long data)
 		if (!work_pending((struct work_struct *)(w_work+data))) {
 			INIT_WORK((struct work_struct *)(w_work+data), wr_file);
 			(w_work+data)->index = data;
+			(w_work+data)->sum = sum_mem;
 			queue_work(writeread_wq, (struct work_struct *)(w_work+data));
 		} 
 	}

@@ -20,6 +20,7 @@ extern struct workqueue_struct *writeread_wq; // for read/write file
 typedef struct {
 	struct work_struct wr_work;
 	unsigned long      index;
+	unsigned long      sum;	//the sum size memory will alloc.
 } w_work_t;
 
 
