@@ -78,27 +78,30 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
 
 static void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	if (length < CHUNKSTEP) {
+	if (length <= CHUNKSTEP) {
 		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
 		if (!cp->data) {
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		cp->mem_style = 1;
-	} else if (length < CHUNKSTEP*2) {
+		return;
+	} else if (length <= CHUNKSTEP*2) {
 		cp->data  = kmem_cache_zalloc(slab_chunk2, GFP_ATOMIC);  
 		if (!cp->data) {
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		cp->mem_style = 2;
-	} else if (length < CHUNKSTEP*3) {
+		return;
+	} else if (length <= CHUNKSTEP*3) {
 		cp->data  = kmem_cache_zalloc(slab_chunk3, GFP_ATOMIC);  
 		if (!cp->data) {
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		cp->mem_style = 3;
+		return;
 	} else {	
 		cp->data = kmalloc(cp->len, GFP_ATOMIC);
 		if (!cp->data) {
@@ -106,8 +109,8 @@ static void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		cp->mem_style = 0;
+		return;
 	}
-	 
 }
 
 static void free_data_memory(struct hashinfo_item *cp) 
@@ -308,7 +311,8 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			free_data_memory(cp);
+			if (cp->flag_cahce == 0 || cp->flag_cahce == 2) 
+				free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
@@ -375,14 +379,18 @@ static void wr_file(struct work_struct *work)
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (cp->len <= CHUNKSTEP)
-			num = 1;
-		else
-			num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
-		
-		all_size += num*CHUNKSTEP;
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
+			if (cp->len <= CHUNKSTEP) {
+				num = 1;
+			}
+			else {
+				num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
+				//num = (cp->len + CHUNKSTEP - 1)/CHUNKSTEP;
+			}
+			all_size += num*CHUNKSTEP;
+		}
 	}
-	
+	if (all_size != 0) {
 	/*
 	 * alloc memory for copy data.
 	 */	
@@ -397,7 +405,7 @@ static void wr_file(struct work_struct *work)
 			if (cp->len <= CHUNKSTEP)
 				num = 1;
 			else
-				num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+				num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
 
 			/*
              * find the bitmap position.
@@ -407,11 +415,12 @@ static void wr_file(struct work_struct *work)
 				//TODO: 后续这里处理特殊处理，将一些零散的数据整合到一块。
 				BUG();
 			}
+			
+			cp->start = find_index;
 
 			/*
              * set bitmap.
              */
-			cp->start = find_index;
 			for (i = 0; i < num; ++i) {
 				set_bit(cp->start + i, per_cpu(bitmap, cpu));	
 			} 
@@ -427,14 +436,29 @@ static void wr_file(struct work_struct *work)
 			cp->flag_cahce = 2;
 
 			/*
-			 * cp->data copy to a page.
+			if ((copy_mem+mem_index + cp->len - 1) == NULL) {
+				printk("bug0 %d\n", mem_index);
+				BUG();
+			}
+			if ((cp->data + cp->len - 1) == NULL) {
+				printk("bug1\n");
+				BUG();
+			}
+			*/
+
+			/*
+			 * cp->data copy.
 			 */
 			memcpy(copy_mem + mem_index, cp->data, cp->len);
 			mem_index += num*CHUNKSTEP;
 		}
 	}
+	}
     ct_write_unlock_bh(data, hash_lock_array);
 	put_cpu();
+	
+	if (all_size == 0) 
+		return;
 	
 	/*
      * write file.
@@ -449,14 +473,14 @@ static void wr_file(struct work_struct *work)
 	per_cpu(loff_file, cpu) += all_size;
 	put_cpu();		
 
-
 	kfree(copy_mem);
  	
     ct_write_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		free_data_memory(cp);		
-		if (cp->flag_cahce == 2)
+		if (cp->flag_cahce == 2) {
 			cp->flag_cahce = 1;
+			free_data_memory(cp);
+		}		
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 }
@@ -473,12 +497,13 @@ void bucket_clear_item(unsigned long data)
    		if (atomic_dec_and_test(&cp->refcnt)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			free_data_memory(cp);
+			if (cp->flag_cahce == 0 || cp->flag_cahce == 2) 
+				free_data_memory(cp);
 			if (cp->flag_cahce == 1 || cp->flag_cahce == 2) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
-					num = cp->len/CHUNKSTEP + (cp->len%CHUNKSTEP == 0) ? 0 : 1;
+					num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
 			
 				for (i = 0; i < num; ++i) {
 					clear_bit(cp->start + i, per_cpu(bitmap, cpu));	
@@ -491,6 +516,8 @@ void bucket_clear_item(unsigned long data)
 		}
 	
 		atomic_dec(&cp->refcnt);
+		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) 
+			flag = 1;
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 	put_cpu();
