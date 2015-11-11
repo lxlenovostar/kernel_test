@@ -5,6 +5,7 @@
 #include <linux/err.h>
 #include <linux/scatterlist.h>
 #include <linux/kprobes.h>
+#include <linux/limits.h> 
 #include "debug.h"
 #include "nf.h"
 #include "chunk.h"

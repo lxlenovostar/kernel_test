@@ -5,12 +5,12 @@
 
 DEFINE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DEFINE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
-unsigned long bitmap_size = 0;
+unsigned long long bitmap_size = 0;
 
 int alloc_bitmap() {
 	int cpu;
-	unsigned long file_size = (FILESIZE * 1024 * 1024 * 1024);
-	unsigned long chunk_num = file_size / CHUNKSIZE;
+	unsigned long long file_size = (FILESIZE * 1024 * 1024 * 1024);
+	unsigned long long chunk_num = file_size / CHUNKSIZE;
 	bitmap_size = chunk_num / 8;
 
 	for_each_online_cpu(cpu) {

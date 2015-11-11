@@ -13,10 +13,10 @@
 //#define ITEM_CITE_ADD 10
 //#define ITEM_CITE_FIND 10
 //#define ITEM_DISK_LIMIT 10
-#define ITEM_CITE_ADD 2
-#define ITEM_CITE_FIND 2
-#define ITEM_DISK_LIMIT 2
-unsigned long timeout_hash_del = 10*HZ;
+#define ITEM_CITE_ADD 10
+#define ITEM_CITE_FIND 10
+#define ITEM_DISK_LIMIT 1
+unsigned long timeout_hash_del = 5*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -27,13 +27,12 @@ static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
 /* counter for hash item */
 atomic_t hash_count = ATOMIC_INIT(0);
-unsigned long long hash_max_count = (1024*1024*1024*2) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
+unsigned long long hash_max_count = (2UL*1024*1024*1024) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 
 static struct timer_list print_memory;
-static struct timer_list *bucket_clear; 
 
 void hash_item_expire(unsigned long data);
 void bucket_clear_item(unsigned long data);
@@ -49,6 +48,8 @@ DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DECLARE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
 DECLARE_PER_CPU(struct file *, reserve_file); 
 DECLARE_PER_CPU(loff_t, loff_file); 
+//static struct timer_list *bucket_clear; 
+DEFINE_PER_CPU(struct timer_list *, bucket_clear); 
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -157,6 +158,9 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	memcpy(cp->data, value, cp->len);
 	
 	cp->flag_cahce = 0;	
+
+	cp->cpuid = get_cpu();
+	put_cpu();
 	
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
@@ -228,18 +232,21 @@ void print_memory_usage(unsigned long data)
 int initial_hash_table_cache(void)
 {
     unsigned long idx;
+	int cpu;
     
 	hash_tab = vmalloc(hash_tab_size * sizeof(struct list_head));
     if (!hash_tab) {
         DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
         return -ENOMEM;
     }
-	
-	bucket_clear  = vmalloc(hash_tab_size * sizeof(struct timer_list));
-    if (!bucket_clear) {
-        DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
-        return -ENOMEM;
-    }
+
+	for_each_online_cpu(cpu) {	
+		per_cpu(bucket_clear, cpu)  = vmalloc(hash_tab_size * sizeof(struct timer_list));
+    	if (!per_cpu(bucket_clear, cpu)) {
+        	DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
+        	return -ENOMEM;
+    	}
+	}
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
     hash_cachep = kmem_cache_create(CACHE_NAME,
@@ -271,11 +278,13 @@ int initial_hash_table_cache(void)
     add_timer(&print_memory);
     
 	for (idx = 0; idx < hash_tab_size; idx++) {
-		init_timer(bucket_clear+idx);
-		(bucket_clear+idx)->expires = jiffies + timeout_hash_del;
-		(bucket_clear+idx)->data = idx;
-		(bucket_clear+idx)->function = bucket_clear_item;
-    	add_timer(bucket_clear+idx);
+		for_each_online_cpu(cpu) {	
+			init_timer(per_cpu(bucket_clear, cpu)+idx);
+			(per_cpu(bucket_clear, cpu)+idx)->expires = jiffies + timeout_hash_del;
+			(per_cpu(bucket_clear, cpu)+idx)->data = idx;
+			(per_cpu(bucket_clear, cpu)+idx)->function = bucket_clear_item;
+    		add_timer(per_cpu(bucket_clear, cpu)+idx);
+		}
 	}
 	return 0;
 }
@@ -324,11 +333,13 @@ static void hash_flush(void)
 void release_hash_table_cache(void)
 {
 	unsigned long idx;
+	int cpu;
     hash_flush();
 	
 	del_timer_sync(&print_memory);
 	for (idx = 0; idx < hash_tab_size; idx++) {
-		del_timer_sync(bucket_clear+idx);
+		for_each_online_cpu(cpu) 
+			del_timer_sync(per_cpu(bucket_clear, cpu) + idx);
 	}
 
     kmem_cache_destroy(hash_cachep);
@@ -371,7 +382,7 @@ static void wr_file(struct work_struct *work)
 	unsigned long mem_index = 0;
 	unsigned long all_size = 0;
 	unsigned long data = _work->index;
-	
+
  	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
     
@@ -379,6 +390,9 @@ static void wr_file(struct work_struct *work)
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		if (cp->cpuid != cpu)
+			continue;
+		
 		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
 			if (cp->len <= CHUNKSTEP) {
 				num = 1;
@@ -390,69 +404,62 @@ static void wr_file(struct work_struct *work)
 			all_size += num*CHUNKSTEP;
 		}
 	}
+
 	if (all_size != 0) {
-	/*
-	 * alloc memory for copy data.
-	 */	
-	copy_mem = kzalloc(all_size, GFP_ATOMIC);
-    if (!copy_mem) {
-        DEBUG_LOG(KERN_ERR"****** %s : vmalloc  copy_mem error\n", __FUNCTION__);
-        BUG(); //TODO need update it.
-    }
+		/*
+	 	* alloc memory for copy data.
+	 	*/	
+		copy_mem = kzalloc(all_size, GFP_ATOMIC);
+    	if (!copy_mem) {
+        	DEBUG_LOG(KERN_ERR"****** %s : vmalloc  copy_mem error\n", __FUNCTION__);
+        	BUG(); //TODO need update it.
+    	}
 
-    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
-			if (cp->len <= CHUNKSTEP)
-				num = 1;
-			else
-				num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
+    	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+			if (cp->cpuid != cpu)
+				continue;
 
-			/*
-             * find the bitmap position.
-             */			
-			find_index = bitmap_find_next_zero_area(per_cpu(bitmap, cpu), bitmap_size, per_cpu(bitmap_index, cpu), num, 0);
-			if (find_index > bitmap_size) {
-				//TODO: 后续这里处理特殊处理，将一些零散的数据整合到一块。
-				BUG();
-			}
+			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
+				if (cp->len <= CHUNKSTEP)
+					num = 1;
+				else
+					num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
+
+				/*
+             	 * find the bitmap position.
+             	 */			
+				find_index = bitmap_find_next_zero_area(per_cpu(bitmap, cpu), bitmap_size, per_cpu(bitmap_index, cpu), num, 0);
+				if (find_index > bitmap_size) {
+					//TODO: 后续这里处理特殊处理，将一些零散的数据整合到一块。
+					BUG();
+				}
 			
-			cp->start = find_index;
+				cp->start = find_index;
 
-			/*
-             * set bitmap.
-             */
-			for (i = 0; i < num; ++i) {
-				set_bit(cp->start + i, per_cpu(bitmap, cpu));	
-			} 
+				/*
+             	 * set bitmap.
+             	 */
+				for (i = 0; i < num; ++i) {
+					set_bit(cp->start + i, per_cpu(bitmap, cpu));	
+				} 
 
-			/*
-			 * update bitmap index for next item.
-			 */
-			per_cpu(bitmap_index, cpu) += num;
+				/*
+			 	 * update bitmap index for next item.
+			 	 */
+				per_cpu(bitmap_index, cpu) += num;
 
-			/*
-			 * set the status of item. 2 stands for data will write to file.
-			 */
-			cp->flag_cahce = 2;
+				/*
+			 	 * set the status of item. 2 stands for data will write to file.
+			 	 */
+				cp->flag_cahce = 2;
 
-			/*
-			if ((copy_mem+mem_index + cp->len - 1) == NULL) {
-				printk("bug0 %d\n", mem_index);
-				BUG();
+				/*
+			 	 * cp->data copy.
+			 	 */
+				memcpy(copy_mem + mem_index, cp->data, cp->len);
+				mem_index += num*CHUNKSTEP;
 			}
-			if ((cp->data + cp->len - 1) == NULL) {
-				printk("bug1\n");
-				BUG();
-			}
-			*/
-
-			/*
-			 * cp->data copy.
-			 */
-			memcpy(copy_mem + mem_index, cp->data, cp->len);
-			mem_index += num*CHUNKSTEP;
 		}
-	}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 	put_cpu();
@@ -474,15 +481,20 @@ static void wr_file(struct work_struct *work)
 	put_cpu();		
 
 	kfree(copy_mem);
- 	
+ 
+	cpu = get_cpu();	
     ct_write_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		if (cp->cpuid != cpu)
+			continue;
+		
 		if (cp->flag_cahce == 2) {
 			cp->flag_cahce = 1;
 			free_data_memory(cp);
 		}		
 	}
     ct_write_unlock_bh(data, hash_lock_array);
+	put_cpu();
 }
 
 void bucket_clear_item(unsigned long data)
@@ -490,10 +502,13 @@ void bucket_clear_item(unsigned long data)
     struct hashinfo_item *cp, *next;
 	int i, num, cpu;
     int flag = 0;
-
- 	cpu = get_cpu();
+ 	
+	cpu = get_cpu();
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		if (cp->cpuid != cpu)
+			continue;
+
    		if (atomic_dec_and_test(&cp->refcnt)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
@@ -508,7 +523,6 @@ void bucket_clear_item(unsigned long data)
 				for (i = 0; i < num; ++i) {
 					clear_bit(cp->start + i, per_cpu(bitmap, cpu));	
 				} 
-			
 			}
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
@@ -532,9 +546,11 @@ void bucket_clear_item(unsigned long data)
 			queue_work(writeread_wq, (struct work_struct *)(w_work+data));
 		} 
 	}
-	
-	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
-    
+
+	cpu = get_cpu();	
+	mod_timer((per_cpu(bucket_clear, cpu)+data), jiffies + timeout_hash_del);
+    put_cpu();
+
 	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
 

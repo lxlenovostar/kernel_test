@@ -200,7 +200,15 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	char dsthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
-	
+	unsigned long long reserve_mem;
+
+	/*
+	 * TODO: need configure from userspace.
+     */		
+	reserve_mem = atomic_long_read(&vm_stat[NR_FREE_PAGES]) + global_page_state(NR_FILE_PAGES);
+	if (reserve_mem < (800UL*1024*1024/4/1024))
+		goto out;		
+
 	/*
      * TODO: this maybe need fix it.
      */
@@ -224,7 +232,9 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && (ntohs(sport) == 80 || ntohs(sport) == 8101)) { 
+		//if (ntohs(sport) == 80) { 
+		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
@@ -233,6 +243,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			get_partition(data, data_len);
 		//}
 	}
+out:
 	jprobe_return();
 	return 0;
 }
