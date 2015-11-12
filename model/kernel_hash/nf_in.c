@@ -205,8 +205,8 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	/*
 	 * TODO: need configure from userspace.
      */		
-	reserve_mem = atomic_long_read(&vm_stat[NR_FREE_PAGES]) + global_page_state(NR_FILE_PAGES);
-	if (reserve_mem < (800UL*1024*1024/4/1024))
+	reserve_mem = global_page_state(NR_FREE_PAGES) + global_page_state(NR_FILE_PAGES);
+	if (reserve_mem < (400UL*1024*1024/4/1024))
 		goto out;		
 
 	/*
@@ -232,7 +232,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && (ntohs(sport) == 80 || ntohs(sport) == 8101)) { 
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		//if (ntohs(sport) == 80) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
