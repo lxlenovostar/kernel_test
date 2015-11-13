@@ -30,8 +30,11 @@ void hand_hash(char *src, uint8_t *dst, size_t len)
 		percpu_counter_add(&sum_num, len);
 	}
 	else {
-		if (len > (SHALEN + 2))
-			percpu_counter_add(&save_num, (len - SHALEN - 2));
+		if (len > (SHALEN + 2)) {
+			//percpu_counter_add(&save_num, (len - SHALEN - 2));
+			//just for test.
+			percpu_counter_add(&save_num, len);
+		}
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 	}
@@ -232,7 +235,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		//if (ntohs(sport) == 80) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
@@ -241,7 +244,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len);
-		//}
+		}
 	}
 out:
 	jprobe_return();

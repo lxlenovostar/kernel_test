@@ -12,10 +12,10 @@
 //#define ITEM_CITE_ADD 10
 //#define ITEM_CITE_FIND 10
 //#define ITEM_DISK_LIMIT 10
-#define ITEM_CITE_ADD   1 
-#define ITEM_CITE_FIND  1
-#define ITEM_DISK_LIMIT 1
-unsigned long timeout_hash_del = 5*HZ;
+#define ITEM_CITE_ADD   6 
+#define ITEM_CITE_FIND  6
+#define ITEM_DISK_LIMIT 6 
+unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -42,6 +42,7 @@ struct percpu_counter mm0;
 struct percpu_counter mm1;
 struct percpu_counter mm2;
 struct percpu_counter mm3;
+struct percpu_counter mmw;
 
 struct kmem_cache * slab_chunk1;
 struct kmem_cache * slab_chunk2;
@@ -222,6 +223,11 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
     return NULL;
 }
 
+unsigned long long old_write_mm = 0;
+unsigned long long old_save = 0;
+unsigned long long old_sum = 0;
+int time_intval = 10;
+
 void print_memory_usage(unsigned long data)
 {
 	unsigned long tmp_save, tmp_sum;	
@@ -229,17 +235,22 @@ void print_memory_usage(unsigned long data)
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	unsigned long long data_mem = percpu_counter_read(&mm0) + percpu_counter_read(&mm1) + percpu_counter_read(&mm2) + percpu_counter_read(&mm3);
+	unsigned long long write_mm = percpu_counter_read(&mmw);
 	tmp_save = percpu_counter_read(&save_num);
 	tmp_sum =  percpu_counter_read(&sum_num);
+	
+	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all mem is:%lluMB, write memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), write_mm/1024/1024, hash_count_now);
 
-
-	//printk(KERN_INFO "max hash count is:%llu and max ull is:%llu, %s", hash_max_count, ULLONG_MAX, (hash_max_count>ULLONG_MAX)?"gt":"lt");
-
-	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, hash_count_now);
+	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save/1024/1024 - old_save/1024/1024)/time_intval, (tmp_sum/1024/1024 - old_sum/1024/1024)/time_intval, (write_mm/1024/1024 - old_write_mm/1024/1024)/time_intval);
 
 	if (tmp_sum > 0)
 		printk(KERN_INFO "save bytes is:%lu Bytes %lu MB, all bytes is:%lu Bytes %lu MB, Cache ratio is:%lu%%", tmp_save,(tmp_save/1024/1024), tmp_sum, (tmp_sum/1024/1024), (tmp_save*100)/tmp_sum);
 	
+
+	old_write_mm = write_mm;
+	old_save = tmp_save;
+	old_sum = tmp_sum;
+
 	mod_timer(&print_memory, jiffies + timeout_hash_del);
 }
 
@@ -306,6 +317,7 @@ int initial_hash_table_cache(void)
 	percpu_counter_init(&mm1, 0);
 	percpu_counter_init(&mm2, 0);
 	percpu_counter_init(&mm3, 0);
+	percpu_counter_init(&mmw, 0);
 	
 	return 0;
 }
@@ -354,7 +366,6 @@ static void hash_flush(void)
 void release_hash_table_cache(void)
 {
 	unsigned long idx;
-	int cpu;
     hash_flush();
 	
 	del_timer_sync(&print_memory);
@@ -362,6 +373,7 @@ void release_hash_table_cache(void)
 	percpu_counter_destroy(&mm1);
 	percpu_counter_destroy(&mm2);
 	percpu_counter_destroy(&mm3);
+	percpu_counter_destroy(&mmw);
 	
 	for (idx = 0; idx < hash_tab_size; idx++) {
 			del_timer_sync(bucket_clear + idx);
@@ -419,8 +431,7 @@ static void wr_file(struct work_struct *work)
 				num = 1;
 			}
 			else {
-				num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
-				//num = (cp->len + CHUNKSTEP - 1)/CHUNKSTEP;
+				num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
 			}
 			all_size += num*CHUNKSTEP;
 		}
@@ -441,7 +452,7 @@ static void wr_file(struct work_struct *work)
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
-					num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
+					num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
 
 				/*
              	 * find the bitmap position.
@@ -496,10 +507,15 @@ static void wr_file(struct work_struct *work)
 		BUG(); //TODO need updat it.
 	}
 	
+	percpu_counter_add(&mmw, all_size);
+
     //TODO: file size maybe so big?
 	per_cpu(loff_file, cpu) += all_size;
 	put_cpu();		
 
+	/*
+	 * free memory.
+	 */
 	kfree(copy_mem);
  
     ct_write_lock_bh(data, hash_lock_array);
@@ -529,7 +545,7 @@ void bucket_clear_item(unsigned long data)
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
-					num = cp->len/CHUNKSTEP + ((cp->len%CHUNKSTEP == 0) ? 0 : 1);
+					num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
 			
 				for (i = 0; i < num; ++i) {
 					//TODO: maybe???
@@ -562,27 +578,3 @@ void bucket_clear_item(unsigned long data)
 
 	DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
 }
-
-/*
-void bucket_clear_item(unsigned long data)
-{
-    struct hashinfo_item *cp, *next;
-    
-    ct_write_lock_bh(data, hash_lock_array);
-    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-   		if (likely(atomic_read(&cp->refcnt) == 1)) {
-			list_del(&cp->c_list);
-			atomic_dec(&hash_count);
-			free_data_memory(cp);
-            kmem_cache_free(hash_cachep, cp);
-			DEBUG_LOG(KERN_INFO "delete it.");
-		}
-		else { 
-    		atomic_dec(&cp->refcnt);
-		}
-	}
-    ct_write_unlock_bh(data, hash_lock_array);
-	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
-
-    DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
-}*/
