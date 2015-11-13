@@ -26,7 +26,7 @@ static struct kmem_cache * hash_cachep/* __read_mostly*/;
 
 /* counter for hash item */
 atomic_t hash_count = ATOMIC_INIT(0);
-unsigned long long hash_max_count = (2UL*1024*1024*1024) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
+unsigned long long hash_max_count = (2ULL*1024*1024*1024) / sizeof(struct hashinfo_item); /*2GB hash_table memory usage.*/
 
 
 static struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
@@ -43,6 +43,9 @@ struct percpu_counter mm1;
 struct percpu_counter mm2;
 struct percpu_counter mm3;
 struct percpu_counter mmw;
+struct percpu_counter mmw_s;
+struct percpu_counter mmw_w;
+struct percpu_counter mmd;
 
 struct kmem_cache * slab_chunk1;
 struct kmem_cache * slab_chunk2;
@@ -174,6 +177,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	cp->flag_cahce = 0;	
 
 	cp->cpuid = -1;
+	cp->store_flag = -1;
 	
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
@@ -215,8 +219,8 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
-            ct_read_unlock_bh(hash, hash_lock_array);
-            return cp; 
+			ct_read_unlock_bh(hash, hash_lock_array);
+			return cp; 
         }   
     }   
     ct_read_unlock_bh(hash, hash_lock_array);
@@ -234,13 +238,18 @@ void print_memory_usage(unsigned long data)
 	int slot_size = hash_tab_size * sizeof(struct list_head);
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
-	unsigned long long data_mem = percpu_counter_read(&mm0) + percpu_counter_read(&mm1) + percpu_counter_read(&mm2) + percpu_counter_read(&mm3);
-	unsigned long long write_mm = percpu_counter_read(&mmw);
-	tmp_save = percpu_counter_read(&save_num);
-	tmp_sum =  percpu_counter_read(&sum_num);
+	unsigned long long data_mem = percpu_counter_sum(&mm0) + percpu_counter_sum(&mm1) + percpu_counter_sum(&mm2) + percpu_counter_sum(&mm3);
+	unsigned long long write_mm = percpu_counter_sum(&mmw);
+	unsigned long long write_mm_s = percpu_counter_sum(&mmw_s);
+	long long write_w_mm = percpu_counter_sum(&mmw_w);
+	unsigned long long write_d_mm = percpu_counter_sum(&mmd);
+	tmp_save = percpu_counter_sum(&save_num);
+	tmp_sum =  percpu_counter_sum(&sum_num);
 	
-	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all mem is:%lluMB, write memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), write_mm/1024/1024, hash_count_now);
+	printk(KERN_INFO "\n\nmemory usage is:%dMB, data memmory is:%lluMB, all mem is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
+	printk(KERN_INFO "sum write is:%lluMB, write data is:%lluMB, data will write is:%lldMB, data miss store is:%lluMB", write_mm_s/1024/1024, write_mm/1024/1024, write_w_mm/1024/1024, write_d_mm/1024/1024);
+	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save/1024/1024 - old_save/1024/1024)/time_intval, (tmp_sum/1024/1024 - old_sum/1024/1024)/time_intval, (write_mm/1024/1024 - old_write_mm/1024/1024)/time_intval);
 
 	if (tmp_sum > 0)
@@ -313,11 +322,15 @@ int initial_hash_table_cache(void)
    		add_timer_on(bucket_clear+idx, idx%cpunum);
 	}
 	
-	percpu_counter_init(&mm0, 0);
-	percpu_counter_init(&mm1, 0);
-	percpu_counter_init(&mm2, 0);
-	percpu_counter_init(&mm3, 0);
-	percpu_counter_init(&mmw, 0);
+	percpu_counter_init(&mm0, 0ULL);
+	percpu_counter_init(&mm1, 0ULL);
+	percpu_counter_init(&mm2, 0ULL);
+	percpu_counter_init(&mm3, 0ULL);
+	
+	percpu_counter_init(&mmw, 0ULL);
+	percpu_counter_init(&mmw_s, 0ULL);
+	percpu_counter_init(&mmw_w, 0LL);
+	percpu_counter_init(&mmd, 0ULL);
 	
 	return 0;
 }
@@ -369,11 +382,16 @@ void release_hash_table_cache(void)
     hash_flush();
 	
 	del_timer_sync(&print_memory);
+
 	percpu_counter_destroy(&mm0);
 	percpu_counter_destroy(&mm1);
 	percpu_counter_destroy(&mm2);
 	percpu_counter_destroy(&mm3);
+
 	percpu_counter_destroy(&mmw);
+	percpu_counter_destroy(&mmw_s);
+	percpu_counter_destroy(&mmw_w);
+	percpu_counter_destroy(&mmd);
 	
 	for (idx = 0; idx < hash_tab_size; idx++) {
 			del_timer_sync(bucket_clear + idx);
@@ -418,6 +436,7 @@ static void wr_file(struct work_struct *work)
 	char *copy_mem;
 	unsigned long mem_index = 0;
 	unsigned long all_size = 0;
+	unsigned long st_all_size = 0;
 	unsigned long data = _work->index;
 
  	cpu = get_cpu();
@@ -434,6 +453,7 @@ static void wr_file(struct work_struct *work)
 				num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
 			}
 			all_size += num*CHUNKSTEP;
+			st_all_size += cp->len;
 		}
 	}
 
@@ -507,7 +527,12 @@ static void wr_file(struct work_struct *work)
 		BUG(); //TODO need updat it.
 	}
 	
-	percpu_counter_add(&mmw, all_size);
+	percpu_counter_add(&mmw, st_all_size);
+
+	DEFINE_SPINLOCK(mr_lock);
+	spin_lock_irq(&mr_lock);	
+	percpu_counter_add(&mmw_w, -st_all_size);
+	spin_unlock_irq(&mr_lock);	
 
     //TODO: file size maybe so big?
 	per_cpu(loff_file, cpu) += all_size;
@@ -548,10 +573,14 @@ void bucket_clear_item(unsigned long data)
 					num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
 			
 				for (i = 0; i < num; ++i) {
-					//TODO: maybe???
 					clear_bit(cp->start + i, per_cpu(bitmap, cp->cpuid));	
 				} 
 			}
+
+			if (cp->store_flag == 1) {
+				percpu_counter_add(&mmd, cp->len);
+			}
+
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
 			continue;
@@ -560,6 +589,16 @@ void bucket_clear_item(unsigned long data)
 		atomic_dec(&cp->refcnt);
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) 
 			flag = 1;
+			
+
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) { 
+			//just for statistics.
+			if (cp->store_flag != 1) {
+				percpu_counter_add(&mmw_w, cp->len);
+				percpu_counter_add(&mmw_s, cp->len);
+			}
+			cp->store_flag = 1;
+		}
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 

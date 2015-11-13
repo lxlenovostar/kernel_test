@@ -85,6 +85,9 @@ struct hashinfo_item
      * 3: SLAB CHUNKSTEP*3 
      */
 	int mem_style;
+
+	//just for statistics
+	int store_flag;
 };
 
 struct hashtable_del
