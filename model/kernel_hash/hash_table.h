@@ -86,7 +86,11 @@ struct hashinfo_item
      */
 	int mem_style;
 
-	//just for statistics
+	/*just for statistics
+	 * 0:the initial state.
+	 * 1:data should write file.
+	 * 2:data will write to file.
+	 */
 	int store_flag;
 };
 

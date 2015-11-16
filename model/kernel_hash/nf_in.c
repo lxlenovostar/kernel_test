@@ -31,9 +31,7 @@ void hand_hash(char *src, uint8_t *dst, size_t len)
 	}
 	else {
 		if (len > (SHALEN + 2)) {
-			//percpu_counter_add(&save_num, (len - SHALEN - 2));
-			//just for test.
-			percpu_counter_add(&save_num, len);
+			percpu_counter_add(&save_num, (len - SHALEN - 2));
 		}
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
