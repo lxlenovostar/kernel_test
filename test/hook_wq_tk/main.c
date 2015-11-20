@@ -25,7 +25,7 @@ typedef struct {
 DEFINE_PER_CPU(struct work_struct , work); 
 
 struct reject_skb {
-	void *skb;
+	struct sk_buff *skb;
 	struct list_head list;
 };
 
@@ -57,23 +57,12 @@ void my_tasklet_function(unsigned long data)
 	if (!strcmp(dsthost, "192.168.27.77")) {  
 		printk(KERN_INFO "Im here end0.");
 	
-	//kfree_skb(skb);
-	//return;
-	
-	//printk(KERN_INFO "Im here end.");
-	//return;
-	
-	//spinlock_t lock = SPIN_LOCK_UNLOCKED;
-	//spin_lock_bh(&lock);
-	//netif_receive_skb(skb);
-	//ip_rcv_finish(skb);
-	//spin_unlock_bh(&lock);
-	//local_bh_disable();
-	(*tcp_v4_rcv_ptr)(skb);
-	//local_bh_enable();
-	kfree_skb(skb);
+		local_bh_disable();
+		(*tcp_v4_rcv_ptr)(skb);
+		local_bh_enable();
+		//kfree_skb(skb);
+		printk(KERN_INFO "Im here end1.");
 	}
-	printk(KERN_INFO "Im here end1.");
 	return;
 }
 
@@ -146,19 +135,27 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		snprintf(dsthost, 16, "%pI4", &saddr);
 
 		if (!strcmp(dsthost, "192.168.27.77")) { 
-
-			if (!memcmp(skb->cb, verify, 4)) {
+		/*	if (!memcmp(skb->cb, verify, 4)) {
 				printk(KERN_INFO "true");
 				return NF_ACCEPT;
 			} else {
-				memcpy(skb->cb, verify, 4);
-				
+				//memcpy(skb->cb, verify, 4);
+		*/		
+				printk(KERN_INFO "skb->len0 is:%d", skb->len);
 				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
    				if (skb_item == NULL) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
        				BUG();
    				}
-				skb_item->skb = skb_clone(skb, GFP_ATOMIC);
+				skb_item->skb = skb_copy(skb, GFP_ATOMIC);
+				//skb_item->skb = skb;
+				//skb_get(skb_item->skb);
+				(skb_item->skb)->destructor = NULL;
+          		(skb_item->skb)->dev = (struct net_device *)in;
+          		skb_pull((skb_item->skb), ip_hdrlen(skb_item->skb));
+
+				printk(KERN_INFO "skb->len1 is:%d", (skb_item->skb)->len);
+				
 				INIT_LIST_HEAD(&skb_item->list);   
 
 				//SKB 进入等待队列
@@ -174,10 +171,10 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 					queue_work(my_wq, &(per_cpu(work, cpu)));
 				} 
 				put_cpu();
-			}
+			//}
 			//return NF_STOLEN;
-			//return NF_DROP;
-			return NF_ACCEPT;
+			return NF_DROP;
+			//return NF_ACCEPT;
 		}
 	}
 	
