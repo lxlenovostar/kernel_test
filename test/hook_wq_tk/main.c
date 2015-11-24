@@ -13,6 +13,7 @@
 #include <net/tcp.h>
 #include <linux/interrupt.h>
 #include <linux/skbuff.h>
+#include <linux/kprobes.h>
 #include "ws_st_symbols.h"
 
 static struct workqueue_struct *my_wq;
@@ -54,8 +55,9 @@ void my_tasklet_function(unsigned long data)
 		
 	snprintf(dsthost, 16, "%pI4", &saddr);
 
-	if (!strcmp(dsthost, "192.168.27.77")) {  
-		printk(KERN_INFO "skb->len1 is:%d", skb->len);
+	//if (!strcmp(dsthost, "192.168.27.77")) {  
+	if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		//printk(KERN_INFO "skb->len1 is:%d", skb->len);
 		printk(KERN_INFO "Im here end0.");
 		local_bh_disable();
         skb_pull(skb, ip_hdrlen(skb));
@@ -109,10 +111,12 @@ static void handle_skb(struct work_struct *work)
 	put_cpu();
 }
 
-unsigned int
+/*unsigned int
 hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	      const struct net_device *in, const struct net_device *out,
 	      int (*okfn) (struct sk_buff *))
+*/
+int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 {
 	struct iphdr *iph;
 	struct tcphdr *tcph;
@@ -132,18 +136,17 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 		
-		snprintf(dsthost, 16, "%pI4", &saddr);
+		snprintf(dsthost, 16, "%pI4", &daddr);
 
-		if (!strcmp(dsthost, "192.168.27.77")) { 
-				printk(KERN_INFO "skb->len0 is:%d", skb->len);
+		//if (!strcmp(dsthost, "192.168.27.77")) { 
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+				//printk(KERN_INFO "skb->len0 is:%d", skb->len);
 				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
-   				if (skb_item == NULL) {
+   				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
        				BUG();
    				}
 				skb_item->skb = skb_copy(skb, GFP_ATOMIC);
-				//skb_item->skb = skb;
-				
 				INIT_LIST_HEAD(&skb_item->list);   
 
 				//SKB 进入等待队列
@@ -155,21 +158,20 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 				cpu = get_cpu();
 				if (!work_pending(&(per_cpu(work, cpu)))) {
 					INIT_WORK(&(per_cpu(work, cpu)), handle_skb);
-					//(struct work_struct *)(per_cpu(work, cpu))->index = cpu;
 					queue_work(my_wq, &(per_cpu(work, cpu)));
 				} 
 				put_cpu();
-			//}
-			//return NF_STOLEN;
-			return NF_DROP;
-			//return NF_ACCEPT;
 		}
 	}
-	
-	return NF_ACCEPT;
+	jprobe_return();
+	return 0;
+			
+	//return NF_STOLEN;
+	//return NF_DROP;
+	//return NF_ACCEPT;
 }
 
-
+/*
 static struct nf_hook_ops hook_ops[] = {
 	{
 	 .owner = THIS_MODULE,
@@ -185,7 +187,15 @@ static struct nf_hook_ops hook_ops[] = {
 #endif
 	 },
 };
+*/
 
+struct jprobe jps_netif_receive_skb = { 
+    //.entry = jpf_netif_receive_skb,
+    .entry = jpf_ip_rcv,
+    .kp = { 
+        .symbol_name = "ip_rcv",
+    },  
+};
 
 static int minit(void)
 {
@@ -195,11 +205,19 @@ static int minit(void)
 		INIT_LIST_HEAD(&per_cpu(head_skb_list, cpu));
 	}
 
+	ret = register_jprobe(&jps_netif_receive_skb);
+    if (ret < 0) {
+        printk(KERN_ERR "Failed to register jprobe netif_receive_skb %s.\n", THIS_MODULE->name);
+        return -1;
+    }
+ 
+	/*
 	ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 	if (ret) {
 		printk("local_in hooks failed\n");
 	}
-	
+	*/
+
 	my_wq = create_workqueue("my_queue");
 	if (!my_wq)
 		return -1;
@@ -232,7 +250,8 @@ static void mexit(void)
 	flush_workqueue( my_wq );
 	destroy_workqueue( my_wq );
 	
-	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
+    unregister_jprobe(&jps_netif_receive_skb);
+	//nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 	kmem_cache_destroy(hash_cachep);
 	
 	printk("Exit %s.\n", THIS_MODULE->name);
