@@ -32,7 +32,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
 default:
-	sh ws_st_find_symbols.sh $(KERNELDIR)
+	sh find_symbols.sh $(KERNELDIR)
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) LDDINC=$(PWD) modules
 endif
 
