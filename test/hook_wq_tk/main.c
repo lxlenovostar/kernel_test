@@ -73,7 +73,7 @@ static void handle_skb(struct work_struct *work)
 {
 	int cpu;
     struct reject_skb *cp, *next;
-	int threshold = 10;
+	int threshold = 10000;
 	int i = 0;	
 	
 	struct tasklet_struct *my_tasklet;
