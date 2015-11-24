@@ -55,12 +55,13 @@ void my_tasklet_function(unsigned long data)
 	snprintf(dsthost, 16, "%pI4", &saddr);
 
 	if (!strcmp(dsthost, "192.168.27.77")) {  
+		printk(KERN_INFO "skb->len1 is:%d", skb->len);
 		printk(KERN_INFO "Im here end0.");
-	
 		local_bh_disable();
+        skb_pull(skb, ip_hdrlen(skb));
+		skb_reset_transport_header(skb);
 		(*tcp_v4_rcv_ptr)(skb);
 		local_bh_enable();
-		//kfree_skb(skb);
 		printk(KERN_INFO "Im here end1.");
 	}
 	return;
@@ -118,7 +119,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
 	char dsthost[16];
-	char *verify = "pack";
 	int cpu;
 
 	skb_linearize(skb);
@@ -135,12 +135,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 		snprintf(dsthost, 16, "%pI4", &saddr);
 
 		if (!strcmp(dsthost, "192.168.27.77")) { 
-		/*	if (!memcmp(skb->cb, verify, 4)) {
-				printk(KERN_INFO "true");
-				return NF_ACCEPT;
-			} else {
-				//memcpy(skb->cb, verify, 4);
-		*/		
 				printk(KERN_INFO "skb->len0 is:%d", skb->len);
 				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
    				if (skb_item == NULL) {
@@ -149,12 +143,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
    				}
 				skb_item->skb = skb_copy(skb, GFP_ATOMIC);
 				//skb_item->skb = skb;
-				//skb_get(skb_item->skb);
-				(skb_item->skb)->destructor = NULL;
-          		(skb_item->skb)->dev = (struct net_device *)in;
-          		skb_pull((skb_item->skb), ip_hdrlen(skb_item->skb));
-
-				printk(KERN_INFO "skb->len1 is:%d", (skb_item->skb)->len);
 				
 				INIT_LIST_HEAD(&skb_item->list);   
 
