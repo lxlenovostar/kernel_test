@@ -106,9 +106,11 @@ static void handle_skb(struct work_struct *work)
 	}
 	kfree(my_tasklet);
 	
+	/*	
 	cpu = get_cpu();
 	printk(KERN_INFO "cpu %d is run workqueue", cpu);
 	put_cpu();
+	*/
 }
 
 /*unsigned int
