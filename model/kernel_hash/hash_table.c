@@ -14,7 +14,8 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 1 
+#define ITEM_DISK_LIMIT 6 
+#define ITEM_VIP_LIMIT 60 
 unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -173,7 +174,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	alloc_data_memory(cp, len_value);
 	memcpy(cp->data, value, cp->len);
 	
-	cp->flag_cahce = 0;	
+	cp->flag_cache = 0;	
 
 	cp->cpuid = -1;
 	cp->store_flag = 0;
@@ -369,7 +370,7 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (cp->flag_cahce == 0 || cp->flag_cahce == 2) 
+			if (cp->flag_cache == 0 || cp->flag_cache == 2) 
 				free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
         }
@@ -449,7 +450,7 @@ static void wr_file(struct work_struct *work)
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cache == 0) {
 			//for statistics.
 			if (cp->store_flag == 1) {
 				cp->store_flag = 2;
@@ -477,7 +478,7 @@ static void wr_file(struct work_struct *work)
     	}
 
     	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cahce == 0) {
+			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && cp->flag_cache == 0) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -510,7 +511,7 @@ static void wr_file(struct work_struct *work)
 				/*
 			 	 * set the status of item. 2 stands for data will write to file.
 			 	 */
-				cp->flag_cahce = 2;
+				cp->flag_cache = 2;
 
 				/*
 			 	 * cp->data copy.
@@ -549,8 +550,8 @@ static void wr_file(struct work_struct *work)
  
     ct_write_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (cp->flag_cahce == 2) {
-			cp->flag_cahce = 1;
+		if (cp->flag_cache == 2) {
+			cp->flag_cache = 1;
 			free_data_memory(cp);
 		}		
 	}
@@ -568,9 +569,9 @@ void bucket_clear_item(unsigned long data)
    		if (atomic_dec_and_test(&cp->refcnt)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (cp->flag_cahce == 0 || cp->flag_cahce == 2) 
+			if (cp->flag_cache == 0 || cp->flag_cache == 2 || cp->flag_cache == 3) 
 				free_data_memory(cp);
-			if (cp->flag_cahce == 1 || cp->flag_cahce == 2) {
+			if (cp->flag_cache == 1 || cp->flag_cache == 2) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -591,6 +592,13 @@ void bucket_clear_item(unsigned long data)
 		}
 	
 		atomic_dec(&cp->refcnt);
+	
+		/*
+         * data always in memory.
+         */	
+		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && cp->flag_cache == 0)
+			cp->flag_cache = 3; 
+
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) 
 			flag = 1;
 			
