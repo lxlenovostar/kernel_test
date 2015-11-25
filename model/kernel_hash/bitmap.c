@@ -20,7 +20,7 @@ int alloc_bitmap() {
 			printk(KERN_ERR "alloc bitmap failed.");
 			return -ENOMEM;
 		}
-		bitmap_zero(per_cpu(bitmap, cpu), bitmap_size);
+		bitmap_zero(per_cpu(bitmap, cpu), chunk_num);
 		per_cpu(bitmap_index, cpu) = 0;	
 	}
 

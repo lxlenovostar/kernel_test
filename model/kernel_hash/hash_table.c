@@ -16,7 +16,7 @@
 #define ITEM_CITE_FIND  6
 #define ITEM_DISK_LIMIT 6 
 #define ITEM_VIP_LIMIT 60 
-unsigned long timeout_hash_del = 10*HZ;
+unsigned long timeout_hash_del = 30*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
