@@ -77,7 +77,7 @@ void build_hash(char *src, int start, int end, int length)
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
 
-	hand_hash(src, length, dst);
+	hand_hash(src + start, length, dst);
 	//kfree(dst);
 	kmem_cache_free(hash_item_data, dst);
 }
