@@ -18,7 +18,7 @@ rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
 
-void hand_hash(char *src, uint8_t *dst, size_t len) 
+void hand_hash(char *src, size_t len, uint8_t *dst) 
 {
 	struct hashinfo_item *item;	
 
@@ -77,7 +77,7 @@ void build_hash(char *src, int start, int end, int length)
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
 
-	hand_hash(src, dst, length);
+	hand_hash(src, length, dst);
 	//kfree(dst);
 	kmem_cache_free(hash_item_data, dst);
 }
@@ -226,7 +226,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 
-		snprintf(dsthost, 16, "%pI4", &daddr);
+		snprintf(dsthost, 16, "%pI4", &saddr);
 
 		/*		
 		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
@@ -236,13 +236,14 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		//if (ntohs(sport) == 80) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
+		if (strcmp(dsthost, "192.168.27.77") == 0) { 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len);
-		//}
+		}
 	}
 out:
 	jprobe_return();

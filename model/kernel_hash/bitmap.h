@@ -2,7 +2,7 @@
 #include <linux/vmalloc.h>
 
 #define CHUNKSIZE 32
-#define FILESIZE  4ULL //1G:4MB  10G:40MB
+#define FILESIZE  2ULL //1G:4MB  10G:40MB
 
 int alloc_bitmap(void);
 void free_bitmap(void);

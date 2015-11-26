@@ -2,6 +2,7 @@
 #include <linux/syscalls.h>
 #include <linux/file.h>
 #include "alloc.h"
+#include "debug.h"
 
 DEFINE_PER_CPU(struct file *, reserve_file); 
 DEFINE_PER_CPU(loff_t, loff_file); 
