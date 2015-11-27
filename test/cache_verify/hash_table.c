@@ -14,7 +14,7 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 1 
+#define ITEM_DISK_LIMIT 1000 
 #define ITEM_VIP_LIMIT 60 
 unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
@@ -204,7 +204,7 @@ int add_hash_info(uint8_t *info, char *value, size_t len_value)
     return 0;
 }
 
-struct hashinfo_item *get_hash_item(uint8_t *info)
+struct hashinfo_item *get_hash_item(uint8_t *info, char *value, size_t len_value)
 {
     uint32_t hash, bkt;
     struct hashinfo_item *cp;
@@ -213,6 +213,22 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
     ct_read_lock_bh(hash, hash_lock_array);
     list_for_each_entry(cp, &hash_tab[bkt], c_list) {
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
+			/*
+			 * check the SHA1 and value.
+			 */
+			if (len_value != cp->len ||  memcmp(cp->data, value, len_value) != 0) {
+				int i;
+				printk("\nnew data len is:%d\n", len_value);
+				for (i = 0; i < len_value; ++i)
+					printk("%02x:", value[i]&0xff);
+				printk("\n");
+				
+				printk("old data len is:%d\n", cp->len);
+				for (i = 0; i < cp->len; ++i)
+					printk("%02x:", (cp->data)[i]&0xff);
+				printk("\n");
+			}			
+
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
 			atomic_inc(&cp->data_refcnt);    
@@ -236,24 +252,27 @@ void print_memory_usage(unsigned long data)
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	unsigned long long data_mem = percpu_counter_sum(&mm0) + percpu_counter_sum(&mm1) + percpu_counter_sum(&mm2) + percpu_counter_sum(&mm3);
-	unsigned long long write_mm = percpu_counter_sum(&mmw)/1024/1024;
+	//unsigned long long write_mm = percpu_counter_sum(&mmw)/1024/1024;
+	unsigned long long write_mm = percpu_counter_sum(&mmw);
 	unsigned long long write_d_mm = percpu_counter_sum(&mmd)/1024/1024;
 	tmp_save = percpu_counter_sum(&save_num)/1024/1024;
 	tmp_sum =  percpu_counter_sum(&sum_num)/1024/1024;
 
+	/*
 	printk(KERN_INFO "\n[memory usage]");	
 	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
 	printk(KERN_INFO "[write file]");	
-	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
+	printk(KERN_INFO "write data is:%lluBytes,%lluMB, data miss store is:%lluMB", write_mm, write_mm/1024/1024, write_d_mm);
 	
 	printk(KERN_INFO "[speed]");	
-	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);
+	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm/1024/1024 - old_write_mm/1024/1024)/time_intval);
 
 	if (tmp_sum > 0) {
 		printk(KERN_INFO "[cache ratio]");	
 		printk(KERN_INFO "save bytes is:%lluMB, all bytes is:%lluMB, Cache ratio is:%llu%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
 	}
+	*/
 
 	old_write_mm = write_mm;
 	old_save = tmp_save;
@@ -433,7 +452,7 @@ static void wr_file(struct work_struct *work)
 {
 	struct hashinfo_item *cp, *next;
 	w_work_t *_work = (w_work_t *)work;
-	int num, cpu, ret, offset, i, _offset;
+	int cpu, ret, offset, i, _offset;
 	char *copy_mem;
 	char *tmp_mem;
 	unsigned long mem_index = 0;
@@ -451,13 +470,8 @@ static void wr_file(struct work_struct *work)
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		temp_refcnt = atomic_read(&cp->data_refcnt);
 		while (atomic_read(&cp->data_refcnt) >= ITEM_DISK_LIMIT) {
-			if (cp->len <= CHUNKSTEP) {
-				num = 1;
-			}
-			else {
-				num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
-			}
-			all_size += ((num+1)*3)*CHUNKSTEP;
+			//all_size += ((num+1)*3)*CHUNKSTEP;
+			all_size += (cp->len + CHUNKSTEP)*3;
 			st_all_size += cp->len;
 
 			atomic_dec(&cp->data_refcnt);
@@ -476,12 +490,8 @@ static void wr_file(struct work_struct *work)
 
     		list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 				while (atomic_read(&cp->data_refcnt) >= ITEM_DISK_LIMIT) {
-					if (cp->len <= CHUNKSTEP)
-						num = 1;
-					else
-						num = DIV_ROUND_UP(cp->len, CHUNKSTEP);
-
-					tmp_mem = kzalloc(num*3*CHUNKSTEP, GFP_ATOMIC);
+					//tmp_mem = kzalloc(num*3*CHUNKSTEP, GFP_ATOMIC);
+					/*tmp_mem = kzalloc(cp->len*3, GFP_ATOMIC);
     				if (!tmp_mem) {
         				DEBUG_LOG(KERN_ERR"****** %s : vmalloc  copy_mem error\n", __FUNCTION__);
         				BUG(); //TODO need update it.
@@ -492,12 +502,20 @@ static void wr_file(struct work_struct *work)
 						sprintf(tmp_mem + offset, "%02x:", (cp->data)[i]&0xff);
 						offset += 3;
 					}
-					printk(KERN_INFO "str is:%s", tmp_mem);
+					
+					//printk(KERN_INFO "data is:%s", tmp_mem);
 
 					memcpy(copy_mem + mem_index, tmp_mem, strlen(tmp_mem));
-					mem_index += num*3*CHUNKSTEP;
-
+					mem_index += strlen(tmp_mem);
+			
 					kfree(tmp_mem);
+					*/
+	
+					for (i = 0; i < cp->len; i++) {
+						//memcpy(copy_mem + mem_index, tmp_mem, strlen(tmp_mem));
+						sprintf(copy_mem + mem_index, "%02x:", (cp->data)[i]&0xff);
+						mem_index += 3;
+					}
 
 					{
 						memset(tmp_str, '\0', CHUNKSTEP);
@@ -512,9 +530,12 @@ static void wr_file(struct work_struct *work)
 						}
 						offset = strlen(tmp_str);
 						sprintf(tmp_str + offset, " %d\n", cp->len);
+					
+						//printk(KERN_INFO "len is:%d, info is:%s", strlen(tmp_str), tmp_str);
 	
 						memcpy(copy_mem + mem_index, tmp_str, strlen(tmp_str));
-						mem_index += CHUNKSTEP*3;
+						//mem_index += CHUNKSTEP*3;
+						mem_index += strlen(tmp_str);
 					}
 
 					atomic_dec(&cp->data_refcnt);
@@ -531,7 +552,8 @@ static void wr_file(struct work_struct *work)
      * write file.
 	 */
 	cpu = get_cpu();
-	ret = kernel_write(per_cpu(reserve_file, cpu), copy_mem, all_size, per_cpu(loff_file, cpu));
+	//ret = kernel_write(per_cpu(reserve_file, cpu), copy_mem, all_size, per_cpu(loff_file, cpu));
+	ret = kernel_write(per_cpu(reserve_file, cpu), copy_mem, mem_index, per_cpu(loff_file, cpu));
 	if (ret < 0) {
     	printk(KERN_ERR "Error writing file:%d\n", cpu);
 		BUG(); //TODO need updat it.
@@ -540,7 +562,7 @@ static void wr_file(struct work_struct *work)
 	percpu_counter_add(&mmw, st_all_size);
 
     //TODO: file size maybe so big?
-	per_cpu(loff_file, cpu) += all_size;
+	per_cpu(loff_file, cpu) += mem_index;
 	put_cpu();		
 
 	/*

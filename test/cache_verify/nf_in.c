@@ -22,7 +22,7 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 {
 	struct hashinfo_item *item;	
 
-	item = get_hash_item(dst);
+	item = get_hash_item(dst, src, len);
     if (item == NULL) {
         if (add_hash_info(dst, src, len) != 0) {
 			printk(KERN_ERR "%s:add hash item error", __FUNCTION__);
@@ -62,7 +62,7 @@ void build_hash(char *src, int start, int end, int length)
 
 	//static uint8_t dst[SHALEN];
 
-	genhash = tcp_v4_sha1_hash_data(dst, src + start, (end - start + 1));
+	genhash = tcp_v4_sha1_hash_data(dst, src + start, length);
 	if (genhash) {
 		printk(KERN_ERR "%s:calculate SHA-1 failed.", __func__);
 		return;
@@ -77,7 +77,7 @@ void build_hash(char *src, int start, int end, int length)
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
 
-	hand_hash(src+start, length, dst);
+	hand_hash(src + start, length, dst);
 	kmem_cache_free(hash_item_data, dst);
 }
 
@@ -232,7 +232,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		//if (ntohs(sport) == 80) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
 		//if (strcmp(dsthost, "192.168.27.77") == 0) { 
@@ -242,7 +242,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len);
-		//}
+		}
 	}
 out:
 	jprobe_return();
