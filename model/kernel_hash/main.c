@@ -22,11 +22,8 @@ unsigned long Q = 1;
 unsigned long R = 1048583;
 int chunk_num = 32;  //控制最小值
 static int kprobe_in_reged = 0;
-struct kmem_cache * hash_item_data; /* __read_mostly*/
-//extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 struct workqueue_struct *skb_wq;
-DEFINE_PER_CPU(struct list_head, skb_list);
 
 void init_hash_parameters(void)
 {

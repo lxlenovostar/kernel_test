@@ -7,16 +7,16 @@
 int alloc_slab(void)
 {
 	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
-    hash_item_data = kmem_cache_create(CACHE_NAME_ITEM, 
+    sha_data = kmem_cache_create(CACHE_NAME_ITEM, 
             SHALEN,
             0, SLAB_HWCACHE_ALIGN, NULL, NULL);
 	#else
-    hash_item_data = kmem_cache_create(CACHE_NAME_ITEM,
+    sha_data = kmem_cache_create(CACHE_NAME_ITEM,
            	SHALEN,
             0, SLAB_HWCACHE_ALIGN, NULL);
 	#endif
 
-    if (!hash_item_data) {
+    if (!sha_data) {
         DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for hash item  error\n",
                 __FUNCTION__);
         return -ENOMEM;
@@ -91,8 +91,8 @@ int alloc_slab(void)
 
 void free_slab()
 {
-	if (hash_item_data)
-    	kmem_cache_destroy(hash_item_data);
+	if (sha_data)
+    	kmem_cache_destroy(sha_data);
     if (slab_chunk1)
 		kmem_cache_destroy(slab_chunk1);
     if (slab_chunk2)

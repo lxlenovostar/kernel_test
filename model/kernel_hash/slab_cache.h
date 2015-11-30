@@ -1,5 +1,5 @@
 /* SLAB cache for hash item data */
-extern struct kmem_cache * hash_item_data;
+extern struct kmem_cache * sha_data;
 
 extern struct kmem_cache * slab_chunk1;
 extern struct kmem_cache * slab_chunk2;

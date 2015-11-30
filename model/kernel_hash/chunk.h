@@ -16,7 +16,6 @@ extern int chunk_num;  //控制最小值
 extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
 extern struct workqueue_struct *writeread_wq; // for read/write file
-DECLARE_PER_CPU(struct list_head, skb_list);
 
 typedef struct {
 	struct work_struct wr_work;
@@ -29,6 +28,7 @@ struct reject_skb {
 };
 
 extern struct workqueue_struct *skb_wq;
+DECLARE_PER_CPU(struct list_head, skb_list);
 
 /* 
 struct tcp_chunk {

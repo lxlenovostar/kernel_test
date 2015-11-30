@@ -20,7 +20,9 @@
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
 DEFINE_PER_CPU(struct work_struct , work); 
-struct kmem_cache * reskb_cachep;
+struct kmem_cache *sha_data; 
+struct kmem_cache *reskb_cachep;
+DEFINE_PER_CPU(struct list_head, skb_list);
 
 void my_tasklet_function(unsigned long data)
 {
@@ -73,7 +75,7 @@ void build_hash(char *src, int start, int end, int length)
 	if (length <= (SHALEN + 2))
 		return;	
 
-	dst = kmem_cache_zalloc(hash_item_data, GFP_ATOMIC);  
+	dst = kmem_cache_zalloc(sha_data, GFP_ATOMIC);  
    	if (dst == NULL) {
    		DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
        	BUG();
@@ -98,7 +100,7 @@ void build_hash(char *src, int start, int end, int length)
 
 	hand_hash(src + start, length, dst);
 	//kfree(dst);
-	kmem_cache_free(hash_item_data, dst);
+	kmem_cache_free(sha_data, dst);
 }
 
 void get_partition(char *data, int length)
@@ -185,9 +187,6 @@ static void handle_skb(struct work_struct *work)
 	LIST_HEAD(hand_list);
 	char *data = NULL;
 	size_t data_len = 0;
-	unsigned short sport, dport;
-	__be32 saddr, daddr;
-	char dsthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 
@@ -205,12 +204,6 @@ static void handle_skb(struct work_struct *work)
 		{
 			iph = (struct iphdr *)(cp->skb)->data;
 			tcph = (struct tcphdr *)((cp->skb)->data + (iph->ihl << 2));
-
-			sport = tcph->source;
-			dport = tcph->dest;
-			saddr = iph->saddr;
-			daddr = iph->daddr;
-			snprintf(dsthost, 16, "%pI4", &saddr);
 
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
