@@ -26,7 +26,9 @@ __attribute__((section("__versions"))) = {
 	{ 0xd42b7232, "_write_unlock_bh" },
 	{ 0x950ffff2, "cpu_online_mask" },
 	{ 0xd691cba2, "malloc_sizes" },
+	{ 0x267fc65b, "__tasklet_hi_schedule" },
 	{ 0x2bb6fde2, "__kfifo_put" },
+	{ 0xec3f1a25, "skb_copy" },
 	{ 0xc0a3d105, "find_next_bit" },
 	{ 0xcfaaa0af, "queue_work" },
 	{ 0x55f2580b, "__alloc_percpu" },
@@ -59,18 +61,23 @@ __attribute__((section("__versions"))) = {
 	{ 0x54410fd6, "destroy_workqueue" },
 	{ 0x521445b, "list_del" },
 	{ 0x4b07e779, "_spin_unlock_irqrestore" },
+	{ 0xa5808bbf, "tasklet_init" },
 	{ 0x45450063, "mod_timer" },
 	{ 0x46085e4f, "add_timer" },
 	{ 0x5240ee7, "percpu_counter_batch" },
 	{ 0xbf71e6d4, "__create_workqueue_key" },
+	{ 0x2bb3050b, "skb_pull" },
 	{ 0x2fe78c6d, "fput" },
 	{ 0xdfd9ed5f, "flush_workqueue" },
 	{ 0x61651be, "strcat" },
 	{ 0xd6d68c6b, "vm_stat" },
+	{ 0x79ad224b, "tasklet_kill" },
+	{ 0x3ff62317, "local_bh_disable" },
 	{ 0xee065ced, "kmem_cache_alloc" },
 	{ 0x3a3f86d, "unregister_jprobe" },
 	{ 0xf0fdf6cb, "__stack_chk_fail" },
 	{ 0x76a495c1, "cpu_possible_mask" },
+	{ 0x799aca4, "local_bh_enable" },
 	{ 0x8b6e6108, "crypto_destroy_tfm" },
 	{ 0x5a57d155, "__percpu_counter_init" },
 	{ 0x49da9a9a, "_read_unlock_bh" },
@@ -96,7 +103,7 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "E8B6D33DF363CF7778FF32D");
+MODULE_INFO(srcversion, "2FAECE7326D5FDE11C9CE1E");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {

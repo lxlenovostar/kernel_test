@@ -25,6 +25,8 @@ static int kprobe_in_reged = 0;
 struct kmem_cache * hash_item_data; /* __read_mostly*/
 //extern unsigned long *bitmap;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
+struct workqueue_struct *skb_wq;
+DEFINE_PER_CPU(struct list_head, skb_list);
 
 void init_hash_parameters(void)
 {
@@ -44,11 +46,19 @@ void init_hash_parameters(void)
 
 static int minit(void)
 {
-	int err = 0;
+	int err = 0, cpu;
 
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+	
+	skb_wq = create_workqueue("read_queue");
+	if (!skb_wq)
+		return -1;
+	
+	for_each_online_cpu(cpu) {
+		INIT_LIST_HEAD(&per_cpu(skb_list, cpu));
+	}
 
 	if (0 > (err = alloc_percpu_file()))
 		goto err_alloc_file;
@@ -116,6 +126,9 @@ static void mexit(void)
 	
 	if (kprobe_in_reged)
         unregister_jprobe(&jps_netif_receive_skb);
+	
+	flush_workqueue(skb_wq);
+	destroy_workqueue(skb_wq);
 
 	release_hash_table_cache();
 	free_percpu_file();

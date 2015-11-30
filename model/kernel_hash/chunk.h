@@ -16,14 +16,20 @@ extern int chunk_num;  //控制最小值
 extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
 extern struct workqueue_struct *writeread_wq; // for read/write file
+DECLARE_PER_CPU(struct list_head, skb_list);
 
 typedef struct {
 	struct work_struct wr_work;
 	unsigned long      index;
 } w_work_t;
 
+struct reject_skb {
+	struct sk_buff *skb;
+	struct list_head list;
+};
 
-//extern struct tcp_chunk *hash_head;
+extern struct workqueue_struct *skb_wq;
+
 /* 
 struct tcp_chunk {
 	uint8_t *sha;                      
