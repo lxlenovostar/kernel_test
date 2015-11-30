@@ -86,17 +86,19 @@ int alloc_slab(void)
         return -ENOMEM;
     }
 
-
-
 	return 0;
 }
 
 void free_slab()
 {
-    kmem_cache_destroy(hash_item_data);
-    kmem_cache_destroy(slab_chunk1);
-    kmem_cache_destroy(slab_chunk2);
-    kmem_cache_destroy(slab_chunk3);
-	
-	kmem_cache_destroy(reskb_cachep);
+	if (hash_item_data)
+    	kmem_cache_destroy(hash_item_data);
+    if (slab_chunk1)
+		kmem_cache_destroy(slab_chunk1);
+    if (slab_chunk2)
+		kmem_cache_destroy(slab_chunk2);
+    if (slab_chunk3)
+    	kmem_cache_destroy(slab_chunk3);
+    if (reskb_cachep)
+		kmem_cache_destroy(reskb_cachep);
 }

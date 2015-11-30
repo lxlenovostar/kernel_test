@@ -17,11 +17,8 @@
 #include "hash_table.h"
 #include "slab_cache.h"
 
-struct tcp_chunk *hash_head = NULL;
-rwlock_t hash_rwlock = RW_LOCK_UNLOCKED; /* Static way which get rwlock*/
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
-
 DEFINE_PER_CPU(struct work_struct , work); 
 struct kmem_cache * reskb_cachep;
 
@@ -29,78 +26,16 @@ void my_tasklet_function(unsigned long data)
 {
 	struct sk_buff *skb = (struct sk_buff *)data;
 
-	struct iphdr *iph;
-	struct tcphdr *tcph;
-	unsigned short sport, dport;
-	__be32 saddr, daddr;
-	char dsthost[16];
+	//printk(KERN_INFO "Im here end0.");
+	local_bh_disable();
+    skb_pull(skb, ip_hdrlen(skb));
+	skb_reset_transport_header(skb);
+	(*tcp_v4_rcv_ptr)(skb);
+	local_bh_enable();
+	//printk(KERN_INFO "Im here end1.");
 	
-	iph = (struct iphdr *)skb->data;
-	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
-
-	sport = tcph->source;
-	dport = tcph->dest;
-	saddr = iph->saddr;
-	daddr = iph->daddr;
-		
-	snprintf(dsthost, 16, "%pI4", &saddr);
-
-	//if (!strcmp(dsthost, "192.168.27.77")) {  
-	if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//printk(KERN_INFO "skb->len1 is:%d", skb->len);
-		printk(KERN_INFO "Im here end0.");
-		local_bh_disable();
-        skb_pull(skb, ip_hdrlen(skb));
-		skb_reset_transport_header(skb);
-		(*tcp_v4_rcv_ptr)(skb);
-		local_bh_enable();
-		printk(KERN_INFO "Im here end1.");
-	}
 	return;
 }
-
-static void handle_skb(struct work_struct *work)
-{
-	int cpu;
-    struct reject_skb *cp, *next;
-	int threshold = 10000;
-	int i = 0;	
-	
-	struct tasklet_struct *my_tasklet;
-	LIST_HEAD(hand_list);
-
-	cpu = get_cpu();
-	local_bh_disable();
-    list_for_each_entry_safe(cp, next, &per_cpu(skb_list, cpu), list) {
-		if (i >= threshold)
-			break;
-		else
-			++i;
-
-		list_del(&cp->list);
-		list_add_tail(&cp->list, &hand_list);
-	}
-	local_bh_enable();
-	put_cpu();
-		
-	my_tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_ATOMIC);
-    list_for_each_entry_safe(cp, next, &hand_list, list) {
-		list_del(&cp->list);
-		
-		tasklet_init(my_tasklet, my_tasklet_function, (unsigned long)cp->skb);
-		/* Schedule the Bottom Half */
-		tasklet_hi_schedule(my_tasklet);
-		tasklet_kill( my_tasklet );
-		
-		kmem_cache_free(reskb_cachep, cp);
-	}
-	kfree(my_tasklet);
-	
-	cpu = get_cpu();
-	printk(KERN_INFO "cpu %d is run workqueue", cpu);
-	put_cpu();
-}
-
 
 void hand_hash(char *src, size_t len, uint8_t *dst) 
 {
@@ -237,49 +172,81 @@ static unsigned int nf_in(
 		const struct net_device *out,
 		int (*okfn)(struct sk_buff *))
 {
-	char *data;
+	return NF_ACCEPT;
+}
+
+static void handle_skb(struct work_struct *work)
+{
+	int cpu;
+    struct reject_skb *cp, *next;
+	int threshold = 10000;
+	int i = 0;	
+	struct tasklet_struct *my_tasklet;
+	LIST_HEAD(hand_list);
+	char *data = NULL;
 	size_t data_len = 0;
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
 	char dsthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
+
+	cpu = get_cpu();
+	local_bh_disable();
+    list_for_each_entry_safe(cp, next, &per_cpu(skb_list, cpu), list) {
+		if (i >= threshold)
+			break;
+		else
+			++i;
+		
+		/*
+		 * write the skb data 
+		 */
+		{
+			iph = (struct iphdr *)(cp->skb)->data;
+			tcph = (struct tcphdr *)((cp->skb)->data + (iph->ihl << 2));
+
+			sport = tcph->source;
+			dport = tcph->dest;
+			saddr = iph->saddr;
+			daddr = iph->daddr;
+			snprintf(dsthost, 16, "%pI4", &saddr);
+
+			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
+			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
+			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", (cp->skb)->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
+			//for (i = 0; i < data_len; ++i)
+				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
+			get_partition(data, data_len);
+		}
+
+		list_del(&cp->list);
+		list_add_tail(&cp->list, &hand_list);
+	}
+	local_bh_enable();
+	put_cpu();
+		
+	my_tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_ATOMIC);
+    list_for_each_entry_safe(cp, next, &hand_list, list) {
+		list_del(&cp->list);
+		
+		tasklet_init(my_tasklet, my_tasklet_function, (unsigned long)cp->skb);
+		/* Schedule the Bottom Half */
+		tasklet_hi_schedule(my_tasklet);
+		tasklet_kill(my_tasklet);
+		
+		kmem_cache_free(reskb_cachep, cp);
+	}
+	kfree(my_tasklet);
 	
-	return NF_ACCEPT;
-	
-	skb_linearize(skb);
-	iph = (struct iphdr *)skb->data;
-	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
-
-	if (iph->protocol != IPPROTO_TCP)
-		return NF_ACCEPT;
-
-	sport = tcph->source;
-	dport = tcph->dest;
-	saddr = iph->saddr;
-	daddr = iph->daddr;
-
-	//snprintf(dsthost, 16, "%pI4", &iph->saddr);
-	//printk(KERN_INFO "ip is:%s", dsthost);
-
-	//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
-		data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
-		data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
-		DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
-		//for (i = 0; i < data_len; ++i)
-			//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
-	
-		get_partition(data, data_len);
-	//}
-
-	return NF_ACCEPT;
+	/*cpu = get_cpu();
+	printk(KERN_INFO "cpu %d is run workqueue", cpu);
+	put_cpu();*/
 }
 
 int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 //int jpf_netif_receive_skb(struct sk_buff *skb)
 {
-	char *data = NULL;
-	size_t data_len = 0;
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
 	char dsthost[16];
@@ -311,9 +278,11 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		saddr = iph->saddr;
 		daddr = iph->daddr;
 
-		snprintf(dsthost, 16, "%pI4", &saddr);
+		snprintf(dsthost, 16, "%pI4", &daddr);
 		
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0) {  
+		//if (strcmp(dsthost, "192.168.27.77") == 0) {  
 				struct reject_skb *skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
@@ -335,28 +304,6 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 				} 
 				put_cpu();
 		}
-
-		/*		
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
-			printk(KERN_INFO "ip is:%s", dsthost);
-		*/
-
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
-		//if (ntohs(sport) == 80) { 
-		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
-		
-		/*
-		if (strcmp(dsthost, "192.168.27.77") == 0) { 
-			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
-			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
-			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", skb->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
-			//for (i = 0; i < data_len; ++i)
-				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
-			get_partition(data, data_len);
-		}
-		*/
-
-		
 	}
 out:
 	jprobe_return();

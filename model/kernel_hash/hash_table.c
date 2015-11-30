@@ -370,7 +370,7 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (cp->flag_cache == 0 || cp->flag_cache == 2) 
+			if (cp->flag_cache == 0 || cp->flag_cache == 2 || cp->flag_cache == 3) 
 				free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
         }

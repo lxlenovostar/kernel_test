@@ -44,14 +44,10 @@ void init_hash_parameters(void)
     zero_value = zero_value - 1;
 }
 
-static int minit(void)
-{
-	int err = 0, cpu;
+int init_some_parameters(void)
+{	
+	int cpu;
 
-	init_hash_parameters();
-	percpu_counter_init(&save_num, 0);
-	percpu_counter_init(&sum_num, 0);
-	
 	skb_wq = create_workqueue("read_queue");
 	if (!skb_wq)
 		return -1;
@@ -59,6 +55,20 @@ static int minit(void)
 	for_each_online_cpu(cpu) {
 		INIT_LIST_HEAD(&per_cpu(skb_list, cpu));
 	}
+
+	return 0;
+}
+
+static int minit(void)
+{
+	int err = 0;
+
+	init_hash_parameters();
+	percpu_counter_init(&save_num, 0);
+	percpu_counter_init(&sum_num, 0);
+
+	if (0 > (err = init_some_parameters()))
+		goto out;
 
 	if (0 > (err = alloc_percpu_file()))
 		goto err_alloc_file;
