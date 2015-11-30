@@ -250,6 +250,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
 	char dsthost[16];
+	char ssthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	unsigned long long reserve_mem;
@@ -279,9 +280,10 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		daddr = iph->daddr;
 
 		snprintf(dsthost, 16, "%pI4", &daddr);
+		snprintf(ssthost, 16, "%pI4", &saddr);
 		
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		if (strcmp(dsthost, "139.209.90.60") == 0) {  
+		if (!strcmp(dsthost, "139.209.90.60") || !strcmp(ssthost, "139.209.90.60")) {  
 		//if (strcmp(dsthost, "192.168.27.77") == 0) {  
 				struct reject_skb *skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
