@@ -67,12 +67,13 @@ struct hashinfo_item
 {
 	uint8_t sha1[SHA1SIZE];
 	atomic_t refcnt;  
+	atomic_t share_ref;  
 	struct list_head c_list;
 	int cpuid;				//stor file: newfile0
 	unsigned long start;	//the start position in bitmap
 	int len;				//the length of data
 	/*
-	 * 0: just in memory.
+	 * 0: just in memory, and will move it.
      * 1: just in disk.
      * 2: in memory, will write to disk. 
 	 * 3: always in memory.

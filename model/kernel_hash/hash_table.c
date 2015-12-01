@@ -182,6 +182,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	INIT_LIST_HEAD(&cp->c_list);
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
+	atomic_set(&cp->share_ref, 1);    
     
    	/*
    	 * total hash item.
@@ -566,7 +567,7 @@ void bucket_clear_item(unsigned long data)
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-   		if (atomic_dec_and_test(&cp->refcnt)) {
+   		if (atomic_dec_and_test(&share_ref) && atomic_dec_and_test(&cp->refcnt)) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
 			if (cp->flag_cache == 0 || cp->flag_cache == 2 || cp->flag_cache == 3) 

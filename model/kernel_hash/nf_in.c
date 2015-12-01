@@ -65,8 +65,6 @@ void build_hash(char *src, int start, int end, int length)
      * Fixup: use slab maybe effectiver than kmalloc.
      */
 	int genhash, i;
-	//uint8_t *dst = kmalloc(sizeof(uint8_t)*SHALEN, GFP_ATOMIC);
-	//memset(dst, '\0', SHALEN);
 	uint8_t *dst;
 
 	/*
@@ -80,8 +78,6 @@ void build_hash(char *src, int start, int end, int length)
    		DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
        	BUG();
    	}   
-
-	//static uint8_t dst[SHALEN];
 
 	genhash = tcp_v4_sha1_hash_data(dst, src + start, (end - start + 1));
 	if (genhash) {
@@ -99,7 +95,6 @@ void build_hash(char *src, int start, int end, int length)
 	}
 
 	hand_hash(src + start, length, dst);
-	//kfree(dst);
 	kmem_cache_free(sha_data, dst);
 }
 
@@ -113,7 +108,7 @@ void get_partition(char *data, int length)
 
 	if (length > chunk_num) {	
 		/*
-	     * Fixup: alloc kfifo everytime.
+	     * Fixup: alloc kfifo everytime, maybe list is a good way.
 	     */	
 		fifo = kfifo_alloc(KFIFOLEN, GFP_ATOMIC, &lock);
 		if (IS_ERR(fifo)) {
