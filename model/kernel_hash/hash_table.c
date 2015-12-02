@@ -446,12 +446,13 @@ static void wr_file(struct work_struct *work)
 	unsigned long data = _work->index;
 
  	cpu = get_cpu();
-    ct_write_lock_bh(data, hash_lock_array);
+    //ct_write_lock_bh(data, hash_lock_array);
+    ct_read_lock_bh(data, hash_lock_array);
 	/*
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0) {
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0 && atomic_read(&cp->share_ref) == 1) {
 			//for statistics.
 			if (cp->store_flag == 1) {
 				cp->store_flag = 2;
@@ -479,7 +480,7 @@ static void wr_file(struct work_struct *work)
     	}
 
     	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0) {
+			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0 && atomic_read(&cp->share_ref) == 1) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -522,7 +523,8 @@ static void wr_file(struct work_struct *work)
 			}
 		}
 	}
-    ct_write_unlock_bh(data, hash_lock_array);
+    //ct_write_unlock_bh(data, hash_lock_array);
+    ct_read_unlock_bh(data, hash_lock_array);
 	put_cpu();
 	
 	if (all_size == 0) 
@@ -551,7 +553,7 @@ static void wr_file(struct work_struct *work)
  
     ct_write_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (atomic_read(&cp->flag_cache) == 2) {
+		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		

@@ -39,6 +39,32 @@ void my_tasklet_function(unsigned long data)
 	return;
 }
 
+/*
+读文件的处理流程：
+
+prehandle_skb(skb) {
+
+	for i in range(len(skb)):
+	1.	检测替换部分，通过函数 get_data_fromhash(SHA-1)获得数据部分
+	2.  在函数 get_data_fromhash 中将share_ref 加1 。使此chunk在状态机中停止流动。
+    3.  读取数据到指定位置之后，将share_ref 减1
+    4.  将没有在内存中的chunk，建立链表read_list方便后续读取
+
+   	for i in range(len(read_list)):
+   	1. 将数据从文件读取
+   	2. 状态位置改为4 
+
+	for i in range(len(skb))
+    	填充数据
+	
+	for in range(len(skb))
+   		刷新hash表 get_partition()
+}
+
+
+*/
+
+
 void hand_hash(char *src, size_t len, uint8_t *dst) 
 {
 	struct hashinfo_item *item;	
@@ -56,8 +82,26 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 		}
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
+		
+		/*
+	     * 方案一
+         * 1.如果是状态0和状态3，说明数据在内存中不处理。
+         * 2.如果是状态2，那么在2转为1的时候需要加锁
+         * 3.如果是状态1，那么增加共享的引用计数，防止被删除
+         */
 
 		/*
+		if (item->flag_cache == 0 || item->flag_cache == 3) {
+			//拷贝数据
+		}
+
+		
+		if (item->flag_cache == 2) {
+			//在加锁的情况下，拷贝数据
+		}
+		*/
+
+		/* 方案二
 		 * 1.读取item的状态位，如果是4，说明处于由1转换到3的中间状态，需要读取文件。
 		 * 2.list_add此item (在list中进行插入排序)
 		 * 3.读取文件

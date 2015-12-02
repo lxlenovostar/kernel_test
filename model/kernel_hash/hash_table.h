@@ -65,30 +65,50 @@ do {                                                                            
 
 struct hashinfo_item
 {
-	uint8_t sha1[SHA1SIZE];
-	atomic_t refcnt;  
-	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
-	struct list_head c_list;
-	int cpuid;				//stor file: newfile0
-	unsigned long start;	//the start position in bitmap
-	int len;				//the length of data
 	/*
-	 * 0: just in memory, and will move it.
-     * 1: just in disk.
-     * 2: in memory, will write to disk. 
-	 * 3: always in memory.
-     */
-	atomic_t flag_cache; 	
-	char *data;				//store data in memory	
+	 * get_hash_item
+	 */
+	atomic_t refcnt;
+	
+	/*
+	 * the other cpu maybe use it.
+	 */
+	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
+
+	/*
+	 * hash_new_item and bucket_clear_item(write lock)
+	 */  
+	struct list_head c_list;
+	int len;				//the length of data
+	uint8_t sha1[SHA1SIZE];
+	
+	char *data;				//store data in memory 	
+	
 	/*
      * 0: kmalloc
      * 1: SLAB CHUNKSTEP
 	 * 2: SLAB CHUNKSTEP*2
      * 3: SLAB CHUNKSTEP*3 
      */
-	int mem_style;
+	int mem_style;         
 
-	/*just for statistics
+	/*
+	 * wr_file update it.
+	 */
+	int cpuid;				//store file: newfile0
+	unsigned long start;	//the start position in bitmap
+
+	/*
+	 * state machine
+	 * 0: just in memory, and will move it.
+     * 1: just in disk.
+     * 2: in memory, will write to disk. 
+	 * 3: always in memory.
+     */
+	atomic_t flag_cache; 	
+
+	/* 
+	 * just for statistics
 	 * 0:the initial state.
 	 * 1:data should write file.
 	 * 2:data will write to file.
