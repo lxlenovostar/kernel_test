@@ -56,6 +56,15 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 		}
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
+
+		/*
+		 * 1.读取item的状态位，如果是4，说明处于由1转换到3的中间状态，需要读取文件。
+		 * 2.list_add此item (在list中进行插入排序)
+		 * 3.读取文件
+		 * 4.在不加锁的情况下，如果状态是4，那么将状态位置修改为3 
+		 * 5.从链表中删除数据
+         * 6.减少item的share 引用计数
+		 */
 	}
 }
 

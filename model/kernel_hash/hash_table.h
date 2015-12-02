@@ -67,7 +67,7 @@ struct hashinfo_item
 {
 	uint8_t sha1[SHA1SIZE];
 	atomic_t refcnt;  
-	atomic_t share_ref;  
+	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
 	struct list_head c_list;
 	int cpuid;				//stor file: newfile0
 	unsigned long start;	//the start position in bitmap
@@ -78,7 +78,7 @@ struct hashinfo_item
      * 2: in memory, will write to disk. 
 	 * 3: always in memory.
      */
-	int flag_cache; 	
+	atomic_t flag_cache; 	
 	char *data;				//store data in memory	
 	/*
      * 0: kmalloc
