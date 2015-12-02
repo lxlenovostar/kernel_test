@@ -183,7 +183,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	atomic_set(&cp->share_ref, 1);    
-   	cp->share_lock = SPIN_LOCK_UNLOCKED;
+    rwlock_init(&cp->share_lock);
  
    	/*
    	 * total hash item.
@@ -221,9 +221,9 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
-			spin_lock_bh(&cp->share_lock);
+			write_lock_bh(&cp->share_lock);
 			atomic_inc(&cp->share_ref);
-			spin_unlock_bh(&cp->share_lock);
+			write_unlock_bh(&cp->share_lock);
 			ct_read_unlock_bh(hash, hash_lock_array);
 			return cp; 
         }   
@@ -450,13 +450,13 @@ static void wr_file(struct work_struct *work)
 	unsigned long data = _work->index;
 
  	cpu = get_cpu();
-    //ct_write_lock_bh(data, hash_lock_array);
     ct_read_lock_bh(data, hash_lock_array);
 	/*
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0 && atomic_read(&cp->share_ref) == 1) {
+		read_lock_bh(&cp->share_lock);
+		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 			//for statistics.
 			if (cp->store_flag == 1) {
 				cp->store_flag = 2;
@@ -470,7 +470,14 @@ static void wr_file(struct work_struct *work)
 			}
 			all_size += num*CHUNKSTEP;
 			st_all_size += cp->len;
+
+			/*
+			 * 使用cp->cpu来标识，防止有些chunk开始不用写，后面又需要写的情况。
+			 */
+			if (cp->cpuid == -1)
+				cp->cpuid = -2;	
 		}
+		read_unlock_bh(&cp->share_lock);
 	}
 
 	if (all_size != 0) {
@@ -484,7 +491,17 @@ static void wr_file(struct work_struct *work)
     	}
 
     	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0 && atomic_read(&cp->share_ref) == 1) {
+			read_lock_bh(&cp->share_lock);
+			/*
+			 * chunk 又被引用，这种情况保持状态2，不写文件  
+			 */
+			if (cp->cpuid == -2 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) > 1) { 
+				cp->cpuid = -1;
+				read_unlock_bh(&cp->share_lock);
+				continue;
+			}
+			
+			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -515,19 +532,14 @@ static void wr_file(struct work_struct *work)
 				per_cpu(bitmap_index, cpu) += num;
 
 				/*
-			 	 * set the status of item. 2 stands for data will write to file.
-			 	 */
-				atomic_set(&cp->flag_cache, 2);    
-
-				/*
 			 	 * cp->data copy.
 			 	 */
 				memcpy(copy_mem + mem_index, cp->data, cp->len);
 				mem_index += num*CHUNKSTEP;
 			}
+			read_unlock_bh(&cp->share_lock);
 		}
 	}
-    //ct_write_unlock_bh(data, hash_lock_array);
     ct_read_unlock_bh(data, hash_lock_array);
 	put_cpu();
 	
@@ -555,17 +567,15 @@ static void wr_file(struct work_struct *work)
 	 */
 	kfree(copy_mem);
  
-    //ct_write_lock_bh(data, hash_lock_array);
     ct_read_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		spin_lock_bh(&cp->share_lock);
+		read_lock_bh(&cp->share_lock);
 		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		
-		spin_unlock_bh(&cp->share_lock);
+		read_unlock_bh(&cp->share_lock);
 	}
-    //ct_write_unlock_bh(data, hash_lock_array);
     ct_read_unlock_bh(data, hash_lock_array);
 }
 
@@ -577,12 +587,16 @@ void bucket_clear_item(unsigned long data)
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		read_lock_bh(&cp->share_lock);
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
 			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
 				free_data_memory(cp);
-			if (atomic_read(&cp->flag_cache) == 1 || atomic_read(&cp->flag_cache) == 2) {
+			/*
+		 	 * decide whether the data write into file by cp->cpuid.
+			 */
+			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0)) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -597,6 +611,7 @@ void bucket_clear_item(unsigned long data)
 				percpu_counter_add(&mmd, cp->len);
 			}
 
+			read_unlock_bh(&cp->share_lock);
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
 			continue;
@@ -605,12 +620,15 @@ void bucket_clear_item(unsigned long data)
 		atomic_dec(&cp->refcnt);
 	
 		/*
-         * data always in memory.
+         * start the status machine.
          */	
 		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 0)
 			atomic_set(&cp->flag_cache, 3); 
+		
+		if (atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0)
+			atomic_set(&cp->flag_cache, 2); 
 
-		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) 
+		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT) 
 			flag = 1;
 			
 		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) { 
@@ -619,6 +637,7 @@ void bucket_clear_item(unsigned long data)
 				cp->store_flag = 1;
 			}
 		}
+		read_unlock_bh(&cp->share_lock);
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 

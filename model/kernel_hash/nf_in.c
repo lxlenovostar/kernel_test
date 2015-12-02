@@ -85,9 +85,13 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 
 		if (atomic_read(&item->flag_cache) != 1) {
 			// 数据在内存中,暂时不做处理
+			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
+			write_unlock_bh(&item->share_lock);
 		}	else {
+			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
+			write_unlock_bh(&item->share_lock);
 			// cp 入list 
 			//list_add(cp);
 		}
