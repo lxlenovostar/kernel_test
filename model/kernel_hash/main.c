@@ -13,7 +13,7 @@
 #include "hash_table.h"
 #include "bitmap.h"
 #include "slab_cache.h"
-#include "alloc.h"
+#include "alloc_file.h"
 	
 unsigned long RM = 1;
 unsigned long zero_value = 1;
