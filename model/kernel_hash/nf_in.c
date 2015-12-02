@@ -82,7 +82,17 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 		}
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
-		
+
+		if (atomic_read(&item->flag_cache) != 1) {
+			// 数据在内存中,暂时不做处理
+			atomic_dec(&item->share_ref);
+		}	else {
+			atomic_dec(&item->share_ref);
+			// cp 入list 
+			//list_add(cp);
+		}
+
+	
 		/*
 	     * 方案一
          * 1.如果是状态0和状态3，说明数据在内存中不处理。

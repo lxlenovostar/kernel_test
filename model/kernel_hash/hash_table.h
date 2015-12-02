@@ -74,6 +74,7 @@ struct hashinfo_item
 	 * the other cpu maybe use it.
 	 */
 	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
+	spinlock_t share_lock;
 
 	/*
 	 * hash_new_item and bucket_clear_item(write lock)

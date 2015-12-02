@@ -183,7 +183,8 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	memcpy(cp->sha1, info, SHA1SIZE);
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	atomic_set(&cp->share_ref, 1);    
-    
+   	cp->share_lock = SPIN_LOCK_UNLOCKED;
+ 
    	/*
    	 * total hash item.
    	 */
@@ -220,6 +221,9 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
+			spin_lock_bh(&cp->share_lock);
+			atomic_inc(&cp->share_ref);
+			spin_unlock_bh(&cp->share_lock);
 			ct_read_unlock_bh(hash, hash_lock_array);
 			return cp; 
         }   
@@ -551,14 +555,18 @@ static void wr_file(struct work_struct *work)
 	 */
 	kfree(copy_mem);
  
-    ct_write_lock_bh(data, hash_lock_array);
+    //ct_write_lock_bh(data, hash_lock_array);
+    ct_read_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+		spin_lock_bh(&cp->share_lock);
 		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		
+		spin_unlock_bh(&cp->share_lock);
 	}
-    ct_write_unlock_bh(data, hash_lock_array);
+    //ct_write_unlock_bh(data, hash_lock_array);
+    ct_read_unlock_bh(data, hash_lock_array);
 }
 
 void bucket_clear_item(unsigned long data)
