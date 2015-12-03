@@ -456,7 +456,7 @@ static void wr_file(struct work_struct *work)
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		read_lock_bh(&cp->share_lock);
-		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
+		if (atomic_read(&cp->flag_cache) == 2 && && cp->cpuid == -1 && atomic_read(&cp->share_ref) == 1) {
 			//for statistics.
 			if (cp->store_flag == 1) {
 				cp->store_flag = 2;
@@ -474,8 +474,7 @@ static void wr_file(struct work_struct *work)
 			/*
 			 * 使用cp->cpu来标识，防止有些chunk开始不用写，后面又需要写的情况。
 			 */
-			if (cp->cpuid == -1)
-				cp->cpuid = -2;	
+			cp->cpuid = -2;	
 		}
 		read_unlock_bh(&cp->share_lock);
 	}
@@ -495,13 +494,13 @@ static void wr_file(struct work_struct *work)
 			/*
 			 * chunk 又被引用，这种情况保持状态2，不写文件  
 			 */
-			if (cp->cpuid == -2 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) > 1) { 
+			if (cp->cpuid == -2 && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) > 1) { 
 				cp->cpuid = -1;
 				read_unlock_bh(&cp->share_lock);
 				continue;
 			}
 			
-			if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
+			if (cp->cpuid == -2 &&  atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -570,7 +569,7 @@ static void wr_file(struct work_struct *work)
     ct_read_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		read_lock_bh(&cp->share_lock);
-		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
+		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1 && cp->cpuid >= 0) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		
