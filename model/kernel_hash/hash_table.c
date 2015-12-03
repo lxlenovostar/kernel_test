@@ -175,6 +175,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	memcpy(cp->data, value, cp->len);
 	
 	atomic_set(&cp->flag_cache, 0);    
+    rwlock_init(&cp->cache_lock);
 
 	cp->cpuid = -1;
 	cp->store_flag = 0;
@@ -224,6 +225,10 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 			write_lock_bh(&cp->share_lock);
 			atomic_inc(&cp->share_ref);
 			write_unlock_bh(&cp->share_lock);
+			write_lock_bh(&cp->cache_lock);
+			if (atomic_read(&cp->flag_cache) == 1)
+				atomic_set(&cp->flag_cache, 4); 
+			write_unlock_bh(&cp->cache_lock);
 			ct_read_unlock_bh(hash, hash_lock_array);
 			return cp; 
         }   
@@ -456,7 +461,7 @@ static void wr_file(struct work_struct *work)
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		read_lock_bh(&cp->share_lock);
-		if (atomic_read(&cp->flag_cache) == 2 && && cp->cpuid == -1 && atomic_read(&cp->share_ref) == 1) {
+		if (atomic_read(&cp->flag_cache) == 2 && cp->cpuid == -1 && atomic_read(&cp->share_ref) == 1) {
 			//for statistics.
 			if (cp->store_flag == 1) {
 				cp->store_flag = 2;
@@ -569,10 +574,12 @@ static void wr_file(struct work_struct *work)
     ct_read_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		read_lock_bh(&cp->share_lock);
+		write_lock_bh(&cp->cache_lock);
 		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1 && cp->cpuid >= 0) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		
+		write_unlock_bh(&cp->cache_lock);
 		read_unlock_bh(&cp->share_lock);
 	}
     ct_read_unlock_bh(data, hash_lock_array);
@@ -587,15 +594,17 @@ void bucket_clear_item(unsigned long data)
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		read_lock_bh(&cp->share_lock);
+		write_lock_bh(&cp->cache_lock);
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
+			//if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
 			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
 				free_data_memory(cp);
 			/*
 		 	 * decide whether the data write into file by cp->cpuid.
 			 */
-			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0)) {
+			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0) || atomic_read(&cp->flag_cache) == 4) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -610,6 +619,7 @@ void bucket_clear_item(unsigned long data)
 				percpu_counter_add(&mmd, cp->len);
 			}
 
+			write_unlock_bh(&cp->cache_lock);
 			read_unlock_bh(&cp->share_lock);
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
@@ -636,6 +646,7 @@ void bucket_clear_item(unsigned long data)
 				cp->store_flag = 1;
 			}
 		}
+		write_unlock_bh(&cp->cache_lock);
 		read_unlock_bh(&cp->share_lock);
 	}
     ct_write_unlock_bh(data, hash_lock_array);

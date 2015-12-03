@@ -107,6 +107,7 @@ struct hashinfo_item
 	 * 3: always in memory.
      */
 	atomic_t flag_cache; 	
+	rwlock_t cache_lock;
 
 	/* 
 	 * just for statistics
