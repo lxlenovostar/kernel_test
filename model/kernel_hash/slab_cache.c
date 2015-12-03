@@ -86,6 +86,39 @@ int alloc_slab(void)
         return -ENOMEM;
     }
 
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    listhead_cachep = kmem_cache_create(CACHE_NAME_LISTHEAD,
+            sizeof(struct list_head)*num_online_cpus(),
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+#else
+    listhead_cachep = kmem_cache_create(CACHE_NAME_LISTHEAD,
+            sizeof(struct list_head)*num_online_cpus(),
+            0, SLAB_HWCACHE_ALIGN, NULL);
+#endif
+
+    if (!listhead_cachep) {
+        printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    readskb_cachep = kmem_cache_create(CACHE_NAME_READSKB,
+            sizeof(struct read_skb),
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+#else
+    readskb_cachep = kmem_cache_create(CACHE_NAME_READSKB,
+            sizeof(struct read_skb),
+            0, SLAB_HWCACHE_ALIGN, NULL);
+#endif
+
+    if (!readskb_cachep) {
+        printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
+
 	return 0;
 }
 
@@ -101,4 +134,8 @@ void free_slab()
     	kmem_cache_destroy(slab_chunk3);
     if (reskb_cachep)
 		kmem_cache_destroy(reskb_cachep);
+    if (listhead_cachep)
+		kmem_cache_destroy(listhead_cachep);
+    if (readskb_cachep)
+		kmem_cache_destroy(listhead_cachep);
 }

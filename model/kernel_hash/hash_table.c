@@ -86,8 +86,11 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
     return 1;
 }
 
-static void alloc_data_memory(struct hashinfo_item *cp, size_t length)
+void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
+	if (cp->mem_style >= 0)
+		return;
+
 	if (length <= CHUNKSTEP) {
 		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
 		if (!cp->data) {
@@ -131,15 +134,19 @@ static void free_data_memory(struct hashinfo_item *cp)
 {
 	if (cp->mem_style == 0) {
 		kfree(cp->data);	
+		cp->mem_style = -1;
 		percpu_counter_add(&mm0, -(cp->len));
 	} else if (cp->mem_style == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
+		cp->mem_style = -1;
 		percpu_counter_add(&mm1, -(CHUNKSTEP));
 	} else if (cp->mem_style == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
+		cp->mem_style = -1;
 		percpu_counter_add(&mm2, -(CHUNKSTEP*2));
 	} else if (cp->mem_style == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
+		cp->mem_style = -1;
 		percpu_counter_add(&mm3, -(CHUNKSTEP*3));
 	} else {
 		//do nothing.
@@ -171,7 +178,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
      * handle the value.
      */
 	cp->len = len_value;
-	alloc_data_memory(cp, len_value);
+	alloc_data_memory(cp, cp->len);
 	memcpy(cp->data, value, cp->len);
 	
 	atomic_set(&cp->flag_cache, 0);    
@@ -185,6 +192,9 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	atomic_set(&cp->share_ref, 1);    
     rwlock_init(&cp->share_lock);
+
+	cp->mem_style = -1;
+	cp->data_lock = SPIN_LOCK_UNLOCKED;
  
    	/*
    	 * total hash item.
@@ -222,13 +232,15 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
-			write_lock_bh(&cp->share_lock);
-			atomic_inc(&cp->share_ref);
-			write_unlock_bh(&cp->share_lock);
+			/*write_lock_bh(&cp->share_lock);
 			write_lock_bh(&cp->cache_lock);
-			if (atomic_read(&cp->flag_cache) == 1)
+			atomic_inc(&cp->share_ref);
+			if (atomic_read(&cp->flag_cache) == 1) {
 				atomic_set(&cp->flag_cache, 4); 
+            	atomic_add(ITEM_VIP_LIMIT, &cp->refcnt);
+			}
 			write_unlock_bh(&cp->cache_lock);
+			write_unlock_bh(&cp->share_lock);*/
 			ct_read_unlock_bh(hash, hash_lock_array);
 			return cp; 
         }   
@@ -460,7 +472,7 @@ static void wr_file(struct work_struct *work)
 	 * sum the all bytes.
 	 */
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		read_lock_bh(&cp->share_lock);
+		//read_lock_bh(&cp->share_lock);
 		if (atomic_read(&cp->flag_cache) == 2 && cp->cpuid == -1 && atomic_read(&cp->share_ref) == 1) {
 			//for statistics.
 			if (cp->store_flag == 1) {
@@ -481,7 +493,7 @@ static void wr_file(struct work_struct *work)
 			 */
 			cp->cpuid = -2;	
 		}
-		read_unlock_bh(&cp->share_lock);
+		//read_unlock_bh(&cp->share_lock);
 	}
 
 	if (all_size != 0) {
@@ -495,13 +507,13 @@ static void wr_file(struct work_struct *work)
     	}
 
     	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-			read_lock_bh(&cp->share_lock);
+			//read_lock_bh(&cp->share_lock);
 			/*
 			 * chunk 又被引用，这种情况保持状态2，不写文件  
 			 */
 			if (cp->cpuid == -2 && atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) > 1) { 
 				cp->cpuid = -1;
-				read_unlock_bh(&cp->share_lock);
+				//read_unlock_bh(&cp->share_lock);
 				continue;
 			}
 			
@@ -541,7 +553,7 @@ static void wr_file(struct work_struct *work)
 				memcpy(copy_mem + mem_index, cp->data, cp->len);
 				mem_index += num*CHUNKSTEP;
 			}
-			read_unlock_bh(&cp->share_lock);
+			//read_unlock_bh(&cp->share_lock);
 		}
 	}
     ct_read_unlock_bh(data, hash_lock_array);
@@ -573,14 +585,14 @@ static void wr_file(struct work_struct *work)
  
     ct_read_lock_bh(data, hash_lock_array);
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		read_lock_bh(&cp->share_lock);
-		write_lock_bh(&cp->cache_lock);
+		//read_lock_bh(&cp->share_lock);
+		//write_lock_bh(&cp->cache_lock);
 		if (atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1 && cp->cpuid >= 0) {
 			atomic_set(&cp->flag_cache, 1);    
 			free_data_memory(cp);
 		}		
-		write_unlock_bh(&cp->cache_lock);
-		read_unlock_bh(&cp->share_lock);
+		//write_unlock_bh(&cp->cache_lock);
+		//read_unlock_bh(&cp->share_lock);
 	}
     ct_read_unlock_bh(data, hash_lock_array);
 }
@@ -593,8 +605,8 @@ void bucket_clear_item(unsigned long data)
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
-		read_lock_bh(&cp->share_lock);
-		write_lock_bh(&cp->cache_lock);
+		//read_lock_bh(&cp->share_lock);
+		//write_lock_bh(&cp->cache_lock);
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
@@ -619,8 +631,8 @@ void bucket_clear_item(unsigned long data)
 				percpu_counter_add(&mmd, cp->len);
 			}
 
-			write_unlock_bh(&cp->cache_lock);
-			read_unlock_bh(&cp->share_lock);
+			//write_unlock_bh(&cp->cache_lock);
+			//read_unlock_bh(&cp->share_lock);
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
 			continue;
@@ -646,8 +658,8 @@ void bucket_clear_item(unsigned long data)
 				cp->store_flag = 1;
 			}
 		}
-		write_unlock_bh(&cp->cache_lock);
-		read_unlock_bh(&cp->share_lock);
+		//write_unlock_bh(&cp->cache_lock);
+		//read_unlock_bh(&cp->share_lock);
 	}
     ct_write_unlock_bh(data, hash_lock_array);
 

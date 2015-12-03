@@ -16,13 +16,17 @@
 #include "sha.h"
 #include "hash_table.h"
 #include "slab_cache.h"
+#include "alloc_mem.h"
 
 struct percpu_counter save_num;
 struct percpu_counter sum_num;
 DEFINE_PER_CPU(struct work_struct , work); 
 struct kmem_cache *sha_data; 
 struct kmem_cache *reskb_cachep;
+struct kmem_cache *listhead_cachep;
+struct kmem_cache *readskb_cachep;
 DEFINE_PER_CPU(struct list_head, skb_list);
+DECLARE_PER_CPU(struct file *, reserve_file); 
 
 void my_tasklet_function(unsigned long data)
 {
@@ -64,10 +68,10 @@ prehandle_skb(skb) {
 
 */
 
-
-void hand_hash(char *src, size_t len, uint8_t *dst) 
+void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head) 
 {
 	struct hashinfo_item *item;	
+	struct read_skb *r_skb;
 
 	item = get_hash_item(dst);
     if (item == NULL) {
@@ -83,50 +87,37 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 		percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
-		if (atomic_read(&item->flag_cache) != 1) {
+		if (atomic_read(&item->flag_cache) != 4) {
 			// 数据在内存中,暂时不做处理
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
 		}	else {
+			/*	
+			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
+   			if (r_skb == NULL) {
+   				DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+       			BUG();
+   			}
+
+			if (item->cpuid >= num_online_cpus()) {
+   				DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+       			BUG();
+			}	
+			   
+			r_skb->item = item;
+			list_add(&r_skb->list, (head+item->cpuid));	
+			*/
+				
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
-			// cp 入list 
-			//list_add(cp);
-		}
-
-	
-		/*
-	     * 方案一
-         * 1.如果是状态0和状态3，说明数据在内存中不处理。
-         * 2.如果是状态2，那么在2转为1的时候需要加锁
-         * 3.如果是状态1，那么增加共享的引用计数，防止被删除
-         */
-
-		/*
-		if (item->flag_cache == 0 || item->flag_cache == 3) {
-			//拷贝数据
-		}
-
 		
-		if (item->flag_cache == 2) {
-			//在加锁的情况下，拷贝数据
 		}
-		*/
-
-		/* 方案二
-		 * 1.读取item的状态位，如果是4，说明处于由1转换到3的中间状态，需要读取文件。
-		 * 2.list_add此item (在list中进行插入排序)
-		 * 3.读取文件
-		 * 4.在不加锁的情况下，如果状态是4，那么将状态位置修改为3 
-		 * 5.从链表中删除数据
-         * 6.减少item的share 引用计数
-		 */
 	}
 }
 
-void build_hash(char *src, int start, int end, int length) 
+void build_hash(char *src, int start, int end, int length, struct list_head *head) 
 {
 	/*
      * Fixup: use slab maybe effectiver than kmalloc.
@@ -161,11 +152,11 @@ void build_hash(char *src, int start, int end, int length)
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
 
-	hand_hash(src + start, length, dst);
+	hand_hash(src + start, length, dst, head);
 	kmem_cache_free(sha_data, dst);
 }
 
-void get_partition(char *data, int length)
+void get_partition(char *data, int length, struct list_head *head)
 {
 	struct kfifo *fifo = NULL;
 	spinlock_t lock = SPIN_LOCK_UNLOCKED;
@@ -197,13 +188,13 @@ void get_partition(char *data, int length)
 				start_pos = 0;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1), head);
 			}	 
 			else {
 				start_pos = end_pos + 1;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1), head);
 			}
 		}
 		
@@ -212,13 +203,13 @@ void get_partition(char *data, int length)
 				start_pos = end_pos + 1;
 				end_pos = length - 1;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1), head);
 			}
 		} else {
 			start_pos = 0;
 			end_pos = length - 1;
 			DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-			build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+			build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1), head);
 		}			
 	
 		kfifo_free(fifo);	
@@ -243,6 +234,9 @@ static void handle_skb(struct work_struct *work)
 {
 	int cpu;
     struct reject_skb *cp, *next;
+    struct read_skb *r_cp, *r_next;
+	struct hashinfo_item *item;
+	char *tmp_data = NULL;
 	int threshold = 10000;
 	int i = 0;	
 	struct tasklet_struct *my_tasklet;
@@ -252,6 +246,19 @@ static void handle_skb(struct work_struct *work)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 
+	struct list_head *all_list  = NULL;  
+	/*
+	struct list_head *all_list  = kmem_cache_zalloc(listhead_cachep, GFP_ATOMIC);  
+   	if (all_list == NULL) {
+   		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
+       	BUG();	//TODO
+	}
+
+	for_each_online_cpu(cpu) {
+    	INIT_LIST_HEAD((all_list + cpu));
+	}
+	*/
+
 	cpu = get_cpu();
 	local_bh_disable();
     list_for_each_entry_safe(cp, next, &per_cpu(skb_list, cpu), list) {
@@ -260,9 +267,6 @@ static void handle_skb(struct work_struct *work)
 		else
 			++i;
 		
-		/*
-		 * write the skb data 
-		 */
 		{
 			iph = (struct iphdr *)(cp->skb)->data;
 			tcph = (struct tcphdr *)((cp->skb)->data + (iph->ihl << 2));
@@ -272,7 +276,7 @@ static void handle_skb(struct work_struct *work)
 			DEBUG_LOG(KERN_INFO "skb_len is %d, chunk is %d, data_len is %lu, iph_tot is%d, iph is%d, tcph is%d", (cp->skb)->len, chunk_num, data_len, ntohs(iph->tot_len), (iph->ihl << 2), (tcph->doff<<2));
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
-			get_partition(data, data_len);
+			get_partition(data, data_len, all_list);
 		}
 
 		list_del(&cp->list);
@@ -280,6 +284,48 @@ static void handle_skb(struct work_struct *work)
 	}
 	local_bh_enable();
 	put_cpu();
+            
+	/*
+	// * read the file.
+    for_each_online_cpu(cpu) {
+        list_for_each_entry_safe(r_cp, r_next, (all_list+cpu), list) {   
+           	item = r_cp->item; 
+		
+			// * alloc memory space for data.
+			spin_lock(&item->data_lock);
+			alloc_data_memory(item, item->len);
+			spin_unlock(&item->data_lock);
+
+	
+			// * alloc memory space for temporary read file.
+			alloc_temp_memory(tmp_data, item->len);	
+
+		
+			// * read the file.
+    		if (kernel_read(per_cpu(reserve_file, cpu), item->start, tmp_data, item->len) < 0) {
+    			printk(KERN_ERR "read file error?\n");
+        		BUG(); //TODO: need update it.
+    		}
+
+
+			// * memcpy temporary space to data.
+			spin_lock(&item->data_lock);
+			memcpy(item->data, tmp_data, item->len);
+			spin_unlock(&item->data_lock);
+			free_temp_memory(tmp_data, item->len);
+	
+			list_del(&r_cp->list);
+			write_lock_bh(&item->share_lock);
+            atomic_dec(&item->share_ref);
+            write_unlock_bh(&item->share_lock);
+           	kmem_cache_free(readskb_cachep, r_cp); 
+        }   
+    }   
+	*/
+
+	/*
+	kmem_cache_free(listhead_cachep, all_list);
+	*/
 		
 	my_tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_ATOMIC);
     list_for_each_entry_safe(cp, next, &hand_list, list) {
@@ -310,6 +356,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 	struct tcphdr *tcph;
 	unsigned long long reserve_mem;
 	int cpu;
+	struct reject_skb *skb_item;  
 
 	/*
 	 * TODO: need configure from userspace.
@@ -338,9 +385,9 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		if (!strcmp(dsthost, "139.209.90.60") || !strcmp(ssthost, "139.209.90.60")) {  
+		//if (!strcmp(dsthost, "139.209.90.60") || !strcmp(ssthost, "139.209.90.60")) {  
 		//if (strcmp(dsthost, "192.168.27.77") == 0) {  
-				struct reject_skb *skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
+				skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
        				BUG();
@@ -360,7 +407,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 					queue_work(skb_wq, &(per_cpu(work, cpu)));
 				} 
 				put_cpu();
-		}
+		//}
 	}
 out:
 	jprobe_return();

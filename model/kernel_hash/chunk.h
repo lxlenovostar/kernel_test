@@ -1,5 +1,6 @@
 #include <linux/kfifo.h>
 #include <linux/percpu_counter.h>
+#include "hash_table.h"
 
 #define CHUNKSTEP 32
 #define SHALEN 20
@@ -24,6 +25,11 @@ typedef struct {
 
 struct reject_skb {
 	struct sk_buff *skb;
+	struct list_head list;
+};
+
+struct read_skb {
+	struct hashinfo_item *item;
 	struct list_head list;
 };
 

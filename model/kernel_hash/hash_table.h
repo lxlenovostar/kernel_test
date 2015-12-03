@@ -92,6 +92,7 @@ struct hashinfo_item
      * 3: SLAB CHUNKSTEP*3 
      */
 	int mem_style;         
+	spinlock_t data_lock;
 
 	/*
 	 * wr_file update it.
@@ -124,6 +125,7 @@ struct hashtable_del
 	struct list_head list;
 };
 
+void alloc_data_memory(struct hashinfo_item *cp, size_t length);
 int initial_hash_table_cache(void);
 void release_hash_table_cache(void);   
 struct hashinfo_item *get_hash_item(uint8_t *info);
