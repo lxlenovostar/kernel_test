@@ -14,6 +14,8 @@
 #include <linux/interrupt.h>
 #include <linux/skbuff.h>
 #include <linux/kprobes.h>
+#include <linux/slab.h>
+#include <linux/mempool.h>
 #include "ws_st_symbols.h"
 
 static struct workqueue_struct *my_wq;
@@ -33,9 +35,9 @@ struct reject_skb {
 static DEFINE_PER_CPU(struct list_head, head_skb_list);
 
 #define CACHE_NAME "skb_cache"
-//static struct kmem_cache * hash_cachep/* __read_mostly*/;
-//static DEFINE_PER_CPU(struct kmem_cache *, hash_cachep);
-struct kmem_cache **hash_cachep;
+#define POOL_MINMUM 409600 
+static struct kmem_cache * hash_cachep/* __read_mostly*/;
+mempool_t *pool;
 char cachename[8][20];
  
 void my_tasklet_function(unsigned long data)
@@ -87,13 +89,8 @@ static void handle_skb(struct work_struct *work)
 		tasklet_hi_schedule(my_tasklet);
 		tasklet_kill(my_tasklet);
 	
-		/*	
-		kmem_cache_free(hash_cachep, cp);
-		*/
-
-		cpu = get_cpu();
-		kmem_cache_free(*(hash_cachep + cpu), cp);
-		put_cpu();
+		kmem_cache_free(hash_cachep, cp);	
+		//mempool_free(cp, pool);
 	}
 	kfree(my_tasklet);
 	
@@ -131,15 +128,11 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 
 		//if (!strcmp(ssthost, "192.168.27.77")) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//if (strcmp(dsthost, "139.209.90.213") == 0) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "45.78.40.252") == 0 && data_len > 0) {  
 		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
-				//printk(KERN_INFO "skb->len0 is:%d", skb->len);
-				
-				//struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
-				cpu = get_cpu();
-				struct reject_skb *skb_item = kmem_cache_zalloc(*(hash_cachep + cpu), GFP_ATOMIC);  
-				put_cpu();
+				//struct reject_skb *skb_item = mempool_alloc(pool, GFP_ATOMIC);  
+				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
        				BUG();
@@ -199,37 +192,16 @@ struct jprobe jps_netif_receive_skb = {
 
 static int minit(void)
 {
-	/*
-	int cpu;
-	char cachename[20];
-	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
-		memset(cachename, '\0', sizeof(cachename));
-		sprintf(cachename, "cacheskb%d", cpu);
-	}
-	return 0;
-	*/
-
 	int ret, cpu;
 	
 	for_each_online_cpu(cpu) {
 		INIT_LIST_HEAD(&per_cpu(head_skb_list, cpu));
 	}
 
-	ret = register_jprobe(&jps_netif_receive_skb);
-    if (ret < 0) {
-        printk(KERN_ERR "Failed to register jprobe netif_receive_skb %s.\n", THIS_MODULE->name);
-        return -1;
-    }
- 
-	ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
-	if (ret) {
-		printk("local_in hooks failed\n");
-	}
-
 	my_wq = create_workqueue("my_queue");
 	if (!my_wq)
 		return -1;
-	/*
+	
 	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
     	hash_cachep = kmem_cache_create(CACHE_NAME, sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
 	#else
@@ -241,28 +213,23 @@ static int minit(void)
                 __FUNCTION__);
         return -ENOMEM;
     	}
-	*/	
 
-	hash_cachep = kmalloc(sizeof(struct kmem_cache *)*num_online_cpus(), GFP_ATOMIC);
-	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
-		memset(*(cachename+cpu), '\0', sizeof(cachename));
-		sprintf(*(cachename+cpu), "skb%d", cpu);
-		printk(KERN_INFO "what0:%s", *(cachename+cpu));
-
-	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
-    	*(hash_cachep + cpu) = kmem_cache_create(*(cachename+cpu), sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
-	#else
-    	*(hash_cachep + cpu) = kmem_cache_create(*(cachename+cpu), sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL);
-	#endif
-
-		printk(KERN_INFO "what1");
-    	if (!(*(hash_cachep + cpu))) {
-        	printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
+	pool = mempool_create(POOL_MINMUM, mempool_alloc_slab, mempool_free_slab, hash_cachep);	
+	if (!pool) {
+        printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
                 __FUNCTION__);
         return -ENOMEM;
-    	}
-		
-		printk(KERN_INFO "what2");
+	}
+	
+	ret = register_jprobe(&jps_netif_receive_skb);
+    if (ret < 0) {
+        printk(KERN_ERR "Failed to register jprobe netif_receive_skb %s.\n", THIS_MODULE->name);
+        return -1;
+    }
+ 
+	ret = nf_register_hooks(hook_ops, ARRAY_SIZE(hook_ops));
+	if (ret) {
+		printk("local_in hooks failed\n");
 	}
 
 	printk("Start %s.\n", THIS_MODULE->name);
@@ -273,16 +240,14 @@ static void mexit(void)
 {
 	int cpu;
 	
-	flush_workqueue(my_wq);
-	destroy_workqueue(my_wq);
-	
     unregister_jprobe(&jps_netif_receive_skb);
 	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
-	//kmem_cache_destroy(hash_cachep);
-	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
-		kmem_cache_destroy(*(hash_cachep + cpu));
-	}	
-	kfree(hash_cachep);
+	
+	flush_workqueue(my_wq);
+	destroy_workqueue(my_wq);
+
+	kmem_cache_destroy(hash_cachep);	
+	mempool_destroy(pool);
 	printk("Exit %s.\n", THIS_MODULE->name);
 }
 
