@@ -33,22 +33,23 @@ struct reject_skb {
 static DEFINE_PER_CPU(struct list_head, head_skb_list);
 
 #define CACHE_NAME "skb_cache"
-static struct kmem_cache * hash_cachep/* __read_mostly*/;
+//static struct kmem_cache * hash_cachep/* __read_mostly*/;
 //static DEFINE_PER_CPU(struct kmem_cache *, hash_cachep);
-//static struct kmem_cache **hash_cachep;
-
+struct kmem_cache **hash_cachep;
+char cachename[8][20];
+ 
 void my_tasklet_function(unsigned long data)
 {
 	struct sk_buff *skb = (struct sk_buff *)data;
 
-	printk(KERN_INFO "Im here end0.");
+	//printk(KERN_INFO "Im here end0.");
 	local_bh_disable();
    	//skb_pull(skb, ip_hdrlen(skb));
 	//skb_reset_transport_header(skb);
 	//(*tcp_v4_rcv_ptr)(skb);
 	(*ip_rcv_finish_ptr)(skb);
 	local_bh_enable();
-	printk(KERN_INFO "Im here end1.");
+	//printk(KERN_INFO "Im here end1.");
 	
 	return;
 }
@@ -57,7 +58,7 @@ static void handle_skb(struct work_struct *work)
 {
 	int cpu;
     struct reject_skb *cp, *next;
-	int threshold = 10000;
+	int threshold = 40000;
 	int i = 0;	
 	
 	struct tasklet_struct *my_tasklet;
@@ -85,11 +86,14 @@ static void handle_skb(struct work_struct *work)
 		/* Schedule the Bottom Half */
 		tasklet_hi_schedule(my_tasklet);
 		tasklet_kill(my_tasklet);
-		
+	
+		/*	
 		kmem_cache_free(hash_cachep, cp);
-		/*cpu = get_cpu();
+		*/
+
+		cpu = get_cpu();
 		kmem_cache_free(*(hash_cachep + cpu), cp);
-		put_cpu();*/
+		put_cpu();
 	}
 	kfree(my_tasklet);
 	
@@ -128,14 +132,14 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		//if (!strcmp(ssthost, "192.168.27.77")) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
 		//if (strcmp(dsthost, "139.209.90.213") == 0) {  
-		if (strcmp(ssthost, "45.78.40.252") == 0 && data_len > 0) {  
-		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		//if (strcmp(ssthost, "45.78.40.252") == 0 && data_len > 0) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 				//printk(KERN_INFO "skb->len0 is:%d", skb->len);
 				
-				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
-				/*cpu = get_cpu();
+				//struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
+				cpu = get_cpu();
 				struct reject_skb *skb_item = kmem_cache_zalloc(*(hash_cachep + cpu), GFP_ATOMIC);  
-				put_cpu();*/
+				put_cpu();
    				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
        				BUG();
@@ -167,60 +171,6 @@ hook_local_in(unsigned int hooknum, struct sk_buff *skb,
 	      int (*okfn) (struct sk_buff *))
 {
 	return NF_ACCEPT;
-	
-	/*
-	struct iphdr *iph;
-	struct tcphdr *tcph;
-	unsigned short sport, dport;
-	__be32 saddr, daddr;
-	char dsthost[16];
-	char ssthost[16];
-	int cpu;
-
-	skb_linearize(skb);
-	
-	iph = (struct iphdr *)skb->data;
-	tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));
-
-	if (iph->protocol == IPPROTO_TCP) {
-		sport = tcph->source;
-		dport = tcph->dest;
-		saddr = iph->saddr;
-		daddr = iph->daddr;
-		
-		snprintf(dsthost, 16, "%pI4", &daddr);
-		snprintf(ssthost, 16, "%pI4", &saddr);
-
-		//if (!strcmp(ssthost, "192.168.27.77")) { 
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-				//printk(KERN_INFO "skb->len0 is:%d", skb->len);
-				struct reject_skb *skb_item = kmem_cache_zalloc(hash_cachep, GFP_ATOMIC);  
-   				if (!skb_item) {
-   					printk(KERN_INFO "%s\n", __FUNCTION__);
-       				BUG();
-   				}
-				skb_item->skb = skb_copy(skb, GFP_ATOMIC);
-				INIT_LIST_HEAD(&skb_item->list);   
-
-				//SKB 进入等待队列
-				cpu = get_cpu();
-				list_add_tail(&skb_item->list, &per_cpu(head_skb_list, cpu));
-				put_cpu();
-				
-				//判断是否开启工作队列
-				cpu = get_cpu();
-				if (!work_pending(&(per_cpu(work, cpu)))) {
-					INIT_WORK(&(per_cpu(work, cpu)), handle_skb);
-					queue_work(my_wq, &(per_cpu(work, cpu)));
-				} 
-				put_cpu();
-	
-				return NF_DROP;
-		}
-	}
-	//return NF_STOLEN;
-	return NF_ACCEPT;
-	*/
 }
 
 static struct nf_hook_ops hook_ops[] = {
@@ -260,7 +210,7 @@ static int minit(void)
 	*/
 
 	int ret, cpu;
-
+	
 	for_each_online_cpu(cpu) {
 		INIT_LIST_HEAD(&per_cpu(head_skb_list, cpu));
 	}
@@ -279,7 +229,7 @@ static int minit(void)
 	my_wq = create_workqueue("my_queue");
 	if (!my_wq)
 		return -1;
-	
+	/*
 	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
     	hash_cachep = kmem_cache_create(CACHE_NAME, sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
 	#else
@@ -291,47 +241,48 @@ static int minit(void)
                 __FUNCTION__);
         return -ENOMEM;
     	}
-	
-	/*
+	*/	
+
 	hash_cachep = kmalloc(sizeof(struct kmem_cache *)*num_online_cpus(), GFP_ATOMIC);
-	char cachename[20];
 	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
-		memset(cachename, '\0', sizeof(cachename));
-		sprintf(cachename, "cacheskb%d", cpu);
+		memset(*(cachename+cpu), '\0', sizeof(cachename));
+		sprintf(*(cachename+cpu), "skb%d", cpu);
+		printk(KERN_INFO "what0:%s", *(cachename+cpu));
 
 	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
-    	*(hash_cachep + cpu) = kmem_cache_create(cachename, sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+    	*(hash_cachep + cpu) = kmem_cache_create(*(cachename+cpu), sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL, NULL);
 	#else
-    	*(hash_cachep + cpu) = kmem_cache_create(cachename, sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL);
+    	*(hash_cachep + cpu) = kmem_cache_create(*(cachename+cpu), sizeof(struct reject_skb), 0, SLAB_HWCACHE_ALIGN, NULL);
 	#endif
 
-    	if (!*(hash_cachep + cpu)) {
+		printk(KERN_INFO "what1");
+    	if (!(*(hash_cachep + cpu))) {
         	printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
                 __FUNCTION__);
         return -ENOMEM;
     	}
+		
+		printk(KERN_INFO "what2");
 	}
-	*/
 
 	printk("Start %s.\n", THIS_MODULE->name);
-
 	return 0;
 }
 
 static void mexit(void)
 {
 	int cpu;
-
+	
 	flush_workqueue(my_wq);
 	destroy_workqueue(my_wq);
 	
     unregister_jprobe(&jps_netif_receive_skb);
 	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
-	kmem_cache_destroy(hash_cachep);
-	/*for (cpu = 0; cpu < num_online_cpus(); cpu++) {
+	//kmem_cache_destroy(hash_cachep);
+	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
 		kmem_cache_destroy(*(hash_cachep + cpu));
 	}	
-	kfree(hash_cachep);*/
+	kfree(hash_cachep);
 	printk("Exit %s.\n", THIS_MODULE->name);
 }
 
