@@ -93,12 +93,6 @@ static void handle_skb(struct work_struct *work)
 		//mempool_free(cp, pool);
 	}
 	kfree(my_tasklet);
-	
-	/*	
-	cpu = get_cpu();
-	printk(KERN_INFO "cpu %d is run workqueue", cpu);
-	put_cpu();
-	*/
 }
 
 int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
@@ -156,6 +150,38 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 	}
 	jprobe_return();
 	return 0;
+}
+
+void clear_remainder_skb(void)
+{
+	int cpu;
+	int rem = 0;
+
+clear_again:	
+	for_each_online_cpu(cpu) {
+		if (list_empty(&per_cpu(head_skb_list, cpu))) 
+		{
+			rem++;
+		}
+		else {
+			if (!work_pending(&(per_cpu(work, cpu)))) {
+				INIT_WORK(&(per_cpu(work, cpu)), handle_skb);
+				queue_work(my_wq, &(per_cpu(work, cpu)));
+			} 
+		} 
+	}
+	
+	if (rem == num_online_cpus()) {
+		printk(KERN_INFO "ok, we clear all skbs and we out.");
+		return;
+	}
+	else {
+		flush_workqueue(my_wq);
+		schedule();
+        rem = 0;
+		goto clear_again;
+	}
+
 }
 
 unsigned int
@@ -220,7 +246,7 @@ static int minit(void)
                 __FUNCTION__);
         return -ENOMEM;
 	}
-	
+
 	ret = register_jprobe(&jps_netif_receive_skb);
     if (ret < 0) {
         printk(KERN_ERR "Failed to register jprobe netif_receive_skb %s.\n", THIS_MODULE->name);
@@ -238,16 +264,15 @@ static int minit(void)
 
 static void mexit(void)
 {
-	int cpu;
-	
     unregister_jprobe(&jps_netif_receive_skb);
 	nf_unregister_hooks(hook_ops, ARRAY_SIZE(hook_ops));
 	
 	flush_workqueue(my_wq);
+	clear_remainder_skb();
 	destroy_workqueue(my_wq);
 
-	kmem_cache_destroy(hash_cachep);	
 	mempool_destroy(pool);
+	kmem_cache_destroy(hash_cachep);	
 	printk("Exit %s.\n", THIS_MODULE->name);
 }
 
