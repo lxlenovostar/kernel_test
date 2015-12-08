@@ -88,8 +88,8 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
 
 void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	if (cp->mem_style >= 0)
-		return;
+	//if (cp->mem_style >= 0)
+	//	return;
 
 	if (length <= CHUNKSTEP) {
 		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
@@ -136,21 +136,25 @@ static void free_data_memory(struct hashinfo_item *cp)
 		kfree(cp->data);	
 		cp->mem_style = -1;
 		percpu_counter_add(&mm0, -(cp->len));
+		return;
 	} else if (cp->mem_style == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
 		cp->mem_style = -1;
 		percpu_counter_add(&mm1, -(CHUNKSTEP));
+		return;
 	} else if (cp->mem_style == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
 		cp->mem_style = -1;
 		percpu_counter_add(&mm2, -(CHUNKSTEP*2));
+		return;
 	} else if (cp->mem_style == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
 		cp->mem_style = -1;
 		percpu_counter_add(&mm3, -(CHUNKSTEP*3));
+		return;
 	} else {
 		//do nothing.
-        DEBUG_LOG(KERN_ERR"****** %s : you can't arrive here.\n", __FUNCTION__);
+        printk(KERN_ERR"****** %s : you can't arrive here. mem_style is:%d", __FUNCTION__, cp->mem_style);
 		BUG();	//TODO:	maybe other good way fix it.
 	}
 }
@@ -232,6 +236,13 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 		if (memcmp(cp->sha1, info, SHA1SIZE) == 0) {
    			DEBUG_LOG(KERN_INFO "find it:%s\n", __FUNCTION__ );
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
+		
+			/*	
+			write_lock_bh(&cp->share_lock);
+			atomic_inc(&cp->share_ref);
+			write_unlock_bh(&cp->share_lock);
+			*/
+
 			/*write_lock_bh(&cp->share_lock);
 			write_lock_bh(&cp->cache_lock);
 			atomic_inc(&cp->share_ref);
@@ -602,6 +613,9 @@ void bucket_clear_item(unsigned long data)
     struct hashinfo_item *cp, *next;
 	int i, num;
     int flag = 0;
+	
+	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
+	return;
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {

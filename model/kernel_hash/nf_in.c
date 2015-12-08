@@ -32,11 +32,15 @@ void my_tasklet_function(unsigned long data)
 {
 	struct sk_buff *skb = (struct sk_buff *)data;
 
+	//kfree_skb(skb);
+	//return;
+
 	//printk(KERN_INFO "Im here end0.");
 	local_bh_disable();
-    skb_pull(skb, ip_hdrlen(skb));
-	skb_reset_transport_header(skb);
-	(*tcp_v4_rcv_ptr)(skb);
+    //skb_pull(skb, ip_hdrlen(skb));
+	//skb_reset_transport_header(skb);
+	//(*tcp_v4_rcv_ptr)(skb);
+	(*ip_rcv_finish_ptr)(skb);
 	local_bh_enable();
 	//printk(KERN_INFO "Im here end1.");
 	
@@ -88,10 +92,14 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
 		if (atomic_read(&item->flag_cache) != 4) {
-			// 数据在内存中,暂时不做处理
+			/*
+			 * if the data is in the memory, we do nothing.
+			 */
+			/*
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
+			*/
 		}	else {
 			/*	
 			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
@@ -108,11 +116,12 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			r_skb->item = item;
 			list_add(&r_skb->list, (head+item->cpuid));	
 			*/
-				
+
+			/*
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
-		
+			*/
 		}
 	}
 }
@@ -237,7 +246,7 @@ static void handle_skb(struct work_struct *work)
     struct read_skb *r_cp, *r_next;
 	struct hashinfo_item *item;
 	char *tmp_data = NULL;
-	int threshold = 10000;
+	int threshold = 40000;
 	int i = 0;	
 	struct tasklet_struct *my_tasklet;
 	LIST_HEAD(hand_list);
@@ -335,14 +344,9 @@ static void handle_skb(struct work_struct *work)
 		/* Schedule the Bottom Half */
 		tasklet_hi_schedule(my_tasklet);
 		tasklet_kill(my_tasklet);
-		
 		kmem_cache_free(reskb_cachep, cp);
 	}
 	kfree(my_tasklet);
-	
-	/*cpu = get_cpu();
-	printk(KERN_INFO "cpu %d is run workqueue", cpu);
-	put_cpu();*/
 }
 
 int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
@@ -384,9 +388,9 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(dsthost, 16, "%pI4", &daddr);
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
 		//if (!strcmp(dsthost, "139.209.90.60") || !strcmp(ssthost, "139.209.90.60")) {  
-		//if (strcmp(dsthost, "192.168.27.77") == 0) {  
+		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 				skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
    					printk(KERN_INFO "%s\n", __FUNCTION__);
@@ -407,11 +411,43 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 					queue_work(skb_wq, &(per_cpu(work, cpu)));
 				} 
 				put_cpu();
-		//}
+		}
 	}
 out:
 	jprobe_return();
 	return 0;
+}
+
+void clear_remainder_skb(void)
+{
+	int cpu;
+	int rem = 0;
+
+clear_again:	
+	for_each_online_cpu(cpu) {
+		if (list_empty(&per_cpu(skb_list, cpu))) 
+		{
+			rem++;
+		}
+		else {
+			if (!work_pending(&(per_cpu(work, cpu)))) {
+				INIT_WORK(&(per_cpu(work, cpu)), handle_skb);
+				queue_work(skb_wq, &(per_cpu(work, cpu)));
+			} 
+		} 
+	}
+	
+	if (rem == num_online_cpus()) {
+		printk(KERN_INFO "ok, we clear all skbs and we out.");
+		return;
+	}
+	else {
+		flush_workqueue(skb_wq);
+		schedule();
+        rem = 0;
+		goto clear_again;
+	}
+
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)

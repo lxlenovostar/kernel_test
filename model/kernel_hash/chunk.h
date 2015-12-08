@@ -43,5 +43,5 @@ struct tcp_chunk {
     UT_hash_handle hh;                
 };
 */
-
+void clear_remainder_skb(void);
 void calculate_partition(char *playload, int playload_len, struct kfifo *fifo);

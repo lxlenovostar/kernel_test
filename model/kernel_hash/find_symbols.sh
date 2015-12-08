@@ -5,7 +5,7 @@ sysmap_path="$1/System.map"
 headfile="./ws_st_symbols.h"
 
 func_name=(
-	"tcp_v4_rcv"
+	"ip_rcv_finish"
 )
 func_num=${#func_name[@]}
 find_func_addr() {
@@ -39,6 +39,6 @@ write_headfile_head
 for ((i=0; i<$func_num; i++)) ; do
 	find_func_addr ${func_name[$i]}
 done
-echo "static int (*tcp_v4_rcv_ptr)(struct sk_buff *skb) = (int (*)(struct sk_buff *skb))tcp_v4_rcv_addr;" >> $headfile
+echo "static int (*ip_rcv_finish_ptr)(struct sk_buff *skb) = (int (*)(struct sk_buff *skb))ip_rcv_finish_addr;" >> $headfile
 write_headfile_tail
 echo "symbols address write to $headfile done!"

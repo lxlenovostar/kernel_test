@@ -135,6 +135,7 @@ static void mexit(void)
         unregister_jprobe(&jps_netif_receive_skb);
 	
 	flush_workqueue(skb_wq);
+	clear_remainder_skb();
 	destroy_workqueue(skb_wq);
 
 	release_hash_table_cache();
