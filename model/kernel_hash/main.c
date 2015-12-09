@@ -63,6 +63,7 @@ static int minit(void)
 	init_hash_parameters();
 	percpu_counter_init(&save_num, 0);
 	percpu_counter_init(&sum_num, 0);
+	percpu_counter_init(&skb_num, 0);
 
 	if (0 > (err = init_some_parameters()))
 		goto out;
@@ -148,6 +149,7 @@ static void mexit(void)
 	tmp_sum =  percpu_counter_sum(&sum_num);
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
+	percpu_counter_destroy(&skb_num);
 
 	if (tmp_sum > 0)
 		printk(KERN_INFO "Cache ratio is:%lu%%", (tmp_save*100)/tmp_sum);

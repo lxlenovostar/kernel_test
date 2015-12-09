@@ -261,19 +261,20 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 unsigned long long old_write_mm = 0ULL;
 unsigned long long old_save = 0ULL;
 unsigned long long old_sum = 0ULL;
+unsigned long long old_skb_sum = 0ULL;
 int time_intval = 10;
 
 void print_memory_usage(unsigned long data)
 {
-	unsigned long long tmp_save, tmp_sum;	
 	int slot_size = hash_tab_size * sizeof(struct list_head);
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	unsigned long long data_mem = percpu_counter_sum(&mm0) + percpu_counter_sum(&mm1) + percpu_counter_sum(&mm2) + percpu_counter_sum(&mm3);
 	unsigned long long write_mm = percpu_counter_sum(&mmw)/1024/1024;
 	unsigned long long write_d_mm = percpu_counter_sum(&mmd)/1024/1024;
-	tmp_save = percpu_counter_sum(&save_num)/1024/1024;
-	tmp_sum =  percpu_counter_sum(&sum_num)/1024/1024;
+	unsigned long long tmp_save = percpu_counter_sum(&save_num)/1024/1024;
+	unsigned long long tmp_sum =  percpu_counter_sum(&sum_num)/1024/1024;
+	unsigned long long tmp_skb_sum =  percpu_counter_sum(&skb_num);
 
 	printk(KERN_INFO "\n[memory usage]");	
 	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
@@ -284,6 +285,8 @@ void print_memory_usage(unsigned long data)
 	printk(KERN_INFO "[speed]");	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);
 
+	printk(KERN_INFO "[packets]");	
+	printk(KERN_INFO "packet num is:%llu pps", (tmp_skb_sum - old_skb_sum)/time_intval);
 	if (tmp_sum > 0) {
 		printk(KERN_INFO "[cache ratio]");	
 		printk(KERN_INFO "save bytes is:%lluMB, all bytes is:%lluMB, Cache ratio is:%llu%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
@@ -292,6 +295,7 @@ void print_memory_usage(unsigned long data)
 	old_write_mm = write_mm;
 	old_save = tmp_save;
 	old_sum = tmp_sum;
+	old_skb_sum = tmp_skb_sum;
 
 	mod_timer(&print_memory, jiffies + timeout_hash_del);
 }

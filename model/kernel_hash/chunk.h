@@ -16,6 +16,7 @@ extern unsigned long R;
 extern int chunk_num;  //控制最小值
 extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
+extern struct percpu_counter skb_num;
 extern struct workqueue_struct *writeread_wq; // for read/write file
 
 typedef struct {
