@@ -198,6 +198,7 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 	unsigned short sport, dport;
 	__be32 saddr, daddr;
 	char dsthost[16];
+	char ssthost[16];
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	unsigned long long reserve_mem;
@@ -226,12 +227,14 @@ int jpf_netif_receive_skb(struct sk_buff *skb)
 		daddr = iph->daddr;
 
 		snprintf(dsthost, 16, "%pI4", &daddr);
+		snprintf(ssthost, 16, "%pI4", &saddr);
 
 		/*		
 		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80)  
 			printk(KERN_INFO "ip is:%s", dsthost);
 		*/
 
+		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) { 
 		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) { 
 		//if (ntohs(sport) == 80) { 
 		//if (strcmp(dsthost, "139.209.90.60") == 0) { 
