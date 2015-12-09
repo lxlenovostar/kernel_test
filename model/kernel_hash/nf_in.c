@@ -26,6 +26,7 @@ struct kmem_cache *sha_data;
 struct kmem_cache *reskb_cachep;
 struct kmem_cache *listhead_cachep;
 struct kmem_cache *readskb_cachep;
+struct kmem_cache *tasklet_cachep;
 DEFINE_PER_CPU(struct list_head, skb_list);
 DECLARE_PER_CPU(struct file *, reserve_file); 
 
@@ -33,16 +34,13 @@ void my_tasklet_function(unsigned long data)
 {
 	struct sk_buff *skb = (struct sk_buff *)data;
 
-	//kfree_skb(skb);
-	//return;
-
 	//printk(KERN_INFO "Im here end0.");
 	local_bh_disable();
     //skb_pull(skb, ip_hdrlen(skb));
 	//skb_reset_transport_header(skb);
 	//(*tcp_v4_rcv_ptr)(skb);
-	//(*ip_rcv_finish_ptr)(skb);
-	kfree_skb(skb);
+	(*ip_rcv_finish_ptr)(skb);
+	//kfree_skb(skb);
 	local_bh_enable();
 	//printk(KERN_INFO "Im here end1.");
 	
@@ -336,7 +334,7 @@ static void handle_skb(struct work_struct *work)
 	kmem_cache_free(listhead_cachep, all_list);
 	*/
 		
-	my_tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_ATOMIC);
+	my_tasklet = kmem_cache_zalloc(tasklet_cachep, GFP_ATOMIC);  
     list_for_each_entry_safe(cp, next, &hand_list, list) {
 		list_del(&cp->list);
 		
@@ -346,7 +344,7 @@ static void handle_skb(struct work_struct *work)
 		tasklet_kill(my_tasklet);
 		kmem_cache_free(reskb_cachep, cp);
 	}
-	kfree(my_tasklet);
+	kmem_cache_free(tasklet_cachep, my_tasklet);
 }
 
 int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
@@ -392,9 +390,9 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		
 		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
-			//case 1			
+			//case 1: 			
 			/*
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
@@ -428,7 +426,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 				queue_work(skb_wq, &(per_cpu(work, cpu)));
 			} 
 			put_cpu();
-		//}
+		}
 	}
 out:
 	jprobe_return();

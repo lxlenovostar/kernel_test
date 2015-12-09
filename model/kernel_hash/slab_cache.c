@@ -118,6 +118,23 @@ int alloc_slab(void)
         return -ENOMEM;
     }
 
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    tasklet_cachep = kmem_cache_create(CACHE_NAME_TASKLET,
+            sizeof(struct tasklet_struct),
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+#else
+    tasklet_cachep = kmem_cache_create(CACHE_NAME_TASKLET,
+            sizeof(struct tasklet_struct),
+            0, SLAB_HWCACHE_ALIGN, NULL);
+#endif
+
+    if (!tasklet_cachep) {
+        printk(KERN_ERR "****** %s : kmem_cache_create  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
+
+
 
 	return 0;
 }
@@ -138,5 +155,6 @@ void free_slab()
 		kmem_cache_destroy(listhead_cachep);
     if (readskb_cachep)
 		kmem_cache_destroy(readskb_cachep);
-
+    if (tasklet_cachep)
+		kmem_cache_destroy(tasklet_cachep);
 }
