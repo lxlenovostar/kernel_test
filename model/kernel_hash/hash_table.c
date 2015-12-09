@@ -15,8 +15,8 @@
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
 #define ITEM_DISK_LIMIT 6 
-#define ITEM_VIP_LIMIT 60 
-unsigned long timeout_hash_del = 30*HZ;
+#define ITEM_VIP_LIMIT  60 
+unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
 
@@ -527,6 +527,7 @@ static void wr_file(struct work_struct *work)
 			}
 			
 			if (cp->cpuid == -2 &&  atomic_read(&cp->flag_cache) == 2 && atomic_read(&cp->share_ref) == 1) {
+				
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else
@@ -570,7 +571,7 @@ static void wr_file(struct work_struct *work)
 	
 	if (all_size == 0) 
 		return;
-	
+
 	/*
      * write file.
 	 */
@@ -611,9 +612,6 @@ void bucket_clear_item(unsigned long data)
     struct hashinfo_item *cp, *next;
 	int i, num;
     int flag = 0;
-	
-	mod_timer((bucket_clear+data), jiffies + timeout_hash_del);
-	return;
 
     ct_write_lock_bh(data, hash_lock_array);
     list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
@@ -661,8 +659,9 @@ void bucket_clear_item(unsigned long data)
 		if (atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0)
 			atomic_set(&cp->flag_cache, 2); 
 
-		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT) 
+		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT) {
 			flag = 1;
+		}
 			
 		if (atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT) { 
 			//just for statistics.

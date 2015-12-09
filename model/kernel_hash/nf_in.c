@@ -116,7 +116,6 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			r_skb->item = item;
 			list_add(&r_skb->list, (head+item->cpuid));	
 			*/
-
 			/*
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
@@ -388,8 +387,8 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(dsthost, 16, "%pI4", &daddr);
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//if (!strcmp(dsthost, "139.209.90.60") || !strcmp(ssthost, "139.209.90.60")) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 				skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
    				if (!skb_item) {
