@@ -137,6 +137,6 @@ void free_slab()
     if (listhead_cachep)
 		kmem_cache_destroy(listhead_cachep);
     if (readskb_cachep)
-		kmem_cache_destroy(listhead_cachep);
+		kmem_cache_destroy(readskb_cachep);
 
 }

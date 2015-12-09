@@ -66,7 +66,6 @@ __attribute__((section("__versions"))) = {
 	{ 0x46085e4f, "add_timer" },
 	{ 0x5240ee7, "percpu_counter_batch" },
 	{ 0xbf71e6d4, "__create_workqueue_key" },
-	{ 0x2bb3050b, "skb_pull" },
 	{ 0x2fe78c6d, "fput" },
 	{ 0xdfd9ed5f, "flush_workqueue" },
 	{ 0x61651be, "strcat" },
@@ -77,6 +76,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x3a3f86d, "unregister_jprobe" },
 	{ 0xf0fdf6cb, "__stack_chk_fail" },
 	{ 0x76a495c1, "cpu_possible_mask" },
+	{ 0x1000e51, "schedule" },
 	{ 0x799aca4, "local_bh_enable" },
 	{ 0x8b6e6108, "crypto_destroy_tfm" },
 	{ 0x5a57d155, "__percpu_counter_init" },
@@ -89,6 +89,7 @@ __attribute__((section("__versions"))) = {
 	{ 0xb6244511, "sg_init_one" },
 	{ 0x37a0cba, "kfree" },
 	{ 0x6067a146, "memcpy" },
+	{ 0x4cbbd171, "__bitmap_weight" },
 	{ 0x9edbecae, "snprintf" },
 	{ 0x93cbd1ec, "_spin_lock_bh" },
 	{ 0x8f1953fa, "crypto_alloc_base" },
@@ -103,7 +104,7 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "DA76A21360827614FFA1921");
+MODULE_INFO(srcversion, "A499C7805552150A33C96DD");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {

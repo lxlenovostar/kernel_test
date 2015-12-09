@@ -88,8 +88,8 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
 
 void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	//if (cp->mem_style >= 0)
-	//	return;
+	if (cp->mem_style >= 0)
+		return;
 
 	if (length <= CHUNKSTEP) {
 		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
@@ -154,7 +154,8 @@ static void free_data_memory(struct hashinfo_item *cp)
 		return;
 	} else {
 		//do nothing.
-        printk(KERN_ERR"****** %s : you can't arrive here. mem_style is:%d", __FUNCTION__, cp->mem_style);
+		int status = atomic_read(&cp->flag_cache);
+        printk(KERN_ERR"****** %s : you can't arrive here. mem_style is:%d, and flag_cache is:%d", __FUNCTION__, cp->mem_style, status);
 		BUG();	//TODO:	maybe other good way fix it.
 	}
 }
@@ -178,14 +179,12 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
        	return NULL;
    	}   
 
-	/*
-     * handle the value.
-     */
 	cp->len = len_value;
+	cp->mem_style = -1;
+	atomic_set(&cp->flag_cache, 0);    
 	alloc_data_memory(cp, cp->len);
 	memcpy(cp->data, value, cp->len);
 	
-	atomic_set(&cp->flag_cache, 0);    
     rwlock_init(&cp->cache_lock);
 
 	cp->cpuid = -1;
@@ -197,7 +196,6 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	atomic_set(&cp->share_ref, 1);    
     rwlock_init(&cp->share_lock);
 
-	cp->mem_style = -1;
 	cp->data_lock = SPIN_LOCK_UNLOCKED;
  
    	/*
