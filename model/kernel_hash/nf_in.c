@@ -93,13 +93,10 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			/*
 			 * if the data is in the memory, we do nothing.
 			 */
-			/*
 			write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
-			*/
-		}	else {
-			/*	
+		} else {
 			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
    			if (r_skb == NULL) {
    				DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
@@ -113,12 +110,6 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			   
 			r_skb->item = item;
 			list_add(&r_skb->list, (head+item->cpuid));	
-			*/
-			/*
-			write_lock_bh(&item->share_lock);
-			atomic_dec(&item->share_ref);
-			write_unlock_bh(&item->share_lock);
-			*/
 		}
 	}
 }
@@ -251,9 +242,12 @@ static void handle_skb(struct work_struct *work)
 	size_t data_len = 0;
 	struct iphdr *iph;
 	struct tcphdr *tcph;
+	ssize_t ret;
 
-	struct list_head *all_list  = NULL;  
 	/*
+	 * alloc the head list.
+	 */
+	//struct list_head *all_list  = NULL;  
 	struct list_head *all_list  = kmem_cache_zalloc(listhead_cachep, GFP_ATOMIC);  
    	if (all_list == NULL) {
    		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
@@ -263,8 +257,10 @@ static void handle_skb(struct work_struct *work)
 	for_each_online_cpu(cpu) {
     	INIT_LIST_HEAD((all_list + cpu));
 	}
-	*/
 
+	/*
+	 * get the skb
+	 */
 	cpu = get_cpu();
 	local_bh_disable();
     list_for_each_entry_safe(cp, next, &per_cpu(skb_list, cpu), list) {
@@ -279,7 +275,11 @@ static void handle_skb(struct work_struct *work)
 	local_bh_enable();
 	put_cpu();
      
-	
+	/*
+	 * 1.make data into hashmap.
+	 * 2.read the data from memory
+     * 3.store the data which need read from file.
+	 */
     list_for_each_entry(cp, &hand_list, list) {
 		iph = (struct iphdr *)(cp->skb)->data;
 		tcph = (struct tcphdr *)((cp->skb)->data + (iph->ihl << 2));
@@ -292,48 +292,58 @@ static void handle_skb(struct work_struct *work)
 		get_partition(data, data_len, all_list);
 	}   
 
-	/*
-	// * read the file.
+	/* 
+	 * read the file.
+	 */
     for_each_online_cpu(cpu) {
         list_for_each_entry_safe(r_cp, r_next, (all_list+cpu), list) {   
            	item = r_cp->item; 
 		
-			// * alloc memory space for data.
+			// alloc memory space for data.
 			spin_lock(&item->data_lock);
 			alloc_data_memory(item, item->len);
 			spin_unlock(&item->data_lock);
 
 	
-			// * alloc memory space for temporary read file.
+			// alloc memory space for temporary read file.
 			alloc_temp_memory(tmp_data, item->len);	
 
-		
-			// * read the file.
-    		if (kernel_read(per_cpu(reserve_file, cpu), item->start, tmp_data, item->len) < 0) {
-    			printk(KERN_ERR "read file error?\n");
+			//BUG	
+			unsigned char *buffer = kzalloc(1024, GFP_KERNEL);	
+			// read the file.
+    		ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
+    		if (ret < 0) {
+    			printk(KERN_ERR "read file error! err message is:%d, start is:%lu, len is:%d",ret, item->start, item->len);
         		BUG(); //TODO: need update it.
     		}
 
-
-			// * memcpy temporary space to data.
+			// memcpy temporary space to data.
 			spin_lock(&item->data_lock);
-			memcpy(item->data, tmp_data, item->len);
+			//memcpy(item->data, tmp_data, item->len);
+			memcpy(item->data, buffer, item->len);
 			spin_unlock(&item->data_lock);
+			
 			free_temp_memory(tmp_data, item->len);
-	
+			kfree(buffer);
+
 			list_del(&r_cp->list);
+			
+			/*
+			 * TODO: this maybe not lock. just atomic.
+			 */
 			write_lock_bh(&item->share_lock);
             atomic_dec(&item->share_ref);
             write_unlock_bh(&item->share_lock);
-           	kmem_cache_free(readskb_cachep, r_cp); 
+           	
+			kmem_cache_free(readskb_cachep, r_cp); 
         }   
     }   
-	*/
 
-	/*
 	kmem_cache_free(listhead_cachep, all_list);
-	*/
-		
+	
+	/*
+	 * resend skb into kernel.
+	 */	
 	my_tasklet = kmem_cache_zalloc(tasklet_cachep, GFP_ATOMIC);  
     list_for_each_entry_safe(cp, next, &hand_list, list) {
 		list_del(&cp->list);
