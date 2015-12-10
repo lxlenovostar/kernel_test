@@ -400,7 +400,7 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
+			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
 				free_data_memory(cp);
             kmem_cache_free(hash_cachep, cp);
         }
@@ -619,14 +619,14 @@ void bucket_clear_item(unsigned long data)
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			//if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
-			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
+			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
+			//if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
 				free_data_memory(cp);
 			/*
 		 	 * decide whether the data write into file by cp->cpuid.
 			 */
-			//if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0) || atomic_read(&cp->flag_cache) == 4) {
-			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0)) {
+			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0) || atomic_read(&cp->flag_cache) == 4) {
+			//if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0)) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else

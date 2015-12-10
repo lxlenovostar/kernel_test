@@ -242,6 +242,8 @@ static void handle_skb(struct work_struct *work)
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	ssize_t ret;
+	char buffer[512];
+	char *tmp_data = NULL;
 
 	/*
 	 * alloc the head list.
@@ -303,29 +305,36 @@ static void handle_skb(struct work_struct *work)
 			alloc_data_memory(item, item->len);
 			spin_unlock(&item->data_lock);
 	
-			char *tmp_data = NULL;
-			// alloc memory space for temporary read file.
-			alloc_temp_memory(tmp_data, item->len);	
-			//char tmp_data[1024];
+			//memory space for temporary read file.
+			if (unlikely(item->len > 512)) {
+				tmp_data = kzalloc(item->len, GFP_ATOMIC);	
+			} else {
+				memset(buffer, '\0', 512);
+			}
 
-			//BUG	
-			//char *buffer = kzalloc(1024, GFP_KERNEL);	
 			// read the file.
-    		//ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
-    		ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, tmp_data, item->len);
-    		if (ret < 0) {
+			if (unlikely(item->len > 512)) {
+				ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, tmp_data, item->len);
+    		} else {
+    			ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
+			}
+			
+			if (ret < 0) {
     			printk(KERN_ERR "read file error! err message is:%d, start is:%lu, len is:%d",ret, (item->start)*CHUNKSTEP, item->len);
         		BUG(); //TODO: need update it.
     		}
 
 			// memcpy temporary space to data.
 			spin_lock(&item->data_lock);
-			memcpy(item->data, tmp_data, item->len);
-			//memcpy(item->data, buffer, item->len);
+			if (unlikely(item->len > 512)) {
+				memcpy(item->data, tmp_data, item->len);
+			} else {
+				memcpy(item->data, buffer, item->len);
+			}
 			spin_unlock(&item->data_lock);
 			
-			free_temp_memory(tmp_data, item->len);
-			//kfree(buffer);
+			if (unlikely(item->len > 512)) 
+				kfree(tmp_data);
 
 			list_del(&r_cp->list);
 			
@@ -400,8 +409,8 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
 		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
-		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 			//case 1: 			
 			/*
