@@ -14,8 +14,8 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 6 
-#define ITEM_VIP_LIMIT  60 
+#define ITEM_DISK_LIMIT 60
+#define ITEM_VIP_LIMIT  120 
 unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
 uint32_t hash_tab_mask  = ((1<<WS_SP_HASH_TABLE_BITS)-1);
@@ -88,8 +88,9 @@ static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
 
 void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	if (cp->mem_style >= 0)
+	if (cp->mem_style >= 0) {
 		return;
+	}
 
 	if (length <= CHUNKSTEP) {
 		cp->data  = kmem_cache_zalloc(slab_chunk1, GFP_ATOMIC);  
@@ -182,6 +183,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	cp->len = len_value;
 	cp->mem_style = -1;
 	atomic_set(&cp->flag_cache, 0);    
+	cp->data_lock = SPIN_LOCK_UNLOCKED;
 	alloc_data_memory(cp, cp->len);
 	memcpy(cp->data, value, cp->len);
 	
@@ -195,8 +197,6 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	atomic_set(&cp->refcnt, ITEM_CITE_ADD);    
 	atomic_set(&cp->share_ref, 1);    
     rwlock_init(&cp->share_lock);
-
-	cp->data_lock = SPIN_LOCK_UNLOCKED;
  
    	/*
    	 * total hash item.

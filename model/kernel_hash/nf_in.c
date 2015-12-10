@@ -29,6 +29,7 @@ struct kmem_cache *readskb_cachep;
 struct kmem_cache *tasklet_cachep;
 DEFINE_PER_CPU(struct list_head, skb_list);
 DECLARE_PER_CPU(struct file *, reserve_file); 
+DEFINE_PER_CPU(int, skb_handle_num);
 
 void my_tasklet_function(unsigned long data)
 {
@@ -379,7 +380,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	unsigned long long reserve_mem;
-	int cpu;
+	int cpu, skb_num;
 	struct reject_skb *skb_item;  
 	char *data = NULL;
 	size_t data_len = 0;
@@ -410,9 +411,9 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(dsthost, 16, "%pI4", &daddr);
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
-		if (strcmp(dsthost, "139.209.90.60") == 0) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 			//case 1: 			
 			/*
@@ -441,11 +442,18 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		
 			percpu_counter_inc(&skb_num);
 				
+			//开启工作队列的条件
+			cpu = get_cpu();
+			skb_num = per_cpu(skb_handle_num, cpu)++;
+			put_cpu();
+
 			//判断是否开启工作队列
 			cpu = get_cpu();
-			if (!work_pending(&(per_cpu(work, cpu)))) {
+			if (!work_pending(&(per_cpu(work, cpu))) && skb_num >= 1000) {
 				INIT_WORK(&(per_cpu(work, cpu)), handle_skb);
 				queue_work(skb_wq, &(per_cpu(work, cpu)));
+			
+				per_cpu(skb_handle_num, cpu) = 0;
 			} 
 			put_cpu();
 		}
