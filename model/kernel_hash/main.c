@@ -45,7 +45,7 @@ int init_some_parameters(void)
 {	
 	int cpu;
 
-	skb_wq = create_workqueue("read_queue");
+	skb_wq = create_workqueue("kread_queue");
 	if (!skb_wq)
 		return -1;
 	

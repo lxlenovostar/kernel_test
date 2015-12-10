@@ -300,7 +300,7 @@ int initial_hash_table_cache(void)
     unsigned long idx;
 	int cpu;
     
-	writeread_wq = create_workqueue("wr_queue");
+	writeread_wq = create_workqueue("kwrite_queue");
 	if (!writeread_wq)
 		return -1;
 
@@ -625,7 +625,8 @@ void bucket_clear_item(unsigned long data)
 			/*
 		 	 * decide whether the data write into file by cp->cpuid.
 			 */
-			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0) || atomic_read(&cp->flag_cache) == 4) {
+			//if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0) || atomic_read(&cp->flag_cache) == 4) {
+			if (atomic_read(&cp->flag_cache) == 1 || (atomic_read(&cp->flag_cache) == 2 && cp->cpuid >= 0)) {
 				if (cp->len <= CHUNKSTEP)
 					num = 1;
 				else

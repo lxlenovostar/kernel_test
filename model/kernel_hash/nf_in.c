@@ -233,7 +233,6 @@ static void handle_skb(struct work_struct *work)
     struct reject_skb *cp, *next;
     struct read_skb *r_cp, *r_next;
 	struct hashinfo_item *item;
-	char *tmp_data = NULL;
 	int threshold = 20000;
 	int i = 0;	
 	struct tasklet_struct *my_tasklet;
@@ -303,28 +302,30 @@ static void handle_skb(struct work_struct *work)
 			spin_lock(&item->data_lock);
 			alloc_data_memory(item, item->len);
 			spin_unlock(&item->data_lock);
-
 	
+			char *tmp_data = NULL;
 			// alloc memory space for temporary read file.
 			alloc_temp_memory(tmp_data, item->len);	
+			//char tmp_data[1024];
 
 			//BUG	
-			unsigned char *buffer = kzalloc(1024, GFP_KERNEL);	
+			//char *buffer = kzalloc(1024, GFP_KERNEL);	
 			// read the file.
-    		ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
+    		//ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
+    		ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, tmp_data, item->len);
     		if (ret < 0) {
-    			printk(KERN_ERR "read file error! err message is:%d, start is:%lu, len is:%d",ret, item->start, item->len);
+    			printk(KERN_ERR "read file error! err message is:%d, start is:%lu, len is:%d",ret, (item->start)*CHUNKSTEP, item->len);
         		BUG(); //TODO: need update it.
     		}
 
 			// memcpy temporary space to data.
 			spin_lock(&item->data_lock);
-			//memcpy(item->data, tmp_data, item->len);
-			memcpy(item->data, buffer, item->len);
+			memcpy(item->data, tmp_data, item->len);
+			//memcpy(item->data, buffer, item->len);
 			spin_unlock(&item->data_lock);
 			
 			free_temp_memory(tmp_data, item->len);
-			kfree(buffer);
+			//kfree(buffer);
 
 			list_del(&r_cp->list);
 			
@@ -399,8 +400,8 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
 		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
-		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 			//case 1: 			
 			/*
