@@ -93,9 +93,11 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			/*
 			 * if the data is in the memory, we do nothing.
 			 */
-			write_lock_bh(&item->share_lock);
+			atomic_dec(&item->share_ref);
+			/*write_lock_bh(&item->share_lock);
 			atomic_dec(&item->share_ref);
 			write_unlock_bh(&item->share_lock);
+			*/
 		} else {
 			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
    			if (r_skb == NULL) {
@@ -341,9 +343,9 @@ static void handle_skb(struct work_struct *work)
 			/*
 			 * TODO: this maybe not lock. just atomic.
 			 */
-			write_lock_bh(&item->share_lock);
+			//write_lock_bh(&item->share_lock);
             atomic_dec(&item->share_ref);
-            write_unlock_bh(&item->share_lock);
+            //write_unlock_bh(&item->share_lock);
            	
 			kmem_cache_free(readskb_cachep, r_cp); 
         }   
@@ -408,9 +410,9 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(dsthost, 16, "%pI4", &daddr);
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
-		//if (strcmp(dsthost, "139.209.90.60") == 0) {  
+		if (strcmp(dsthost, "139.209.90.60") == 0) {  
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
-		if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
+		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 			//case 1: 			
 			/*
