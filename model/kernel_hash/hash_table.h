@@ -91,7 +91,7 @@ struct hashinfo_item
 	 * 2: SLAB CHUNKSTEP*2
      * 3: SLAB CHUNKSTEP*3 
      */
-	int mem_style;         
+	atomic_t mem_style;         
 	spinlock_t data_lock;
 
 	/*

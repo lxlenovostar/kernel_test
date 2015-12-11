@@ -52,7 +52,7 @@ int init_some_parameters(void)
 	for_each_online_cpu(cpu) {
 		INIT_LIST_HEAD(&per_cpu(skb_list, cpu));
 	}
-
+	
 	return 0;
 }
 
@@ -61,9 +61,12 @@ static int minit(void)
 	int err = 0;
 
 	init_hash_parameters();
-	percpu_counter_init(&save_num, 0);
-	percpu_counter_init(&sum_num, 0);
-	percpu_counter_init(&skb_num, 0);
+	percpu_counter_init(&save_num, 0ULL);
+	percpu_counter_init(&sum_num, 0ULL);
+	percpu_counter_init(&skb_num, 0ULL);
+	percpu_counter_init(&rdl, 0ULL);
+	percpu_counter_init(&rdf, 0ULL);
+
 
 	if (0 > (err = init_some_parameters()))
 		goto out;

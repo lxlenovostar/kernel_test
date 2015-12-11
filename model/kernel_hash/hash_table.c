@@ -14,7 +14,7 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 60
+#define ITEM_DISK_LIMIT 60 
 #define ITEM_VIP_LIMIT  120 
 unsigned long timeout_hash_del = 10*HZ;
 uint32_t hash_tab_size  = (1<<WS_SP_HASH_TABLE_BITS);
@@ -47,6 +47,7 @@ struct percpu_counter mm3;
 struct percpu_counter mmw;
 struct percpu_counter mmd;
 
+
 struct kmem_cache * slab_chunk1;
 struct kmem_cache * slab_chunk2;
 struct kmem_cache * slab_chunk3;
@@ -78,17 +79,9 @@ static inline uint32_t _unhash(uint32_t hash, struct hashinfo_item *cp)
     return 1;
 }
 
-static inline uint32_t reset_hash(uint32_t hash, struct hashinfo_item *cp)
-{
-    ct_write_lock_bh(hash, hash_lock_array);
-	atomic_set(&cp->refcnt, 1);
-    ct_write_unlock_bh(hash, hash_lock_array);
-    return 1;
-}
-
 void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 {
-	if (cp->mem_style >= 0) {
+	if (atomic_read(&cp->mem_style) >= 0) {
 		return;
 	}
 
@@ -98,7 +91,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
-		cp->mem_style = 1;
+		atomic_set(&cp->mem_style, 1);
 		percpu_counter_add(&mm1, CHUNKSTEP);
 		return;
 	} else if (length <= CHUNKSTEP*2) {
@@ -107,7 +100,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
-		cp->mem_style = 2;
+		atomic_set(&cp->mem_style, 2);
 		percpu_counter_add(&mm2, CHUNKSTEP*2);
 		return;
 	} else if (length <= CHUNKSTEP*3) {
@@ -116,7 +109,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
-		cp->mem_style = 3;
+		atomic_set(&cp->mem_style, 3);
 		percpu_counter_add(&mm3, CHUNKSTEP*3);
 		return;
 	} else {	
@@ -125,7 +118,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
         	DEBUG_LOG(KERN_ERR"****** %s : malloc cp->data error\n", __FUNCTION__);
 			BUG();	//TODO:	maybe other good way fix it.
 		}
-		cp->mem_style = 0;
+		atomic_set(&cp->mem_style, 0);
 		percpu_counter_add(&mm0, cp->len);
 		return;
 	}
@@ -133,30 +126,31 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 
 static void free_data_memory(struct hashinfo_item *cp) 
 {
-	if (cp->mem_style == 0) {
+	if (atomic_read(&cp->mem_style) == 0) {
 		kfree(cp->data);	
-		cp->mem_style = -1;
+		atomic_set(&cp->mem_style, -1);
 		percpu_counter_add(&mm0, -(cp->len));
 		return;
-	} else if (cp->mem_style == 1) {
+	} else if (atomic_read(&cp->mem_style) == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
-		cp->mem_style = -1;
+		atomic_set(&cp->mem_style, -1);
 		percpu_counter_add(&mm1, -(CHUNKSTEP));
 		return;
-	} else if (cp->mem_style == 2) {
+	} else if (atomic_read(&cp->mem_style) == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
-		cp->mem_style = -1;
+		atomic_set(&cp->mem_style, -1);
 		percpu_counter_add(&mm2, -(CHUNKSTEP*2));
 		return;
-	} else if (cp->mem_style == 3) {
+	} else if (atomic_read(&cp->mem_style) == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
-		cp->mem_style = -1;
+		atomic_set(&cp->mem_style, -1);
 		percpu_counter_add(&mm3, -(CHUNKSTEP*3));
 		return;
 	} else {
 		//do nothing.
 		int status = atomic_read(&cp->flag_cache);
-        printk(KERN_ERR"****** %s : you can't arrive here. mem_style is:%d, and flag_cache is:%d", __FUNCTION__, cp->mem_style, status);
+		int mem_style = atomic_read(&cp->mem_style);
+        printk(KERN_ERR"****** %s : you can't arrive here. mem_style is:%d, and flag_cache is:%d", __FUNCTION__, mem_style, status);
 		BUG();	//TODO:	maybe other good way fix it.
 	}
 }
@@ -181,7 +175,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
    	}   
 
 	cp->len = len_value;
-	cp->mem_style = -1;
+	atomic_set(&cp->mem_style, -1);    
 	atomic_set(&cp->flag_cache, 0);    
 	cp->data_lock = SPIN_LOCK_UNLOCKED;
 	alloc_data_memory(cp, cp->len);
@@ -270,12 +264,17 @@ void print_memory_usage(unsigned long data)
 	unsigned long long tmp_save = percpu_counter_sum(&save_num)/1024/1024;
 	unsigned long long tmp_sum =  percpu_counter_sum(&sum_num)/1024/1024;
 	unsigned long long tmp_skb_sum =  percpu_counter_sum(&skb_num);
+	unsigned long long read_data = percpu_counter_sum(&rdl)/1024/1024;
+	unsigned long long read_frequency = percpu_counter_sum(&rdf);
 
 	printk(KERN_INFO "\n[memory usage]");	
 	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
 	printk(KERN_INFO "[write file]");	
 	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
+	
+	printk(KERN_INFO "[read file]");	
+	printk(KERN_INFO "read data is:%lluMB, number of times is:%llu", read_data, read_frequency);
 	
 	printk(KERN_INFO "[speed]");	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);
@@ -613,7 +612,8 @@ void bucket_clear_item(unsigned long data)
     int flag = 0;
 
     ct_write_lock_bh(data, hash_lock_array);
-    list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
+    //if (ct_write_trylock_bh(data, hash_lock_array)) {
+	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		//read_lock_bh(&cp->share_lock);
 		//write_lock_bh(&cp->cache_lock);
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
@@ -672,8 +672,9 @@ void bucket_clear_item(unsigned long data)
 		//write_unlock_bh(&cp->cache_lock);
 		//read_unlock_bh(&cp->share_lock);
 	}
+	//}
     ct_write_unlock_bh(data, hash_lock_array);
-
+	
 	/*
      * work join in workqueue.
      */

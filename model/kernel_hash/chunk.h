@@ -18,6 +18,8 @@ extern struct percpu_counter save_num;
 extern struct percpu_counter sum_num;
 extern struct percpu_counter skb_num;
 extern struct workqueue_struct *writeread_wq; // for read/write file
+extern struct percpu_counter rdl;
+extern struct percpu_counter rdf;
 
 typedef struct {
 	struct work_struct wr_work;
