@@ -153,6 +153,8 @@ static void mexit(void)
 	percpu_counter_destroy(&save_num);
 	percpu_counter_destroy(&sum_num);
 	percpu_counter_destroy(&skb_num);
+	percpu_counter_destroy(&rdl);
+	percpu_counter_destroy(&rdf);
 
 	if (tmp_sum > 0)
 		printk(KERN_INFO "Cache ratio is:%lu%%", (tmp_save*100)/tmp_sum);
