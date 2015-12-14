@@ -70,8 +70,6 @@ prehandle_skb(skb) {
 	for in range(len(skb))
    		刷新hash表 get_partition()
 }
-
-
 */
 
 void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head) 
@@ -80,10 +78,6 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 	struct read_skb *r_skb;
 	unsigned long flags;
 
-	/*
-	 *TODO: 需要理解API local_irq_save, 以及内核抢占、内核调度 和 硬中断的关系
-     * http://www.unixresources.net/linux/clf/linuxK/archive/00/00/63/61/636117.html
-	 */
 	local_irq_save(flags);
 	item = get_hash_item(dst);
 	local_irq_restore(flags);
