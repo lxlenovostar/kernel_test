@@ -92,7 +92,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 1);
-		percpu_counter_add(&mm1, CHUNKSTEP);
+		//percpu_counter_add(&mm1, CHUNKSTEP);
 		return;
 	} else if (length <= CHUNKSTEP*2) {
 		cp->data  = kmem_cache_zalloc(slab_chunk2, GFP_ATOMIC);  
@@ -101,7 +101,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 2);
-		percpu_counter_add(&mm2, CHUNKSTEP*2);
+		//percpu_counter_add(&mm2, CHUNKSTEP*2);
 		return;
 	} else if (length <= CHUNKSTEP*3) {
 		cp->data  = kmem_cache_zalloc(slab_chunk3, GFP_ATOMIC);  
@@ -110,7 +110,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 3);
-		percpu_counter_add(&mm3, CHUNKSTEP*3);
+		//percpu_counter_add(&mm3, CHUNKSTEP*3);
 		return;
 	} else {	
 		cp->data = kmalloc(cp->len, GFP_ATOMIC);
@@ -119,7 +119,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 0);
-		percpu_counter_add(&mm0, cp->len);
+		//percpu_counter_add(&mm0, cp->len);
 		return;
 	}
 }
@@ -129,22 +129,22 @@ static void free_data_memory(struct hashinfo_item *cp)
 	if (atomic_read(&cp->mem_style) == 0) {
 		kfree(cp->data);	
 		atomic_set(&cp->mem_style, -1);
-		percpu_counter_add(&mm0, -(cp->len));
+		//percpu_counter_add(&mm0, -(cp->len));
 		return;
 	} else if (atomic_read(&cp->mem_style) == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		percpu_counter_add(&mm1, -(CHUNKSTEP));
+		//percpu_counter_add(&mm1, -(CHUNKSTEP));
 		return;
 	} else if (atomic_read(&cp->mem_style) == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		percpu_counter_add(&mm2, -(CHUNKSTEP*2));
+		//percpu_counter_add(&mm2, -(CHUNKSTEP*2));
 		return;
 	} else if (atomic_read(&cp->mem_style) == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		percpu_counter_add(&mm3, -(CHUNKSTEP*3));
+		//percpu_counter_add(&mm3, -(CHUNKSTEP*3));
 		return;
 	} else {
 		//do nothing.
@@ -201,7 +201,10 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
    	 * insert into the hash table.
    	 */
 	HASH_FCN(cp->sha1, SHA1SIZE, hash_tab_size, hash, bkt);
+	//unsigned long flags;
+	//local_irq_save(flags);
    	_hash(bkt, cp);
+	//local_irq_restore(flags);
 
    	DEBUG_LOG(KERN_INFO "%s", __FUNCTION__ );
 	return cp; 
@@ -579,12 +582,11 @@ static void wr_file(struct work_struct *work)
     	printk(KERN_ERR "Error writing file:%d\n", cpu);
 		BUG(); //TODO need updat it.
 	}
-	
-	percpu_counter_add(&mmw, st_all_size);
 
     //TODO: file size maybe so big?
 	per_cpu(loff_file, cpu) += all_size;
 	put_cpu();		
+	percpu_counter_add(&mmw, st_all_size);
 
 	/*
 	 * free memory.
@@ -610,12 +612,21 @@ void bucket_clear_item(unsigned long data)
     struct hashinfo_item *cp, *next;
 	int i, num;
     int flag = 0;
+	//int threshold = 100;
 
     ct_write_lock_bh(data, hash_lock_array);
     //if (ct_write_trylock_bh(data, hash_lock_array)) {
 	list_for_each_entry_safe(cp, next, &hash_tab[data], c_list) {
 		//read_lock_bh(&cp->share_lock);
 		//write_lock_bh(&cp->cache_lock);
+	
+		/*	
+		if (threshold == 0)
+				break;
+		else 
+			threshold--;
+		*/
+
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);

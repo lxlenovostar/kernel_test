@@ -76,22 +76,22 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 {
 	struct hashinfo_item *item;	
 	struct read_skb *r_skb;
-	unsigned long flags;
+	//unsigned long flags;
 
-	local_irq_save(flags);
+	//local_irq_save(flags);
 	item = get_hash_item(dst);
-	local_irq_restore(flags);
+	//local_irq_restore(flags);
     if (item == NULL) {
-		local_irq_save(flags);
+		//local_irq_save(flags);
         if (unlikely(add_hash_info(dst, src, len) != 0)) {
 			printk(KERN_ERR "%s:add hash item error", __FUNCTION__);
         }   	
-		local_irq_restore(flags);
-		percpu_counter_add(&sum_num, len);
+		//local_irq_restore(flags);
+		//percpu_counter_add(&sum_num, len);
 	}
 	else {
-		percpu_counter_add(&save_num, (len - SHALEN - 2));
-		percpu_counter_add(&sum_num, len);
+		//percpu_counter_add(&save_num, (len - SHALEN - 2));
+		//percpu_counter_add(&sum_num, len);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
 		if (atomic_read(&item->flag_cache) != 4) {
@@ -287,8 +287,8 @@ static void read_data(struct list_head *all_head)
        			BUG(); //TODO: need update it.
    			}
 
-			percpu_counter_add(&rdl, item->len);
-			percpu_counter_inc(&rdf);
+			//percpu_counter_add(&rdl, item->len);
+			//percpu_counter_inc(&rdf);
 
 			// memcpy temporary space to data.
 			spin_lock(&item->data_lock);
