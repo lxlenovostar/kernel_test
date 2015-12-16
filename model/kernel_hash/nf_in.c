@@ -262,57 +262,56 @@ static void read_data(struct list_head *all_head)
 			continue;
 			*/	
 			item = r_cp->item; 
-		
-			// alloc memory space for data.
-			spin_lock(&item->data_lock);
-			alloc_data_memory(item, item->len);
-			spin_unlock(&item->data_lock);
+	
+			if (atomic_read(&item->flag_mem) == 0) {	
+				// alloc memory space for data.
+				spin_lock(&item->data_lock);
+				alloc_data_memory(item, item->len);
+				spin_unlock(&item->data_lock);
 
-			//memory space for temporary read file.
-			if (unlikely(item->len > 512)) {
-				tmp_data = kzalloc(item->len, GFP_ATOMIC);	
-			} else {
-				memset(buffer, '\0', 512);
-			}
+				//memory space for temporary read file.
+				if (unlikely(item->len > 512)) {
+					tmp_data = kzalloc(item->len, GFP_ATOMIC);	
+				} else {
+					memset(buffer, '\0', 512);
+				}
 			
-			//read the file.
-			if (unlikely(item->len > 512)) {
-				ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, tmp_data, item->len);
-   			} else {
-   				ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
-			}
+				//read the file.
+				if (unlikely(item->len > 512)) {
+					ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, tmp_data, item->len);
+   				} else {
+   					ret = kernel_read(per_cpu(reserve_file, cpu), (item->start)*CHUNKSTEP, buffer, item->len);
+				}
 		
-			if (ret < 0) {
-   				printk(KERN_ERR "read file error! err message is:%zd, start is:%lu, len is:%d",ret, (item->start)*CHUNKSTEP, item->len);
-       			BUG(); //TODO: need update it.
-   			}
+				if (ret < 0) {
+   					printk(KERN_ERR "read file error! err message is:%zd, start is:%lu, len is:%d",ret, (item->start)*CHUNKSTEP, item->len);
+       				BUG(); //TODO: need update it.
+   				}
 
-			atomic64_add(item->len, &rdl);
-			atomic64_inc(&rdf);
+				atomic64_add(item->len, &rdl);
+				atomic64_inc(&rdf);
 
-			// memcpy temporary space to data.
-			spin_lock(&item->data_lock);
-			if (unlikely(item->len > 512)) {
-				memcpy(item->data, tmp_data, item->len);
-			} else {
-				memcpy(item->data, buffer, item->len);
-			}
-			spin_unlock(&item->data_lock);
-		
-			if (unlikely(item->len > 512)) 
-				kfree(tmp_data);
+				// memcpy temporary space to data.
+				spin_lock(&item->data_lock);
+				if (unlikely(item->len > 512)) {
+					memcpy(item->data, tmp_data, item->len);
+				} else {
+					memcpy(item->data, buffer, item->len);
+				}
+				spin_unlock(&item->data_lock);
+	
+				// data has moved to memory.
+				atomic_set(&item->flag_mem, 1);
+	
+				if (unlikely(item->len > 512)) 
+					kfree(tmp_data);
+				}
 
-			list_del(&r_cp->list);
+				list_del(&r_cp->list);
 			
-			/*
-			 * TODO: this maybe not lock. just atomic.
-			 */
-			//write_lock_bh(&item->share_lock);
-            atomic_dec(&item->share_ref);
-            //write_unlock_bh(&item->share_lock);
-           	
-			kmem_cache_free(readskb_cachep, r_cp); 
-        }   
+            	atomic_dec(&item->share_ref);
+				kmem_cache_free(readskb_cachep, r_cp); 
+    	}   
     }   
 }
 

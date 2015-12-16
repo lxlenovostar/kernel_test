@@ -178,6 +178,7 @@ static struct hashinfo_item* hash_new_item(uint8_t *info, char *value, size_t le
 	cp->len = len_value;
 	atomic_set(&cp->mem_style, -1);    
 	atomic_set(&cp->flag_cache, 0);    
+	atomic_set(&cp->flag_mem, 0);    
 	cp->data_lock = SPIN_LOCK_UNLOCKED;
 	alloc_data_memory(cp, cp->len);
 	memcpy(cp->data, value, cp->len);

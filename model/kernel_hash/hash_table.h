@@ -106,9 +106,16 @@ struct hashinfo_item
      * 1: just in disk.
      * 2: in memory, will write to disk. 
 	 * 3: always in memory.
+	 * 4: read from file, so in memory and file.
      */
 	atomic_t flag_cache; 	
 	rwlock_t cache_lock;
+	
+	/*
+	 * 0: data not in memory.
+	 * 1: data in memory.
+	 */
+	atomic_t flag_mem;
 
 	/* 
 	 * just for statistics
