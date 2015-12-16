@@ -18,11 +18,11 @@
 #include "slab_cache.h"
 #include "alloc_mem.h"
 
-struct percpu_counter save_num;
-struct percpu_counter sum_num;
-struct percpu_counter skb_num;
-struct percpu_counter rdl;
-struct percpu_counter rdf;
+atomic64_t sum_num;
+atomic64_t save_num;
+atomic64_t skb_num;
+atomic64_t rdl;
+atomic64_t rdf;
 DEFINE_PER_CPU(struct work_struct , work); 
 struct kmem_cache *sha_data; 
 struct kmem_cache *reskb_cachep;
@@ -87,11 +87,11 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			printk(KERN_ERR "%s:add hash item error", __FUNCTION__);
         }   	
 		//local_irq_restore(flags);
-		//percpu_counter_add(&sum_num, len);
+		atomic64_add(len, &sum_num);
 	}
 	else {
-		//percpu_counter_add(&save_num, (len - SHALEN - 2));
-		//percpu_counter_add(&sum_num, len);
+		atomic64_add(len, &sum_num);
+		atomic64_add((len - SHALEN -2), &save_num);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
 		if (atomic_read(&item->flag_cache) != 4) {
@@ -287,8 +287,8 @@ static void read_data(struct list_head *all_head)
        			BUG(); //TODO: need update it.
    			}
 
-			//percpu_counter_add(&rdl, item->len);
-			//percpu_counter_inc(&rdf);
+			atomic64_add(item->len, &rdl);
+			atomic64_inc(&rdf);
 
 			// memcpy temporary space to data.
 			spin_lock(&item->data_lock);
@@ -464,7 +464,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 			//for (i = 0; i < data_len; ++i)
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len, NULL);
-			percpu_counter_inc(&skb_num);
+			atomic64_inc(&skb_num);
 			*/
 
 			//case2
@@ -481,7 +481,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 			list_add_tail(&skb_item->list, &per_cpu(skb_list, cpu));
 			put_cpu();
 		
-			percpu_counter_inc(&skb_num);
+			atomic64_inc(&skb_num);
 
 			//判断是否开启工作队列
 			cpu = get_cpu();

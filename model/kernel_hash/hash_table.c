@@ -40,10 +40,11 @@ void bucket_clear_item(unsigned long data);
 
 w_work_t w_work[1<<WS_SP_HASH_TABLE_BITS];
 
-struct percpu_counter mm0;
-struct percpu_counter mm1;
-struct percpu_counter mm2;
-struct percpu_counter mm3;
+atomic64_t mm0;
+atomic64_t mm1;
+atomic64_t mm2;
+atomic64_t mm3;
+
 struct percpu_counter mmw;
 struct percpu_counter mmd;
 
@@ -92,7 +93,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 1);
-		//percpu_counter_add(&mm1, CHUNKSTEP);
+		atomic64_add(CHUNKSTEP, &mm1);
 		return;
 	} else if (length <= CHUNKSTEP*2) {
 		cp->data  = kmem_cache_zalloc(slab_chunk2, GFP_ATOMIC);  
@@ -101,7 +102,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 2);
-		//percpu_counter_add(&mm2, CHUNKSTEP*2);
+		atomic64_add(CHUNKSTEP*2, &mm2);
 		return;
 	} else if (length <= CHUNKSTEP*3) {
 		cp->data  = kmem_cache_zalloc(slab_chunk3, GFP_ATOMIC);  
@@ -110,7 +111,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 3);
-		//percpu_counter_add(&mm3, CHUNKSTEP*3);
+		atomic64_add(CHUNKSTEP*3, &mm3);
 		return;
 	} else {	
 		cp->data = kmalloc(cp->len, GFP_ATOMIC);
@@ -119,7 +120,7 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 0);
-		//percpu_counter_add(&mm0, cp->len);
+		atomic64_add(cp->len, &mm0);
 		return;
 	}
 }
@@ -129,22 +130,22 @@ static void free_data_memory(struct hashinfo_item *cp)
 	if (atomic_read(&cp->mem_style) == 0) {
 		kfree(cp->data);	
 		atomic_set(&cp->mem_style, -1);
-		//percpu_counter_add(&mm0, -(cp->len));
+		atomic64_sub(cp->len, &mm0);
 		return;
 	} else if (atomic_read(&cp->mem_style) == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		//percpu_counter_add(&mm1, -(CHUNKSTEP));
+		atomic64_sub(CHUNKSTEP, &mm1);
 		return;
 	} else if (atomic_read(&cp->mem_style) == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		//percpu_counter_add(&mm2, -(CHUNKSTEP*2));
+		atomic64_sub(CHUNKSTEP*2, &mm2);
 		return;
 	} else if (atomic_read(&cp->mem_style) == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		//percpu_counter_add(&mm3, -(CHUNKSTEP*3));
+		atomic64_sub(CHUNKSTEP*3, &mm3);
 		return;
 	} else {
 		//do nothing.
@@ -253,7 +254,7 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
 unsigned long long old_write_mm = 0ULL;
 unsigned long long old_save = 0ULL;
 unsigned long long old_sum = 0ULL;
-unsigned long long old_skb_sum = 0ULL;
+long old_skb_sum = 0L;
 int time_intval = 10;
 
 void print_memory_usage(unsigned long data)
@@ -261,32 +262,32 @@ void print_memory_usage(unsigned long data)
 	int slot_size = hash_tab_size * sizeof(struct list_head);
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
-	unsigned long long data_mem = percpu_counter_sum(&mm0) + percpu_counter_sum(&mm1) + percpu_counter_sum(&mm2) + percpu_counter_sum(&mm3);
+	long data_mem = atomic64_read(&mm0) + atomic64_read(&mm1) + atomic64_read(&mm2) + atomic64_read(&mm3);
 	unsigned long long write_mm = percpu_counter_sum(&mmw)/1024/1024;
 	unsigned long long write_d_mm = percpu_counter_sum(&mmd)/1024/1024;
-	unsigned long long tmp_save = percpu_counter_sum(&save_num)/1024/1024;
-	unsigned long long tmp_sum =  percpu_counter_sum(&sum_num)/1024/1024;
-	unsigned long long tmp_skb_sum =  percpu_counter_sum(&skb_num);
-	unsigned long long read_data = percpu_counter_sum(&rdl)/1024/1024;
-	unsigned long long read_frequency = percpu_counter_sum(&rdf);
+	long tmp_save = atomic64_read(&save_num)/1024/1024;
+	long tmp_sum =  atomic64_read(&sum_num)/1024/1024;
+	long tmp_skb_sum =  atomic64_read(&skb_num);
+	long read_data = atomic64_read(&rdl)/1024/1024;
+	long read_frequency = atomic64_read(&rdf);
 
 	printk(KERN_INFO "\n[memory usage]");	
-	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%lluMB, all memory is:%lluMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
+	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%ldMB, all memory is:%ldMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
 	printk(KERN_INFO "[write file]");	
 	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
 	
 	printk(KERN_INFO "[read file]");	
-	printk(KERN_INFO "read data is:%lluMB, number of times is:%llu", read_data, read_frequency);
+	printk(KERN_INFO "read data is:%ldMB, number of times is:%ld", read_data, read_frequency);
 	
 	printk(KERN_INFO "[speed]");	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);
 
 	printk(KERN_INFO "[packets]");	
-	printk(KERN_INFO "packet num is:%llu pps", (tmp_skb_sum - old_skb_sum)/time_intval);
+	printk(KERN_INFO "packet num is:%ld pps", (tmp_skb_sum - old_skb_sum)/time_intval);
 	if (tmp_sum > 0) {
 		printk(KERN_INFO "[cache ratio]");	
-		printk(KERN_INFO "save bytes is:%lluMB, all bytes is:%lluMB, Cache ratio is:%llu%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
+		printk(KERN_INFO "save bytes is:%ldMB, all bytes is:%ldMB, Cache ratio is:%ld%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
 	}
 
 	old_write_mm = write_mm;
@@ -360,10 +361,10 @@ int initial_hash_table_cache(void)
    		add_timer_on(bucket_clear+idx, idx%cpunum);
 	}
 	
-	percpu_counter_init(&mm0, 0ULL);
-	percpu_counter_init(&mm1, 0ULL);
-	percpu_counter_init(&mm2, 0ULL);
-	percpu_counter_init(&mm3, 0ULL);
+	atomic64_set(&mm0, 0L);
+	atomic64_set(&mm1, 0L);
+	atomic64_set(&mm2, 0L);
+	atomic64_set(&mm3, 0L);
 	
 	percpu_counter_init(&mmw, 0ULL);
 	percpu_counter_init(&mmd, 0ULL);
@@ -418,11 +419,6 @@ void release_hash_table_cache(void)
     hash_flush();
 	
 	del_timer_sync(&print_memory);
-
-	percpu_counter_destroy(&mm0);
-	percpu_counter_destroy(&mm1);
-	percpu_counter_destroy(&mm2);
-	percpu_counter_destroy(&mm3);
 
 	percpu_counter_destroy(&mmw);
 	percpu_counter_destroy(&mmd);

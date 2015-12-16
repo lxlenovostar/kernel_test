@@ -14,12 +14,12 @@ extern unsigned long Q;
 extern unsigned long R;
 //extern int R = 10;
 extern int chunk_num;  //控制最小值
-extern struct percpu_counter save_num;
-extern struct percpu_counter sum_num;
-extern struct percpu_counter skb_num;
-extern struct workqueue_struct *writeread_wq; // for read/write file
-extern struct percpu_counter rdl;
-extern struct percpu_counter rdf;
+extern atomic64_t sum_num;
+extern atomic64_t save_num;
+extern atomic64_t skb_num;
+extern atomic64_t rdl;
+extern atomic64_t rdf;
+extern struct workqueue_struct *writeread_wq; 
 
 typedef struct {
 	struct work_struct wr_work;

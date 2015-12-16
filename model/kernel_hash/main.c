@@ -61,12 +61,11 @@ static int minit(void)
 	int err = 0;
 
 	init_hash_parameters();
-	percpu_counter_init(&save_num, 0ULL);
-	percpu_counter_init(&sum_num, 0ULL);
-	percpu_counter_init(&skb_num, 0ULL);
-	percpu_counter_init(&rdl, 0ULL);
-	percpu_counter_init(&rdf, 0ULL);
-
+	atomic64_set(&save_num, 0L);
+	atomic64_set(&sum_num, 0L);
+	atomic64_set(&skb_num, 0L);
+	atomic64_set(&rdl, 0L);
+	atomic64_set(&rdf, 0L);
 
 	if (0 > (err = init_some_parameters()))
 		goto out;
@@ -130,7 +129,7 @@ out:
 static void mexit(void)
 {
 	/* free the hash table contents */
-	unsigned long tmp_save, tmp_sum;
+	long tmp_save, tmp_sum;
 	
 	nf_unregister_hook(&nf_in_ops);
 	nf_unregister_hook(&nf_out_ops);
@@ -148,18 +147,13 @@ static void mexit(void)
 	free_bitmap();	
 	tcp_free_sha1sig_pool();
 	
-	tmp_save = percpu_counter_sum(&save_num);
-	tmp_sum =  percpu_counter_sum(&sum_num);
-	percpu_counter_destroy(&save_num);
-	percpu_counter_destroy(&sum_num);
-	percpu_counter_destroy(&skb_num);
-	percpu_counter_destroy(&rdl);
-	percpu_counter_destroy(&rdf);
+	tmp_save = atomic64_read(&save_num);
+	tmp_sum =  atomic64_read(&sum_num);
 
 	if (tmp_sum > 0)
-		printk(KERN_INFO "Cache ratio is:%lu%%", (tmp_save*100)/tmp_sum);
+		printk(KERN_INFO "Cache ratio is:%ld%%", (tmp_save*100)/tmp_sum);
 	
-	printk(KERN_INFO "savenum is:%lu; sumnum is:%lu,%lu(Mb);\nExit %s.", tmp_save, tmp_sum, (tmp_sum /1024 /1024 *8), THIS_MODULE->name);
+	printk(KERN_INFO "savenum is:%ld; sumnum is:%ld,%ld(Mb);\nExit %s.", tmp_save, tmp_sum, (tmp_sum /1024 /1024 *8), THIS_MODULE->name);
 	
 }
 
