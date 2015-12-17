@@ -641,8 +641,8 @@ void bucket_clear_item(unsigned long data)
 		if (atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0)
 			atomic_set(&cp->flag_cache, 2); 
 		
-		//if (atomic_read(&cp->refcnt) > ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 2 && cp->cpuid < 0) 
-		//	atomic_set(&cp->flag_cache, 3); 
+		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 2 && cp->cpuid < 0) 
+			atomic_set(&cp->flag_cache, 3); 
 
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT) {
 			flag = 1;
