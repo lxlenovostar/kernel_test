@@ -74,7 +74,6 @@ struct hashinfo_item
 	 * the other cpu maybe use it.
 	 */
 	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
-	rwlock_t share_lock;
 
 	/*
 	 * hash_new_item and bucket_clear_item(write lock)
@@ -109,7 +108,6 @@ struct hashinfo_item
 	 * 4: read from file, so in memory and file.
      */
 	atomic_t flag_cache; 	
-	rwlock_t cache_lock;
 	
 	/*
 	 * 0: data not in memory.

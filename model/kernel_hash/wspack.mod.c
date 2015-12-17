@@ -29,6 +29,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x267fc65b, "__tasklet_hi_schedule" },
 	{ 0x2bb6fde2, "__kfifo_put" },
 	{ 0xec3f1a25, "skb_copy" },
+	{ 0x973873ab, "_spin_lock" },
 	{ 0xc0a3d105, "find_next_bit" },
 	{ 0xcfaaa0af, "queue_work" },
 	{ 0x55f2580b, "__alloc_percpu" },
@@ -46,6 +47,7 @@ __attribute__((section("__versions"))) = {
 	{ 0xa9e23b31, "__pskb_pull_tail" },
 	{ 0x9629486a, "per_cpu__cpu_number" },
 	{ 0xfe7c4287, "nr_cpu_ids" },
+	{ 0xec20b2aa, "kernel_read" },
 	{ 0xe83fea1, "del_timer_sync" },
 	{ 0xde0bdcff, "memset" },
 	{ 0xe4c1df3e, "_read_lock_bh" },
@@ -104,7 +106,7 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "A499C7805552150A33C96DD");
+MODULE_INFO(srcversion, "34BD974A3C617B2E913CF21");
 
 static const struct rheldata _rheldata __used
 __attribute__((section(".rheldata"))) = {

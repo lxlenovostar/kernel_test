@@ -48,11 +48,6 @@ static inline void ct_write_unlock_bh(unsigned key, struct _aligned_lock *_lock_
 	write_unlock_bh(&_lock_array[key&CT_LOCKARRAY_MASK].l);
 }
 
-static inline int ct_write_trylock_bh(unsigned key, struct _aligned_lock *_lock_array)
-{
-	return write_trylock(&_lock_array[key&CT_LOCKARRAY_MASK].l);
-}
-
 //struct _aligned_lock hash_lock_array[CT_LOCKARRAY_SIZE];
 //extern struct _aligned_lock *hash_lock_array;
 

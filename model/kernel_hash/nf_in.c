@@ -91,7 +91,8 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 	}
 	else {
 		atomic64_add(len, &sum_num);
-		atomic64_add((len - SHALEN -2), &save_num);
+		//atomic64_add((len - SHALEN -2), &save_num);
+		atomic64_add(len, &save_num);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
 		if (atomic_read(&item->flag_cache) != 4) {
@@ -99,10 +100,6 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			 * if the data is in the memory, we do nothing.
 			 */
 			atomic_dec(&item->share_ref);
-			/*write_lock_bh(&item->share_lock);
-			atomic_dec(&item->share_ref);
-			write_unlock_bh(&item->share_lock);
-			*/
 		} else {
 			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
    			if (r_skb == NULL) {
@@ -248,19 +245,6 @@ static void read_data(struct list_head *all_head)
 	 */
     for_each_online_cpu(cpu) {
         list_for_each_entry_safe(r_cp, r_next, (all_head+cpu), list) {   
-			/*//避免读文件，探测性能瓶颈
-			item = r_cp->item; 
-			
-			spin_lock(&item->data_lock);
-			alloc_data_memory(item, item->len);
-			spin_unlock(&item->data_lock);
-			
-			list_del(&r_cp->list);
-            atomic_dec(&item->share_ref);
-			kmem_cache_free(readskb_cachep, r_cp); 
-           	
-			continue;
-			*/	
 			item = r_cp->item; 
 	
 			if (atomic_read(&item->flag_mem) == 0) {	
