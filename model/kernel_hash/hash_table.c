@@ -14,7 +14,7 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 1 
+#define ITEM_DISK_LIMIT 6 
 #define ITEM_VIP_LIMIT  12 
 unsigned long timeout_hash_del = 10*HZ;
 /*#define ITEM_CITE_ADD   2 
@@ -281,6 +281,8 @@ unsigned long long old_write_mm = 0ULL;
 unsigned long long old_save = 0ULL;
 unsigned long long old_sum = 0ULL;
 long old_skb_sum = 0L;
+long old_read_data = 0L;
+long old_read_time = 0L;
 int time_intval = 10;
 
 void print_memory_usage(unsigned long data)
@@ -314,7 +316,7 @@ void print_memory_usage(unsigned long data)
 	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
 	
 	printk(KERN_INFO "[read file]");	
-	printk(KERN_INFO "read data is:%ldMB, number of times is:%ld", read_data, read_frequency);
+	printk(KERN_INFO "read data is:%ldMB, number of times is:%ld, read rate is:%ldMB/s, read frequency is:%ldr/s", read_data, read_frequency, (read_data-old_read_data)/time_intval, (read_frequency-old_read_time)/time_intval);
 	
 	printk(KERN_INFO "[speed]");	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);
@@ -331,6 +333,8 @@ void print_memory_usage(unsigned long data)
 	old_save = tmp_save;
 	old_sum = tmp_sum;
 	old_skb_sum = tmp_skb_sum;
+	old_read_data = read_data;
+	old_read_time = read_frequency;
 
 	mod_timer(&print_memory, jiffies + timeout_hash_del);
 }

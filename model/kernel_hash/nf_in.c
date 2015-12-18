@@ -16,6 +16,7 @@
 #include "sha.h"
 #include "hash_table.h"
 #include "slab_cache.h"
+#include "sort.h"
 
 atomic64_t sum_num;
 atomic64_t save_num;
@@ -100,6 +101,10 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			 */
 			atomic_dec(&item->share_ref);
 		} else {
+			//case1
+			//atomic_dec(&item->share_ref);
+			
+			//case2
 			r_skb = kmem_cache_zalloc(readskb_cachep, GFP_ATOMIC);  
    			if (r_skb == NULL) {
    				DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
@@ -230,6 +235,20 @@ static unsigned int nf_in(
 	return NF_ACCEPT;
 }
 
+/**
+ * file_poisit_compare
+ * @priv: unused
+ * @lh_a: list_head for first item
+ * @lh_b: list_head for second item
+ */
+static int file_poisit_compare(void *priv, struct list_head *lh_a, struct list_head *lh_b)
+{
+        struct hashinfo_item *a = list_entry(lh_a, struct hashinfo_item, c_list);
+        struct hashinfo_item *b = list_entry(lh_b, struct hashinfo_item, c_list);
+
+		return a->start - b->start;
+}
+
 static void read_data(struct list_head *all_head)
 {
     struct read_skb *r_cp, *r_next;
@@ -238,6 +257,13 @@ static void read_data(struct list_head *all_head)
 	char buffer[512];
 	char *tmp_data = NULL;
 	ssize_t ret;
+
+	/*
+	 * sort the list by the position of start read.
+	 */
+    for_each_online_cpu(cpu) {
+		list_sort(NULL, (all_head+cpu), file_poisit_compare);
+	}
 
 	/* 
 	 * read the file.
@@ -437,6 +463,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		//if (strcmp(dsthost, "139.209.90.60") == 0 && ntohs(sport) == 80) {  
 		//if (strcmp(dsthost, "139.209.90.60") == 0 || strcmp(ssthost, "139.209.90.60") == 0) {  
 		if (strcmp(dsthost, "139.209.90.213") != 0 && strcmp(ssthost, "139.209.90.213") != 0) {  
+		//if (strcmp(dsthost, "139.209.90.60") != 0 && strcmp(ssthost, "139.209.90.60") != 0) {  
 		//if (strcmp(ssthost, "192.168.27.77") == 0) {  
 			/*
 			//case 1: 			
@@ -447,7 +474,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len, NULL);
 			atomic64_inc(&skb_num);
-			*/
+			*/	
 
 			//case2
 			skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  

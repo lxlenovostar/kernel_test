@@ -66,6 +66,11 @@ do {                                                                            
 struct hashinfo_item
 {
 	/*
+	 * hash_new_item and bucket_clear_item(write lock)
+	 */  
+	struct list_head c_list;
+	
+	/*
 	 * get_hash_item
 	 */
 	atomic_t refcnt;
@@ -75,10 +80,6 @@ struct hashinfo_item
 	 */
 	atomic_t share_ref;	//maybe different data struct use this hashinfo_item.  
 
-	/*
-	 * hash_new_item and bucket_clear_item(write lock)
-	 */  
-	struct list_head c_list;
 	int len;				//the length of data
 	uint8_t sha1[SHA1SIZE];
 	
