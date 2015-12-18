@@ -16,7 +16,6 @@
 #include "sha.h"
 #include "hash_table.h"
 #include "slab_cache.h"
-#include "alloc_mem.h"
 
 atomic64_t sum_num;
 atomic64_t save_num;
@@ -91,7 +90,7 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 	}
 	else {
 		atomic64_add(len, &sum_num);
-		//atomic64_add((len - SHALEN -2), &save_num);
+		//atomic64_add((len - (SHALEN + 2)), &save_num);
 		atomic64_add(len, &save_num);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 

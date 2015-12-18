@@ -14,8 +14,8 @@
 //#define ITEM_DISK_LIMIT 10
 #define ITEM_CITE_ADD   6 
 #define ITEM_CITE_FIND  6
-#define ITEM_DISK_LIMIT 6 
-#define ITEM_VIP_LIMIT  120 
+#define ITEM_DISK_LIMIT 1 
+#define ITEM_VIP_LIMIT  12 
 unsigned long timeout_hash_del = 10*HZ;
 /*#define ITEM_CITE_ADD   2 
 #define ITEM_CITE_FIND  2
@@ -50,8 +50,16 @@ atomic64_t mm1;
 atomic64_t mm2;
 atomic64_t mm3;
 
+atomic64_t devote0;
+atomic64_t devote1;
+atomic64_t devote2;
+atomic64_t devote3;
+atomic64_t devote4;
+
 struct percpu_counter mmw;
 struct percpu_counter mmd;
+struct percpu_counter mmm;
+struct percpu_counter mmf;
 
 
 struct kmem_cache * slab_chunk1;
@@ -96,7 +104,8 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 1);
-		atomic64_add(CHUNKSTEP, &mm1);
+		//atomic64_add(CHUNKSTEP, &mm1);
+		atomic64_add(length, &mm1);
 		return;
 	} else if (length <= CHUNKSTEP*2) {
 		cp->data  = kmem_cache_zalloc(slab_chunk2, GFP_ATOMIC);  
@@ -105,7 +114,8 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 2);
-		atomic64_add(CHUNKSTEP*2, &mm2);
+		//atomic64_add(CHUNKSTEP*2, &mm2);
+		atomic64_add(length, &mm2);
 		return;
 	} else if (length <= CHUNKSTEP*3) {
 		cp->data  = kmem_cache_zalloc(slab_chunk3, GFP_ATOMIC);  
@@ -114,7 +124,8 @@ void alloc_data_memory(struct hashinfo_item *cp, size_t length)
 			BUG();	//TODO:	maybe other good way fix it.
 		}
 		atomic_set(&cp->mem_style, 3);
-		atomic64_add(CHUNKSTEP*3, &mm3);
+		//atomic64_add(CHUNKSTEP*3, &mm3);
+		atomic64_add(length, &mm3);
 		return;
 	} else {	
 		cp->data = kmalloc(cp->len, GFP_ATOMIC);
@@ -138,17 +149,20 @@ static void free_data_memory(struct hashinfo_item *cp)
 	} else if (atomic_read(&cp->mem_style) == 1) {
 		kmem_cache_free(slab_chunk1, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		atomic64_sub(CHUNKSTEP, &mm1);
+		//atomic64_sub(CHUNKSTEP, &mm1);
+		atomic64_sub(cp->len, &mm1);
 		return;
 	} else if (atomic_read(&cp->mem_style) == 2) {
 		kmem_cache_free(slab_chunk2, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		atomic64_sub(CHUNKSTEP*2, &mm2);
+		//atomic64_sub(CHUNKSTEP*2, &mm2);
+		atomic64_sub(cp->len, &mm2);
 		return;
 	} else if (atomic_read(&cp->mem_style) == 3) {
 		kmem_cache_free(slab_chunk3, cp->data);
 		atomic_set(&cp->mem_style, -1);
-		atomic64_sub(CHUNKSTEP*3, &mm3);
+		//atomic64_sub(CHUNKSTEP*3, &mm3);
+		atomic64_sub(cp->len, &mm3);
 		return;
 	} else {
 		//do nothing.
@@ -236,6 +250,21 @@ struct hashinfo_item *get_hash_item(uint8_t *info)
             atomic_add(ITEM_CITE_FIND, &cp->refcnt);
 			atomic_inc(&cp->share_ref);
 			
+			/*
+			 * for statistics.
+			 */
+			if (atomic_read(&cp->flag_cache) == 0) { 
+				atomic64_add(cp->len, &devote0);
+			} else if (atomic_read(&cp->flag_cache) == 1) {
+				atomic64_add(cp->len, &devote1);
+			} else if (atomic_read(&cp->flag_cache) == 2) {
+				atomic64_add(cp->len, &devote2);
+			} else if (atomic_read(&cp->flag_cache) == 3) {
+				atomic64_add(cp->len, &devote3);
+			} else if (atomic_read(&cp->flag_cache) == 4) {
+				atomic64_add(cp->len, &devote4);
+			}
+			
 			if (atomic_read(&cp->flag_cache) == 1) {
 				atomic_set(&cp->flag_cache, 4); 
 			}
@@ -261,8 +290,15 @@ void print_memory_usage(unsigned long data)
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	long data_mem = atomic64_read(&mm0) + atomic64_read(&mm1) + atomic64_read(&mm2) + atomic64_read(&mm3);
 	unsigned long long write_mm = percpu_counter_sum(&mmw)/1024/1024;
+	unsigned long long memory_mm = percpu_counter_sum(&mmm)/1024/1024;
+	unsigned long long free_mm = percpu_counter_sum(&mmf)/1024/1024;
 	unsigned long long write_d_mm = percpu_counter_sum(&mmd)/1024/1024;
 	long tmp_save = atomic64_read(&save_num)/1024/1024;
+	long tmp_d0 = atomic64_read(&devote0)/1024/1024;
+	long tmp_d1 = atomic64_read(&devote1)/1024/1024;
+	long tmp_d2 = atomic64_read(&devote2)/1024/1024;
+	long tmp_d3 = atomic64_read(&devote3)/1024/1024;
+	long tmp_d4 = atomic64_read(&devote4)/1024/1024;
 	long tmp_sum =  atomic64_read(&sum_num)/1024/1024;
 	long tmp_skb_sum =  atomic64_read(&skb_num);
 	long read_data = atomic64_read(&rdl)/1024/1024;
@@ -271,6 +307,9 @@ void print_memory_usage(unsigned long data)
 	printk(KERN_INFO "\n[memory usage]");	
 	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%ldMB, all memory is:%ldMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
+	printk(KERN_INFO "[data]");	
+	printk(KERN_INFO "data always in memory is:%lluMB, data has deleted is:%lluMB", memory_mm, free_mm);
+	
 	printk(KERN_INFO "[write file]");	
 	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
 	
@@ -284,6 +323,7 @@ void print_memory_usage(unsigned long data)
 	printk(KERN_INFO "packet num is:%ld pps", (tmp_skb_sum - old_skb_sum)/time_intval);
 	if (tmp_sum > 0) {
 		printk(KERN_INFO "[cache ratio]");	
+		printk(KERN_INFO "status 0 is:%ldMB, status 1 is:%ldMB, status 2 is:%ldMB, status 3 is:%ldMB, status 4 is:%ldMB", tmp_d0, tmp_d1, tmp_d2, tmp_d3, tmp_d4);
 		printk(KERN_INFO "save bytes is:%ldMB, all bytes is:%ldMB, Cache ratio is:%ld%%", tmp_save, tmp_sum, (tmp_save*100)/tmp_sum);
 	}
 
@@ -363,7 +403,15 @@ int initial_hash_table_cache(void)
 	atomic64_set(&mm2, 0L);
 	atomic64_set(&mm3, 0L);
 	
+	atomic64_set(&devote0, 0L);
+	atomic64_set(&devote1, 0L);
+	atomic64_set(&devote2, 0L);
+	atomic64_set(&devote3, 0L);
+	atomic64_set(&devote4, 0L);
+	
 	percpu_counter_init(&mmw, 0ULL);
+	percpu_counter_init(&mmm, 0ULL);
+	percpu_counter_init(&mmf, 0ULL);
 	percpu_counter_init(&mmd, 0ULL);
 	
 	return 0;
@@ -400,8 +448,10 @@ static void hash_flush(void)
         list_for_each_entry_safe(cp, next, &hash_tab[idx], c_list) {
     		list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
+			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) { 
 				free_data_memory(cp);
+				percpu_counter_add(&mmf, cp->len);
+			}
             kmem_cache_free(hash_cachep, cp);
         }
         ct_write_unlock_bh(idx, hash_lock_array);
@@ -418,6 +468,8 @@ void release_hash_table_cache(void)
 	del_timer_sync(&print_memory);
 
 	percpu_counter_destroy(&mmw);
+	percpu_counter_destroy(&mmm);
+	percpu_counter_destroy(&mmf);
 	percpu_counter_destroy(&mmd);
 	
 	for (idx = 0; idx < hash_tab_size; idx++) {
@@ -603,9 +655,11 @@ void bucket_clear_item(unsigned long data)
    		if (atomic_read(&cp->share_ref) == 1 && atomic_read(&cp->refcnt) <= 1) {
 			list_del(&cp->c_list);
 			atomic_dec(&hash_count);
-			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) 
+			if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3 || atomic_read(&cp->flag_cache) == 4) { 
 			//if (atomic_read(&cp->flag_cache) == 0 || atomic_read(&cp->flag_cache) == 2 || atomic_read(&cp->flag_cache) == 3) 
 				free_data_memory(cp);
+				percpu_counter_add(&mmf, cp->len);
+			}
 			/*
 		 	 * decide whether the data write into file by cp->cpuid.
 			 */
@@ -624,6 +678,7 @@ void bucket_clear_item(unsigned long data)
 			if (cp->store_flag == 1) {
 				percpu_counter_add(&mmd, cp->len);
 			}
+			
 
             kmem_cache_free(hash_cachep, cp);
 			DEBUG_LOG(KERN_INFO "delete it.");
@@ -635,14 +690,18 @@ void bucket_clear_item(unsigned long data)
 		/*
          * start the status machine.
          */	
-		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 0)
+		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 0) {
 			atomic_set(&cp->flag_cache, 3); 
+			percpu_counter_add(&mmm, cp->len);
+		}
 		
 		if (atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->flag_cache) == 0)
 			atomic_set(&cp->flag_cache, 2); 
 		
-		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 2 && cp->cpuid < 0) 
+		if (atomic_read(&cp->refcnt) >= ITEM_VIP_LIMIT && atomic_read(&cp->flag_cache) == 2 && cp->cpuid < 0) { 
 			atomic_set(&cp->flag_cache, 3); 
+			percpu_counter_add(&mmm, cp->len);
+		}
 
 		if (flag == 0 && atomic_read(&cp->refcnt) >= ITEM_DISK_LIMIT && atomic_read(&cp->refcnt) < ITEM_VIP_LIMIT) {
 			flag = 1;
