@@ -112,7 +112,7 @@ void list_sort(void *priv, struct list_head *head,
  
          memset(part, 0, sizeof(part));
  
-         head->prev->next = NULL;
+         head->prev->next = NULL; //双向链表变为单向链表   
          list = head->next;
  
          while (list) {
