@@ -91,8 +91,8 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 	}
 	else {
 		atomic64_add(len, &sum_num);
-		//atomic64_add((len - (SHALEN + 2)), &save_num);
-		atomic64_add(len, &save_num);
+		atomic64_add((len - (SHALEN + 2)), &save_num);
+		//atomic64_add(len, &save_num);
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 
 		if (atomic_read(&item->flag_cache) != 4) {
@@ -474,7 +474,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 				//DEBUG_LOG(KERN_INFO "data is:%02x", data[i]&0xff);
 			get_partition(data, data_len, NULL);
 			atomic64_inc(&skb_num);
-			*/	
+			*/
 
 			//case2
 			skb_item = kmem_cache_zalloc(reskb_cachep, GFP_ATOMIC);  
