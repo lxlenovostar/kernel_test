@@ -73,7 +73,6 @@ DECLARE_PER_CPU(struct file *, reserve_file);
 DECLARE_PER_CPU(loff_t, loff_file); 
 static struct timer_list *bucket_clear; 
 //DEFINE_PER_CPU(struct timer_list *, bucket_clear); 
-int cpunum = 0;
 
 static inline uint32_t _hash(uint32_t hash, struct hashinfo_item *cp)
 {
@@ -287,7 +286,6 @@ int time_intval = 10;
 
 void print_memory_usage(unsigned long data)
 {
-	int slot_size = hash_tab_size * sizeof(struct list_head);
    	uint32_t hash_count_now = atomic_read(&hash_count);
 	int item_size = hash_count_now * sizeof(struct hashinfo_item); 
 	long data_mem = atomic64_read(&mm0) + atomic64_read(&mm1) + atomic64_read(&mm2) + atomic64_read(&mm3);
@@ -307,7 +305,7 @@ void print_memory_usage(unsigned long data)
 	long read_frequency = atomic64_read(&rdf);
 
 	printk(KERN_INFO "\n[memory usage]");	
-	printk(KERN_INFO "memory usage is:%dMB, data memmory is:%ldMB, all memory is:%ldMB, item number is:%u", (item_size + slot_size)/1024/1024, data_mem/1024/1024, ((item_size + slot_size)/1024/1024 + data_mem/1024/1024), hash_count_now);
+	printk(KERN_INFO "hash item is:%dMB, uesd memory for something is:%lluMB, data memmory is:%ldMB, all memory is:%lluMB, item number is:%u", item_size/1024/1024, used_mem/1024/1024, data_mem/1024/1024, ((item_size + used_mem)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
 	printk(KERN_INFO "[data]");	
 	printk(KERN_INFO "data always in memory is:%lluMB, data has deleted is:%lluMB", memory_mm, free_mm);
@@ -342,8 +340,8 @@ void print_memory_usage(unsigned long data)
 int initial_hash_table_cache(void)
 {
     unsigned long idx;
-	int cpu;
-    
+	int cpunum;
+
 	writeread_wq = create_workqueue("kwrite_queue");
 	if (!writeread_wq)
 		return -1;
@@ -354,11 +352,15 @@ int initial_hash_table_cache(void)
         return -ENOMEM;
     }
 
+	used_mem += hash_tab_size * sizeof(struct list_head);
+
 	bucket_clear  = vmalloc(hash_tab_size * sizeof(struct timer_list));
    	if (!bucket_clear) {
        	DEBUG_LOG(KERN_ERR"****** %s : vmalloc tab error\n", __FUNCTION__);
        	return -ENOMEM;
 	}
+
+	used_mem += hash_tab_size * sizeof(struct timer_list);
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
     hash_cachep = kmem_cache_create(CACHE_NAME,
@@ -390,9 +392,7 @@ int initial_hash_table_cache(void)
     add_timer(&print_memory);
    
 	 
-	//cpunum = num_online_cpus;
-	for_each_online_cpu(cpu) 	
-		cpunum++;
+	cpunum = num_online_cpus();
 	
 	for (idx = 0; idx < hash_tab_size; idx++) {
 		init_timer(bucket_clear+idx);

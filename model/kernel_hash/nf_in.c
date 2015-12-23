@@ -17,7 +17,7 @@
 #include "hash_table.h"
 #include "slab_cache.h"
 #include "sort.h"
-
+ 
 atomic64_t sum_num;
 atomic64_t save_num;
 atomic64_t skb_num;
@@ -117,6 +117,7 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 			}	
 			   
 			r_skb->item = item;
+			INIT_LIST_HEAD(&r_skb->list);
 			list_add(&r_skb->list, (head+item->cpuid));
 		}
 	}
@@ -124,9 +125,6 @@ void hand_hash(char *src, size_t len, uint8_t *dst, struct list_head *head)
 
 void build_hash(char *src, int start, int end, int length, struct list_head *head) 
 {
-	/*
-     * Fixup: use slab maybe effectiver than kmalloc.
-     */
 	int genhash, i;
 	uint8_t *dst;
 
@@ -329,6 +327,9 @@ static void resend_skb(struct list_head *head)
     struct reject_skb *cp, *next;
 	struct tasklet_struct *tmp_tasklet;
 	
+	/*
+	 * TODO: not use slab.
+	 */
 	tmp_tasklet = kmem_cache_zalloc(tasklet_cachep, GFP_ATOMIC);  
     list_for_each_entry_safe(cp, next, head, list) {
 		list_del(&cp->list);
@@ -384,7 +385,7 @@ static void handle_skb(struct work_struct *work)
    		DEBUG_LOG(KERN_INFO "%s\n", __FUNCTION__ );
        	BUG();	//TODO
 	}
-
+	
 	for_each_online_cpu(cpu) {
     	INIT_LIST_HEAD((all_list + cpu));
 	}
@@ -484,7 +485,7 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
    			}
 			skb_item->skb = skb_copy(skb, GFP_ATOMIC);
 			INIT_LIST_HEAD(&skb_item->list);   
-
+			
 			//SKB 进入等待队列
 			cpu = get_cpu();
 			list_add_tail(&skb_item->list, &per_cpu(skb_list, cpu));

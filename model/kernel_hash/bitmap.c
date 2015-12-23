@@ -2,6 +2,7 @@
 #include <linux/vmalloc.h>
 #include <linux/bitmap.h>
 #include "bitmap.h"
+#include "chunk.h"
 
 DEFINE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 DEFINE_PER_CPU(unsigned long, bitmap_index); //percpu-BITMAP-index
@@ -20,6 +21,9 @@ int alloc_bitmap() {
 			printk(KERN_ERR "alloc bitmap failed.");
 			return -ENOMEM;
 		}
+		
+		used_mem += bitmap_size;
+		
 		bitmap_zero(per_cpu(bitmap, cpu), chunk_num);
 		per_cpu(bitmap_index, cpu) = 0;	
 	}

@@ -20,6 +20,7 @@ extern atomic64_t skb_num;
 extern atomic64_t rdl;
 extern atomic64_t rdf;
 extern struct workqueue_struct *writeread_wq; 
+extern unsigned long long used_mem;
 
 typedef struct {
 	struct work_struct wr_work;

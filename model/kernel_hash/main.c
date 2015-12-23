@@ -24,6 +24,7 @@ int chunk_num = 32;  //控制最小值
 static int kprobe_in_reged = 0;
 DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 struct workqueue_struct *skb_wq;
+unsigned long long used_mem = 0ULL;
 
 void init_hash_parameters(void)
 {
@@ -45,6 +46,12 @@ int init_some_parameters(void)
 {	
 	int cpu;
 
+	atomic64_set(&save_num, 0L);
+	atomic64_set(&sum_num, 0L);
+	atomic64_set(&skb_num, 0L);
+	atomic64_set(&rdl, 0L);
+	atomic64_set(&rdf, 0L);
+	
 	skb_wq = create_workqueue("kread_queue");
 	if (!skb_wq)
 		return -1;
@@ -61,11 +68,6 @@ static int minit(void)
 	int err = 0;
 
 	init_hash_parameters();
-	atomic64_set(&save_num, 0L);
-	atomic64_set(&sum_num, 0L);
-	atomic64_set(&skb_num, 0L);
-	atomic64_set(&rdl, 0L);
-	atomic64_set(&rdf, 0L);
 
 	if (0 > (err = init_some_parameters()))
 		goto out;
