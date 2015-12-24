@@ -301,20 +301,12 @@ void print_memory_usage(unsigned long data)
 	long tmp_d4 = atomic64_read(&devote4)/1024/1024;
 	long tmp_sum =  atomic64_read(&sum_num)/1024/1024;
 	long tmp_skb_sum =  atomic64_read(&skb_num);
-	long read_data = atomic64_read(&rdl)/1024/1024;
-	long read_frequency = atomic64_read(&rdf);
 
 	printk(KERN_INFO "\n[memory usage]");	
 	printk(KERN_INFO "hash item is:%dMB, uesd memory for something is:%lluMB, data memmory is:%ldMB, all memory is:%lluMB, item number is:%u", item_size/1024/1024, used_mem/1024/1024, data_mem/1024/1024, ((item_size + used_mem)/1024/1024 + data_mem/1024/1024), hash_count_now);
 
 	printk(KERN_INFO "[data]");	
 	printk(KERN_INFO "data always in memory is:%lluMB, data has deleted is:%lluMB", memory_mm, free_mm);
-	
-	printk(KERN_INFO "[write file]");	
-	printk(KERN_INFO "write data is:%lluMB, data miss store is:%lluMB", write_mm, write_d_mm);
-	
-	printk(KERN_INFO "[read file]");	
-	printk(KERN_INFO "read data is:%ldMB, number of times is:%ld, read rate is:%ldMB/s, read frequency is:%ldr/s", read_data, read_frequency, (read_data-old_read_data)/time_intval, (read_frequency-old_read_time)/time_intval);
 	
 	printk(KERN_INFO "[speed]");	
 	printk(KERN_INFO "save rate is:%lluMB/s sum rate is:%lluMB/s write rate is:%lluMB/s", (tmp_save - old_save)/time_intval, (tmp_sum - old_sum)/time_intval, (write_mm - old_write_mm)/time_intval);

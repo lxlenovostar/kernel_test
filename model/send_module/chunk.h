@@ -14,11 +14,6 @@ extern unsigned long Q;
 extern unsigned long R;
 //extern int R = 10;
 extern int chunk_num;  //控制最小值
-extern atomic64_t sum_num;
-extern atomic64_t save_num;
-extern atomic64_t skb_num;
-extern atomic64_t rdl;
-extern atomic64_t rdf;
 extern struct workqueue_struct *writeread_wq; 
 extern unsigned long long used_mem;
 
