@@ -34,7 +34,7 @@ int hand_hash(char *src, size_t len, uint8_t *dst, size_t *new_len)
 		atomic64_add(len, &sum_num);
 		atomic64_add((len - (SHALEN + 2)), &save_num);
 		//atomic64_add(len, &save_num);
-		*new_len -= len;
+		*new_len -= (len - (SHALEN + 2));
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
 		return 1;
 	}
@@ -152,7 +152,75 @@ void get_partition(char *data, int length, struct list_head *head, size_t *new_l
 	}
 }
 
+/*
+ * parameters old_len and packet_len just use for debug.
+ */
+void replace_skb(struct sk_buff *skb, char *old_data, struct list_head *head, size_t len, size_t old_len, size_t packet_len)
+{
+	struct replace_item *cp;
+	struct replace_item *next;
+	char *new_data = NULL;
+	size_t last = 0;
+	size_t index = 0;
 
+	printk(KERN_INFO "begin");
+
+	if (len <= MTU) {
+		new_data = kmem_cache_zalloc(mtu_data, GFP_ATOMIC);  
+   		if (new_data == NULL) {
+   			DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+   			BUG();
+   		}
+	} else {
+		new_data = kmalloc(len, GFP_ATOMIC);  
+   		if (new_data == NULL) {
+   			DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+   			BUG();
+   		}
+	}				
+
+	//copy data to new buffer.
+	list_for_each_entry_safe(cp, next, head, c_list) {
+		printk(KERN_INFO "index is:%zu, last is:%zu, start is:%d, end is:%d, tax is:%d, len is:%zu, total len is:%zu", index, last, cp->start, cp->end, cp->end - cp->start + 1, old_len, packet_len);
+
+		if (cp->start > last) {
+			//memcpy(new_data + index, old_data + last, (cp->start - last));
+			index += (cp->start - last); //expect cp->start
+			printk(KERN_INFO "index 1 is:%zu", index);
+			//memcpy(new_data + index, cp->sha1, SHA1SIZE);
+			index += SHA1SIZE;
+			printk(KERN_INFO "index 2 is:%zu", index);
+			last = cp->end + 1;
+			printk(KERN_INFO "last 3 is:%zu", last);
+		} else if (cp->start == last) {
+			//memcpy(new_data + index, cp->sha1, SHA1SIZE);
+			index += SHA1SIZE;
+			printk(KERN_INFO "index  4 is:%zu", index);
+			last = cp->end + 1;
+			printk(KERN_INFO "last 5 is:%zu", last);
+		} else {
+   			printk(KERN_ERR "You cant arrive here. %s\n", __FUNCTION__ );
+			BUG();	
+		}
+
+		list_del(&cp->c_list);
+		kmem_cache_free(replace_data, cp);
+	}
+	
+	if (last != old_len) {
+		//memcpy(new_data + index, old_data + last, (old_len - last + 1));
+		index += (old_len - last);
+		printk(KERN_INFO "index  6 is:%zu", index);
+	}
+
+	printk(KERN_INFO "index is:%zu, last is:%zu, len is:%zu", index, last, len);
+
+	if (len <= MTU) {
+		kmem_cache_free(mtu_data, new_data);
+	} else {
+		kfree(new_data);
+	}
+}
 
 static unsigned int nf_out(
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)
@@ -174,17 +242,17 @@ static unsigned int nf_out(
 	unsigned long long reserve_mem;
 	char *data = NULL;
 	size_t data_len = 0;
-	struct replace_item *cp;
-	struct replace_item *next;
 	size_t new_len = 0;
-	
+
 	LIST_HEAD(hand_list);
 	/*
 	 * TODO: need configure from userspace.
      */		
+	/*
 	reserve_mem = global_page_state(NR_FREE_PAGES) + global_page_state(NR_FILE_PAGES);
 	if (reserve_mem < (400ULL*1024*1024/4/1024))
 		return NF_ACCEPT;
+	*/
 
 	/*
      * TODO: this maybe need fix it.
@@ -212,14 +280,9 @@ static unsigned int nf_out(
 			new_len = data_len;
 			get_partition(data, data_len, &hand_list, &new_len);
 			atomic64_inc(&skb_num);
-   	
-			if (!list_empty(&hand_list))
-				printk(KERN_INFO "begin is:%zu", new_len);
-			list_for_each_entry_safe(cp, next, &hand_list, c_list) {
-				printk(KERN_INFO "start is:%d, end is:%d, tax is:%d, len is:%zu, total len is:%d", cp->start, cp->end, cp->end - cp->start + 1, data_len, ntohs(iph->tot_len)+14);
-				list_del(&cp->c_list);
-				kmem_cache_free(replace_data, cp);
-			}
+			
+			if (!list_empty(&hand_list)) 
+				replace_skb(skb, data, &hand_list, new_len, data_len, ntohs(iph->tot_len) + 14);
 		}
 	}
 

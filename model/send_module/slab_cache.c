@@ -38,6 +38,21 @@ int alloc_slab(void)
         return -ENOMEM;
     }
 
+	#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
+    mtu_data = kmem_cache_create(CACHE_MTU, 
+            MTU,
+            0, SLAB_HWCACHE_ALIGN, NULL, NULL);
+	#else
+    mtu_data = kmem_cache_create(CACHE_MTU,
+           	MTU,
+            0, SLAB_HWCACHE_ALIGN, NULL);
+	#endif
+
+    if (!mtu_data) {
+        DEBUG_LOG(KERN_ERR "****** %s : kmem_cache_create for hash item  error\n",
+                __FUNCTION__);
+        return -ENOMEM;
+    }
 
 	return 0;
 }
@@ -48,4 +63,6 @@ void free_slab()
     	kmem_cache_destroy(sha_data);
 	if (replace_data)
     	kmem_cache_destroy(replace_data);
+	if (mtu_data)
+    	kmem_cache_destroy(mtu_data);
 }
