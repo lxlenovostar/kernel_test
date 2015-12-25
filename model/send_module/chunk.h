@@ -21,3 +21,12 @@ extern unsigned long long used_mem;
 
 void clear_remainder_skb(void);
 void calculate_partition(char *playload, int playload_len, struct kfifo *fifo);
+
+struct replace_item 
+{
+	struct list_head c_list;
+	
+	int start;
+	int end;
+	uint8_t sha1[SHA1SIZE];
+};

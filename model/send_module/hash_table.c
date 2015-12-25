@@ -11,8 +11,8 @@
 //#define ITEM_CITE_ADD 10
 //#define ITEM_CITE_FIND 10
 //#define ITEM_DISK_LIMIT 10
-#define ITEM_CITE_ADD   60 
-#define ITEM_CITE_FIND  60
+#define ITEM_CITE_ADD   6 
+#define ITEM_CITE_FIND  6
 unsigned long timeout_hash_del = 10*HZ;
 /*#define ITEM_CITE_ADD   2 
 #define ITEM_CITE_FIND  2

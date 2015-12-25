@@ -18,7 +18,7 @@ atomic64_t sum_num;
 atomic64_t save_num;
 atomic64_t skb_num;
 
-void hand_hash(char *src, size_t len, uint8_t *dst) 
+int hand_hash(char *src, size_t len, uint8_t *dst, size_t *new_len) 
 {
 	struct hashinfo_item *item;	
 
@@ -28,19 +28,23 @@ void hand_hash(char *src, size_t len, uint8_t *dst)
 			printk(KERN_ERR "%s:add hash item error", __FUNCTION__);
         }   	
 		atomic64_add(len, &sum_num);
+		return 0;
 	}
 	else {
 		atomic64_add(len, &sum_num);
 		atomic64_add((len - (SHALEN + 2)), &save_num);
 		//atomic64_add(len, &save_num);
+		*new_len -= len;
 		DEBUG_LOG(KERN_INFO "save len is:%d\n", len);
+		return 1;
 	}
 }
 
-void build_hash(char *src, int start, int end, int length) 
+void build_hash(char *src, int start, int length, struct list_head *head, size_t *new_len) 
 {
 	int genhash, i;
 	uint8_t *dst;
+	struct replace_item *item;
 
 	/*
      * the length of data <= 22, we can pass it.
@@ -54,14 +58,14 @@ void build_hash(char *src, int start, int end, int length)
        	BUG();
    	}   
 
-	genhash = tcp_v4_sha1_hash_data(dst, src + start, (end - start + 1));
+	genhash = tcp_v4_sha1_hash_data(dst, src + start, length);
 	if (genhash) {
 		printk(KERN_ERR "%s:calculate SHA-1 failed.", __func__);
 		return;
 	}
 	
 	DEBUG_LOG(KERN_INFO "DATA:");
-	for (i = start; i <= end; i++) {
+	for (i = start; i <= (start + length - 1); i++) {
 		DEBUG_LOG("%02x:", src[i]&0xff);
 	}
 	DEBUG_LOG(KERN_INFO "SHA-1:");
@@ -69,13 +73,26 @@ void build_hash(char *src, int start, int end, int length)
 		DEBUG_LOG("%02x:", dst[i]&0xff);
 	}
 
-	hand_hash(src + start, length, dst);
+	if (hand_hash(src + start, length, dst, new_len)) {
+		item = kmem_cache_zalloc(replace_data, GFP_ATOMIC);  
+   		if (item == NULL) {
+   			DEBUG_LOG(KERN_ERR "%s\n", __FUNCTION__ );
+       		BUG();
+   		}
+	
+		INIT_LIST_HEAD(&item->c_list);
+		item->start = start;
+		item->end = (start + length - 1);
+		memcpy(item->sha1, dst, SHALEN);
+  		list_add_tail(&item->c_list, head); 
+	}
+
 	kmem_cache_free(sha_data, dst);
 }
 
 
 
-void get_partition(char *data, int length)
+void get_partition(char *data, int length, struct list_head *head, size_t *new_len)
 {
 	struct kfifo *fifo = NULL;
 	spinlock_t lock = SPIN_LOCK_UNLOCKED;
@@ -107,13 +124,13 @@ void get_partition(char *data, int length)
 				start_pos = 0;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, (end_pos - start_pos + 1), head, new_len);
 			}	 
 			else {
 				start_pos = end_pos + 1;
 				end_pos = value;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, (end_pos - start_pos + 1), head, new_len);
 			}
 		}
 		
@@ -122,13 +139,13 @@ void get_partition(char *data, int length)
 				start_pos = end_pos + 1;
 				end_pos = length - 1;
 				DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-				build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+				build_hash(data, start_pos, (end_pos - start_pos + 1), head, new_len);
 			}
 		} else {
 			start_pos = 0;
 			end_pos = length - 1;
 			DEBUG_LOG(KERN_INFO "start_pos is:%d,end_pos is:%d", start_pos, end_pos);
-			build_hash(data, start_pos, end_pos, (end_pos - start_pos + 1));
+			build_hash(data, start_pos, (end_pos - start_pos + 1), head, new_len);
 		}			
 	
 		kfifo_free(fifo);	
@@ -157,15 +174,17 @@ static unsigned int nf_out(
 	unsigned long long reserve_mem;
 	char *data = NULL;
 	size_t data_len = 0;
+	struct replace_item *cp;
+	struct replace_item *next;
+	size_t new_len = 0;
 	
+	LIST_HEAD(hand_list);
 	/*
 	 * TODO: need configure from userspace.
      */		
-	/*
 	reserve_mem = global_page_state(NR_FREE_PAGES) + global_page_state(NR_FILE_PAGES);
 	if (reserve_mem < (400ULL*1024*1024/4/1024))
 		return NF_ACCEPT;
-	*/
 
 	/*
      * TODO: this maybe need fix it.
@@ -190,8 +209,17 @@ static unsigned int nf_out(
 		if (!strcmp(dsthost, "192.168.109.1")) {  
 			data = (char *)((unsigned char *)tcph + (tcph->doff << 2));
 			data_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
-			get_partition(data, data_len);
+			new_len = data_len;
+			get_partition(data, data_len, &hand_list, &new_len);
 			atomic64_inc(&skb_num);
+   	
+			if (!list_empty(&hand_list))
+				printk(KERN_INFO "begin is:%zu", new_len);
+			list_for_each_entry_safe(cp, next, &hand_list, c_list) {
+				printk(KERN_INFO "start is:%d, end is:%d, tax is:%d, len is:%zu, total len is:%d", cp->start, cp->end, cp->end - cp->start + 1, data_len, ntohs(iph->tot_len)+14);
+				list_del(&cp->c_list);
+				kmem_cache_free(replace_data, cp);
+			}
 		}
 	}
 

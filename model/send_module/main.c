@@ -24,6 +24,7 @@ DECLARE_PER_CPU(unsigned long *, bitmap); //percpu-BITMAP
 struct workqueue_struct *skb_wq;
 unsigned long long used_mem = 0ULL;
 struct kmem_cache *sha_data;
+struct kmem_cache *replace_data;
 
 void init_hash_parameters(void)
 {
