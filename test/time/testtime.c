@@ -11,11 +11,7 @@ static int minit(void)
    	
 	struct timespec curr_tm; 
 	getnstimeofday(&curr_tm);
-	printk("TIME: %.2lu:%.2lu:%.2lu:%.6lu \r\n",
-                   (curr_tm.tv_sec / 3600) % (24),
-                   (curr_tm.tv_sec / 60) % (60),
-                   curr_tm.tv_sec % 60,
-                   curr_tm.tv_nsec / 1000);
+	printk("TIME: %.2lu:%.2lu:%.2lu:%.6lu\n", (curr_tm.tv_sec / 3600) % (24), (curr_tm.tv_sec / 60) % (60), curr_tm.tv_sec % 60, curr_tm.tv_nsec / 1000);
  
 	return rc;
 }
