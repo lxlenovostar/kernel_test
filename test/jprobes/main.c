@@ -9,7 +9,9 @@
 
 struct jprobe jp;
 
-int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+//int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+//int jpf_ip_rcv(struct sock *sk, u32 seq, u32 end_seq)
+int jpf_ip_rcv(struct sk_buff *skb)
 {
 	unsigned short sport, dport;
 	__be32 saddr, daddr, seq;
@@ -18,11 +20,12 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 
-	iph = (struct iphdr *)skb->data;
+	
+	iph = (struct iphdr *)(skb->data - 40);
 	//iph = ip_hdr(skb);
 	if (iph->protocol == IPPROTO_TCP) {
-		//tcph = tcp_hdr(skb); /*函数tcp_hdr只有到了TCP层才有意义*/
- 		tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2));	
+		//tcph = tcp_hdr(skb);
+ 		tcph = (struct tcphdr *)(skb->data + (iph->ihl << 2) - 40);	
 		
 		sport = tcph->source;
 		dport = tcph->dest;
@@ -33,21 +36,23 @@ int jpf_ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *
 		snprintf(ssthost, 16, "%pI4", &saddr);
 		
 		//if (strcmp(ssthost, "218.6.111.34") == 0 && ntohs(dport) == 888) {  
-		//if (ntohs(dport) == 888) {  
-		if (strcmp(ssthost, "218.6.111.34") == 0 && strcmp(dsthost, "139.209.90.213") == 0 && ntohs(dport) == 888) {  
+		if (ntohs(dport) == 888) {  
+		//if (strcmp(ssthost, "218.6.111.34") == 0 && strcmp(dsthost, "139.209.90.213") == 0 && ntohs(dport) == 888) {  
 		//if (strcmp(ssthost, "218.6.111.34") == 0 && strcmp(dsthost, "139.209.90.213") == 0) {  
 			seq = ntohl(tcph->seq);
-			printk(KERN_INFO "new packet, seq is:%u", seq);
+			printk(KERN_INFO "new packet, seq is:%u\n", seq);
+			dump_stack(); 
 		}
    	}	
-
-     jprobe_return();
-     return 0;
+ 
+	jprobe_return();
+    return 0;
 }
 
 static __init int init_jprobe_sample(void) 
 {
-	jp.kp.symbol_name = "ip_rcv";
+	//jp.kp.symbol_name = "ip_rcv";
+	jp.kp.symbol_name = "__kfree_skb";
 	jp.entry = JPROBE_ENTRY(jpf_ip_rcv);
 	register_jprobe(&jp);
 	
