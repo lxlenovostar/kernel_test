@@ -1,0 +1,72 @@
+Breakpoint 1 at 0x80485fe: file astall.c, line 34.
+[Thread debugging using libthread_db enabled]
+[New Thread 0xb7dc26b0 (LWP 18071)]
+[Switching to Thread 0xb7dc26b0 (LWP 18071)]
+main () at astall.c:34
+34	    pthread_create(&tid, NULL, thr, NULL);
+Breakpoint 2 at 0xb7f299d0
+Breakpoint 3 at 0xb7f2b440
+
+Breakpoint 2, 0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0xb7ee0b02 in _dl_addr () from /lib/tls/i686/cmov/libc.so.6
+#2  0xb7e34390 in ?? () from /lib/tls/i686/cmov/libc.so.6
+#3  0xb7e3798c in ?? () from /lib/tls/i686/cmov/libc.so.6
+#4  0xb7e374f1 in calloc () from /lib/tls/i686/cmov/libc.so.6
+#5  0xb7f4da1c in _dl_allocate_tls () from /lib/ld-linux.so.2
+#6  0xb7f27673 in pthread_create@@GLIBC_2.1 () from /lib/tls/i686/cmov/libpthread.so.0
+#7  0x08048621 in main () at astall.c:34
+
+Breakpoint 3, 0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0xb7ee0d79 in _dl_addr () from /lib/tls/i686/cmov/libc.so.6
+#2  0xb7e34390 in ?? () from /lib/tls/i686/cmov/libc.so.6
+#3  0xb7e3798c in ?? () from /lib/tls/i686/cmov/libc.so.6
+#4  0xb7e374f1 in calloc () from /lib/tls/i686/cmov/libc.so.6
+#5  0xb7f4da1c in _dl_allocate_tls () from /lib/ld-linux.so.2
+#6  0xb7f27673 in pthread_create@@GLIBC_2.1 () from /lib/tls/i686/cmov/libpthread.so.0
+#7  0x08048621 in main () at astall.c:34
+[New Thread 0xb7dc1b90 (LWP 18074)]
+[Switching to Thread 0xb7dc1b90 (LWP 18074)]
+
+Breakpoint 2, 0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 3, 0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485ca in thr (arg=0x0) at astall.c:23
+#2  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 3, 0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f2b440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485ca in thr (arg=0x0) at astall.c:23
+#2  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#0  0xb7f299d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x08048576 in func () at astall.c:10
+#2  0x080485af in thr (arg=0x0) at astall.c:20
+#3  0xb7f2850f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#4  0xb7ea57ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Program received signal SIGINT, Interrupt.
+[Switching to Thread 0xb7dc26b0 (LWP 18071)]
+0xb7f57430 in __kernel_vsyscall ()
+The program is running.  Exit anyway? (y or n) [answered Y; input not from terminal]

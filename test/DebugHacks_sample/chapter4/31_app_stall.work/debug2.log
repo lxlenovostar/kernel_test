@@ -1,0 +1,80 @@
+Breakpoint 1 at 0x80485fe: file astall.c, line 34.
+[Thread debugging using libthread_db enabled]
+[New Thread 0xb7efa6b0 (LWP 18464)]
+[Switching to Thread 0xb7efa6b0 (LWP 18464)]
+main () at astall.c:34
+34	    pthread_create(&tid, NULL, thr, NULL);
+Breakpoint 2 at 0xb80619d0
+Breakpoint 3 at 0xb8063440
+
+Breakpoint 2, 0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: b8091260
+#0  0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0xb8018b02 in _dl_addr () from /lib/tls/i686/cmov/libc.so.6
+#2  0xb7f6c390 in ?? () from /lib/tls/i686/cmov/libc.so.6
+#3  0xb7f6f98c in ?? () from /lib/tls/i686/cmov/libc.so.6
+#4  0xb7f6f4f1 in calloc () from /lib/tls/i686/cmov/libc.so.6
+#5  0xb8085a1c in _dl_allocate_tls () from /lib/ld-linux.so.2
+#6  0xb805f673 in pthread_create@@GLIBC_2.1 () from /lib/tls/i686/cmov/libpthread.so.0
+#7  0x08048621 in main () at astall.c:34
+
+Breakpoint 3, 0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: b8091260
+#0  0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0xb8018d79 in _dl_addr () from /lib/tls/i686/cmov/libc.so.6
+#2  0xb7f6c390 in ?? () from /lib/tls/i686/cmov/libc.so.6
+#3  0xb7f6f98c in ?? () from /lib/tls/i686/cmov/libc.so.6
+#4  0xb7f6f4f1 in calloc () from /lib/tls/i686/cmov/libc.so.6
+#5  0xb8085a1c in _dl_allocate_tls () from /lib/ld-linux.so.2
+#6  0xb805f673 in pthread_create@@GLIBC_2.1 () from /lib/tls/i686/cmov/libpthread.so.0
+#7  0x08048621 in main () at astall.c:34
+[New Thread 0xb7ef9b90 (LWP 18467)]
+[Switching to Thread 0xb7ef9b90 (LWP 18467)]
+
+Breakpoint 2, 0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 3, 0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485ca in thr (arg=0x0) at astall.c:23
+#2  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 3, 0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb8063440 in pthread_mutex_unlock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485ca in thr (arg=0x0) at astall.c:23
+#2  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x080485a0 in thr (arg=0x0) at astall.c:18
+#2  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#3  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Breakpoint 2, 0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+## addr: 0804a030
+#0  0xb80619d0 in pthread_mutex_lock () from /lib/tls/i686/cmov/libpthread.so.0
+#1  0x08048576 in func () at astall.c:10
+#2  0x080485af in thr (arg=0x0) at astall.c:20
+#3  0xb806050f in start_thread () from /lib/tls/i686/cmov/libpthread.so.0
+#4  0xb7fdd7ee in clone () from /lib/tls/i686/cmov/libc.so.6
+
+Program received signal SIGINT, Interrupt.
+[Switching to Thread 0xb7efa6b0 (LWP 18464)]
+0xb808f430 in __kernel_vsyscall ()
+The program is running.  Exit anyway? (y or n) [answered Y; input not from terminal]
