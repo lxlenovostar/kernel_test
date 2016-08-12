@@ -44,7 +44,11 @@ static int minit(void)
     printk(KERN_INFO"result: %d", fls64(0));
     printk(KERN_INFO"result: %d", fls64(1));
     */
-   
+    int d = 1;
+    int k = 62; 
+ 
+    printk(KERN_INFO"result is:%d", (d <<= 63 - k)); 
+    printk(KERN_INFO"result: %d", fls64(0xbfe6b8a5bf378d83LL));
     u_int64_t fingerprint_mask; // to check if we are at segment boundary  
     unsigned int avg_segment_size = 32;   
     
