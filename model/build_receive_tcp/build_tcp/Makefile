@@ -1,4 +1,4 @@
-APP_NAME	:= wspack_send
+APP_NAME	:= build_tcp
 
 #All the EXTRA_ variables apply only to the kbuild makefile
 #where they are assigned. The EXTRA_ variables apply to all
@@ -17,7 +17,7 @@ ifneq ($(KERNELRELEASE),)
 # $(obj-m) specifies object files which are built as loadable kernel modules.
 obj-m	:= $(APP_NAME).o
 # $(<executable>-objs) lists all objects used to link the final executable.
-$(APP_NAME)-objs := $(WS_OBJS) md5-fast-64.o
+$(APP_NAME)-objs := $(WS_OBJS) 
 
 else
 
