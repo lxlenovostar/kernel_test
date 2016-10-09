@@ -4,10 +4,21 @@
 
 #define MD5_LEN 16
 
-/* build tcp header. */
+/** 
+ * build tcp header. Learn by tcp_send_fin()
+ */
 int build_tcp(struct sk_buff *skb)
 {
-	
+	skb->csum = 0;
+    TCP_SKB_CB(skb)->flags = (TCPCB_FLAG_ACK | TCPCB_FLAG_FIN);
+    TCP_SKB_CB(skb)->sacked = 0;
+    skb_shinfo(skb)->gso_segs = 1;
+    skb_shinfo(skb)->gso_size = 0;
+    skb_shinfo(skb)->gso_type = 0;
+ 
+    /* FIN eats a sequence byte, write_seq advanced by tcp_queue_skb(). */
+    TCP_SKB_CB(skb)->seq = 123;
+    TCP_SKB_CB(skb)->end_seq = TCP_SKB_CB(skb)->seq + 1;
 
 	return 0;	
 }
@@ -26,10 +37,17 @@ static int minit(void)
 {
 	int err = 0;
 	struct sk_buff *skb;
+	int size;
+   
+	/* The TCP header must be at least 32-bit aligned.  */
+    size = ALIGN(sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr) + MD5_LEN, 4);
 
-	skb = alloc_skb(sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr) + MD5_LEN, GFP_ATOMIC);
+	skb = alloc_skb(size, GFP_ATOMIC);
 	if (skb == NULL)
 		return 1;
+
+	/* Reserve space for headers and prepare control bits. */
+    skb_reserve(skb, size);
 
 	err = copy_md5(skb);
 
