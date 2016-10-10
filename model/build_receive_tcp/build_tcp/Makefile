@@ -35,7 +35,7 @@ KERNELDIR ?= /root/ws_6/usr/src/kernels/2.6.32-358.6.1.ws5.b.6.2.1
 PWD := $(shell pwd)
 
 default:
-	sh find_symbols.sh $(KERNELDIR)
+	#sh find_symbols.sh $(KERNELDIR)
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) LDDINC=$(PWD) modules
 endif
 
