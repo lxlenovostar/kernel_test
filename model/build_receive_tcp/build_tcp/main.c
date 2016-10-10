@@ -8,13 +8,32 @@
 #define SOURCE 6880
 #define DEST   6881
 
+/** 
+ * build ip header. 
+ TODO: 需要计算cheksum 吗？ 
+ */
 int build_iphdr(struct sk_buff *skb)
 {
+	strcut iphdr *iph;
+	skb_push(skb, ALIGN(sizeof(struct iphdr), 4));
+
+	skb_reset_network_header(skb);
+    iph = ip_hdr(skb);
+
+    *((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (inet->tos & 0xff));
+    iph->tot_len = htons(skb->len);
+
+    iph->ttl      = ip_select_ttl(inet, &rt->u.dst);
+    iph->protocol = sk->sk_protocol;
+    iph->saddr    = rt->rt_src;
+    iph->daddr    = rt->rt_dst;
+
 	return 0;
 }
 
 /** 
  * build tcp header. Learn by tcp_send_fin()
+ TODO: 需要计算cheksum 吗？ 
  */
 int build_tcphdr(struct sk_buff *skb)
 {
