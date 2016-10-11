@@ -14,17 +14,17 @@
  */
 int build_iphdr(struct sk_buff *skb)
 {
-	strcut iphdr *iph;
+	struct iphdr *iph;
 	skb_push(skb, ALIGN(sizeof(struct iphdr), 4));
 
 	skb_reset_network_header(skb);
     iph = ip_hdr(skb);
 
-    *((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (inet->tos & 0xff));
+    //*((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (inet->tos & 0xff));
     iph->tot_len = htons(skb->len);
 
-    iph->ttl      = ip_select_ttl(inet, &rt->u.dst);
-    iph->protocol = sk->sk_protocol;
+    iph->ttl      = 64;
+    iph->protocol = IPPROTO_TCP;
     iph->saddr    = rt->rt_src;
     iph->daddr    = rt->rt_dst;
 
