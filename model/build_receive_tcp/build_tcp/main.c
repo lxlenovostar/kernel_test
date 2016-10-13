@@ -3,14 +3,25 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 #include <net/tcp.h>
+#include "csum.h"
 
 #define MD5LEN 16
 #define SOURCE 6880
 #define DEST   6881
 
+static unsigned int inet_addr(char *str) 
+{ 
+	int a,b,c,d; 
+    char arr[4]; 
+    sscanf(str,"%d.%d.%d.%d",&a,&b,&c,&d); 
+	/* 网络字节序(big-endian)*/
+    arr[0] = a; arr[1] = b; arr[2] = c; arr[3] = d; 
+
+    return *(unsigned int*)arr; 
+} 
+
 /** 
  * build ip header. 
- TODO: 需要计算cheksum 吗？ 
  */
 int build_iphdr(struct sk_buff *skb)
 {
@@ -20,20 +31,19 @@ int build_iphdr(struct sk_buff *skb)
 	skb_reset_network_header(skb);
     iph = ip_hdr(skb);
 
-    //*((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (inet->tos & 0xff));
+    *((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (0 & 0xff));
     iph->tot_len = htons(skb->len);
 
     iph->ttl      = 64;
     iph->protocol = IPPROTO_TCP;
-    iph->saddr    = rt->rt_src;
-    iph->daddr    = rt->rt_dst;
+    iph->saddr    = inet_addr("127.0.0.1");
+    iph->daddr    = inet_addr("127.0.0.1");
 
 	return 0;
 }
 
 /** 
  * build tcp header. Learn by tcp_send_fin()
- TODO: 需要计算cheksum 吗？ 
  */
 int build_tcphdr(struct sk_buff *skb)
 {
@@ -75,6 +85,7 @@ static int minit(void)
 {
 	int err = 0;
 	struct sk_buff *skb;
+	struct iphdr *iph;
 	int size;
    
 	/* The TCP header must be at least 32-bit aligned.  */
@@ -96,6 +107,9 @@ static int minit(void)
 	/* build ip header. */
 	err = build_iphdr(skb);
 
+	/* Calculate the checksum. */
+    iph = ip_hdr(skb);
+	skbcsum(skb, iph);
 	return err;    
 }
 
