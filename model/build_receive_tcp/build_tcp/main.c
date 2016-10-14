@@ -9,16 +9,58 @@
 #define SOURCE 6880
 #define DEST   6881
 
+#define SOU_IP "192.168.109.147"
+#define DST_IP "192.168.109.1"
+#define DST_MAC {0x00, 0x50, 0x56, 0xC0, 0x00, 0x08}
+static u8 dst_mac[ETH_ALEN] = DST_MAC;
+#define SOU_DEVICE "eth0"
+
 static unsigned int inet_addr(char *str) 
 { 
 	int a,b,c,d; 
     char arr[4]; 
     sscanf(str,"%d.%d.%d.%d",&a,&b,&c,&d); 
-	/* 网络字节序(big-endian)*/
+	/* 网络字节序(big-endian) */
     arr[0] = a; arr[1] = b; arr[2] = c; arr[3] = d; 
 
     return *(unsigned int*)arr; 
 } 
+
+int build_ethhdr(struct sk_buff *skb) 
+{
+	struct ethhdr *eth;
+	struct net_device *dev;
+
+	/* from ip_output
+	   from sock_bindtodevice
+
+	//return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
+	sk->sk_net = get_net(net);
+	struct net *net = sk->sk_net;
+	struct net_device *dev = dev_get_by_name(net, devname);
+		
+	skb->dev = dev;
+    skb->protocol = htons(ETH_P_IP);
+	*/
+
+	dev = dev_get_by_name(&init_net, SOU_DEVICE);
+	if (!dev)
+		return 3;
+
+	skb->dev = dev;
+
+	eth = (struct ethhdr *)skb_push(skb, ETH_HLEN);
+	skb_reset_mac_header(skb);
+
+    skb->protocol = htons(ETH_P_IP);
+
+	memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
+	memcpy(eth->h_dest, dst_mac, ETH_ALEN);
+
+	dev_queue_xmit(skb);
+
+	return 0;	
+}
 
 /** 
  * build ip header. 
@@ -36,8 +78,8 @@ int build_iphdr(struct sk_buff *skb)
 
     iph->ttl      = 64;
     iph->protocol = IPPROTO_TCP;
-    iph->saddr    = inet_addr("127.0.0.1");
-    iph->daddr    = inet_addr("127.0.0.1");
+    iph->saddr    = inet_addr(SOU_IP);
+    iph->daddr    = inet_addr(DST_IP);
 
 	return 0;
 }
@@ -88,6 +130,8 @@ static int minit(void)
 	struct iphdr *iph;
 	int size;
    
+	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
+
 	/* The TCP header must be at least 32-bit aligned.  */
     size = ALIGN(sizeof(struct ethhdr), 4) + ALIGN(sizeof(struct iphdr), 4) + ALIGN(sizeof(struct tcphdr), 4) + ALIGN(MD5LEN, 4);
 
@@ -100,22 +144,32 @@ static int minit(void)
 
 	/* build tcp payload. */
 	err = copy_md5sum(skb);
+	if (err != 0)
+		return err;
 
 	/* build tcp header. */
 	err = build_tcphdr(skb);
+	if (err != 0)
+		return err;
 
 	/* build ip header. */
 	err = build_iphdr(skb);
+	if (err != 0)
+		return err;
 
 	/* Calculate the checksum. */
     iph = ip_hdr(skb);
 	skbcsum(skb, iph);
+
+	/* build eth header. */
+    err = build_ethhdr(skb); 
+
 	return err;    
 }
 
 static void mexit(void)
 {
-	
+	printk(KERN_INFO "Exit %s.", THIS_MODULE->name);
 }
 
 module_init(minit);
