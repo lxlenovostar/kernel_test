@@ -9,11 +9,14 @@
 #define MD5LEN 16
 #define SOURCE 6880
 #define DEST   6880
-
+/*
 #define SOU_IP "139.209.90.213"
 #define DST_IP "119.184.176.146"
-//#define DST_MAC {0x00, 0x50, 0x56, 0xC0, 0x00, 0x08}
 #define DST_MAC {0x00, 0x16, 0x31, 0xF0, 0x9B, 0x82}
+*/
+#define SOU_IP "192.168.109.181"
+#define DST_IP "192.168.109.147"
+#define DST_MAC {0x00, 0x0C, 0x29, 0x72, 0x7B, 0xF3}
 static u8 dst_mac[ETH_ALEN] = DST_MAC;
 #define SOU_DEVICE "eth0"
 
