@@ -1,4 +1,4 @@
-APP_NAME	:= wspack_send
+APP_NAME	:= receive_tcp
 
 #All the EXTRA_ variables apply only to the kbuild makefile
 #where they are assigned. The EXTRA_ variables apply to all
@@ -17,7 +17,7 @@ ifneq ($(KERNELRELEASE),)
 # $(obj-m) specifies object files which are built as loadable kernel modules.
 obj-m	:= $(APP_NAME).o
 # $(<executable>-objs) lists all objects used to link the final executable.
-$(APP_NAME)-objs := $(WS_OBJS) md5-fast-64.o
+$(APP_NAME)-objs := $(WS_OBJS) 
 
 else
 
@@ -35,7 +35,7 @@ KERNELDIR ?= /root/ws_6/usr/src/kernels/2.6.32-358.6.1.ws5.b.6.2.1
 PWD := $(shell pwd)
 
 default:
-	sh find_symbols.sh $(KERNELDIR)
+	#sh find_symbols.sh $(KERNELDIR)
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) LDDINC=$(PWD) modules
 endif
 
