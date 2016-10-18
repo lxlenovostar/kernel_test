@@ -15,6 +15,9 @@ void skbcsum(struct sk_buff *skb, struct iphdr *iph)
 	tcph = (struct tcphdr *)((char *)iph + iphl);
 	tcphl = tcph->doff << 2;
 
+	/*
+     From ip_send_check.
+     */
 	iph->check	= 0;
 	iph->check	= ip_fast_csum((unsigned char *)iph, iph->ihl);
 
@@ -33,6 +36,7 @@ void skbcsum(struct sk_buff *skb, struct iphdr *iph)
 	else {
 		skb->csum = 0;
 		skb->csum = skb_checksum(skb, iph->ihl << 2, tcplen, 0);
+		/* 计算TCP的校验和 */
 		tcph->check = csum_tcpudp_magic(iph->saddr, iph->daddr,
 				tcplen, IPPROTO_TCP, skb->csum);
 	}
