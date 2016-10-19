@@ -13,6 +13,8 @@
 #define SOURCE 6880
 #define DEST   6880
 
+__be32 daddr = 0;
+__be32 saddr = 0;
 #define SOU_IP "139.209.90.213"
 #define DST_IP "119.184.176.146"
 #define DST_MAC {0x00, 0x16, 0x31, 0xF0, 0x9B, 0x82}
@@ -119,7 +121,7 @@ static inline void addup_table(__be32 ip, char *mac)
 	}
 }
 
-int ws_sp_get_mac(char *dest, __be32 ip, int rtos, struct sk_buff *skb) 
+int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_buff *skb) 
 {
 	struct mac_ip *tmp;
 	struct neighbour *nb_entry = NULL;
@@ -128,37 +130,43 @@ int ws_sp_get_mac(char *dest, __be32 ip, int rtos, struct sk_buff *skb)
 	    .oif = 0,
 	    .nl_u = {
 	        .ip4_u = {
-		    .daddr = ip,
-		    .saddr = 0,
+		    .daddr = dst_ip,
+		    .saddr = sou_ip,
 		    .tos = rtos,}},
 	};
 		
-	tmp = lookup_table(ip);
+	tmp = lookup_table(dst_ip);
 	if (likely(tmp)) {
 		memcpy(dest, tmp->mac, ETH_ALEN);
-		return 1;
+		return -1;
 	}
 
 	if (net_ratelimit())
 		pr_warn("look up table failed.\n");
 
 	if (ip_route_output_key(&init_net, &rt, &f1))
-		return 2;
-	nb_entry = neigh_lookup(&arp_tbl, &ip, rt->u.dst.dev);
+		return -2;
+	nb_entry = neigh_lookup(&arp_tbl, &dst_ip, rt->u.dst.dev);
+
+	/*
+	if(!nb_entry) 
+		nb_entry = neigh_create(&arp_tbl, &dst_ip, rt->u.dst.dev);
+	*/
+
 	if(!nb_entry || !(nb_entry->nud_state & NUD_VALID)) {
 		if (!nb_entry)
 			printk(KERN_ERR"fuck1");
-		if (!(nb_entry->nud_state & NUD_VALID))
+		if(!(nb_entry->nud_state & NUD_VALID)) 
 			printk(KERN_ERR"fuck2");
 		neigh_event_send(rt->u.dst.neighbour, NULL);
 		if(nb_entry)
 			neigh_release(nb_entry);
 		ip_rt_put(rt);
-		return 3;
+		return -3;
 	} else {
 		memcpy(dest, nb_entry->ha, ETH_ALEN);
 		neigh_release(nb_entry);
-		addup_table(ip, nb_entry->ha);
+		addup_table(dst_ip, nb_entry->ha);
 	}
 	if (unlikely(rt)) {
 		skb_dst_drop(skb);
@@ -166,7 +174,6 @@ int ws_sp_get_mac(char *dest, __be32 ip, int rtos, struct sk_buff *skb)
 	}
 	return 1;
 }
-
 
 static unsigned int inet_addr(char *str) 
 { 
@@ -200,11 +207,15 @@ int build_ethhdr(struct sk_buff *skb)
 	//dev = dev_get_by_name(&init_net, SOU_DEVICE);
 	struct iphdr *iph;
     iph = ip_hdr(skb);
-	dev = ws_sp_get_dev(iph->daddr);
-	if (!dev)
-		return 3;
+	dev = ws_sp_get_dev(saddr);
+	if (!dev) {
+		printk(KERN_ERR"get device failed.");
+		return -3;
+	}
 
 	skb->dev = dev;
+	skb->pkt_type  = PACKET_OUTGOING; 
+	skb->local_df  = 1;     
 
 	eth = (struct ethhdr *)skb_push(skb, ETH_HLEN);
 	skb_reset_mac_header(skb);
@@ -212,10 +223,9 @@ int build_ethhdr(struct sk_buff *skb)
     skb->protocol = htons(ETH_P_IP);
 
 	memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-	
 	//memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 	
-	err = ws_sp_get_mac(eth->h_dest, iph->daddr, RT_TOS(20), skb);
+	err = ws_sp_get_mac(eth->h_dest, daddr, saddr, RT_TOS(20), skb);
 	if (err != 1) {
 		kfree_skb(skb);
 		if (net_ratelimit())
@@ -256,6 +266,8 @@ int build_iphdr(struct sk_buff *skb)
     //iph->saddr    = inet_addr(SOU_IP);
     //iph->daddr    = inet_addr(DST_IP);
 
+	saddr =  in_aton(SOU_IP);
+	daddr = in_aton(DST_IP);
     iph->saddr    = in_aton(SOU_IP);
     iph->daddr    = in_aton(DST_IP);
 	return 0;
@@ -321,28 +333,36 @@ static int minit(void)
 
 	skb = alloc_skb(size, GFP_ATOMIC);
 	if (skb == NULL)
-		return 1;
+		return -1;
 
 	/* Reserve space for headers and prepare control bits. */
     skb_reserve(skb, size);
 
 	/* build tcp payload. */
 	err = copy_md5sum(skb);
-	if (err != 0)
+	if (err != 0) {
+		kfree_skb(skb);
 		return err;
+	}
 
 	/* build tcp header. */
 	err = build_tcphdr(skb);
-	if (err != 0)
+	if (err != 0) {
+		kfree_skb(skb);
 		return err;
+	}
 
+	printk(KERN_INFO "1 Start %s.", THIS_MODULE->name);
 	/* build ip header. */
 	err = build_iphdr(skb);
-	if (err != 0)
+	if (err != 0) {
+		kfree_skb(skb);
 		return err;
+	}
 
 	/* Calculate the checksum. */
     iph = ip_hdr(skb);
+	skb->ip_summed = CHECKSUM_NONE;   
 	skbcsum(skb, iph);
 	/*
 	int tcphoff   = ip_hdrlen(skb);
@@ -353,24 +373,17 @@ static int minit(void)
 				skb->len - tcphoff, IPPROTO_TCP, skb->csum);
 	*/
 
+	printk(KERN_INFO "2 Start %s.", THIS_MODULE->name);
 	/* build eth header. */
     err = build_ethhdr(skb); 
-	if (err != 0)
+	if (err != 0) {
+		printk(KERN_INFO "2.5 Start %s. err:%d", THIS_MODULE->name, err);
 		return err;
+	}
 
-	/*
-	err = ws_sp_get_mac(eth->h_dest, ip->daddr, RT_TOS(20), skb);
-	if (unlikely(!err)) {
-		kfree_skb(skb);
-		if (net_ratelimit())
-			printk(KERN_ERR"get device mac failed when send packets.");
-			return err;
-		}
-*/
-
+	printk(KERN_INFO "3 Start %s.", THIS_MODULE->name);
 	err = dev_queue_xmit(skb);
 	msleep(10);
-	//kfree_skb(skb);
 
 	printk(KERN_INFO "dev_queue_xmit:%d", err);
 
