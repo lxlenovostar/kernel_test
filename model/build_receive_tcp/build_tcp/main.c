@@ -13,8 +13,10 @@
 #define SOURCE 6880
 #define DEST   6880
 
+__be32 gate_addr = 0;
 __be32 daddr = 0;
 __be32 saddr = 0;
+#define GATE_IP "139.209.90.1"
 #define SOU_IP "139.209.90.213"
 #define DST_IP "119.184.176.146"
 #define DST_MAC {0x00, 0x16, 0x31, 0xF0, 0x9B, 0x82}
@@ -90,7 +92,6 @@ out:
 	return netdev;
 }
 
-
 static inline struct mac_ip *lookup_table(__be32 ip)
 {
 	int idx;
@@ -130,12 +131,12 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 	    .oif = 0,
 	    .nl_u = {
 	        .ip4_u = {
-		    .daddr = dst_ip,
-		    .saddr = sou_ip,
+		    .daddr = gate_addr,
+		    .saddr = 0,
 		    .tos = rtos,}},
 	};
 		
-	tmp = lookup_table(dst_ip);
+	tmp = lookup_table(gate_addr);
 	if (likely(tmp)) {
 		memcpy(dest, tmp->mac, ETH_ALEN);
 		return -1;
@@ -146,7 +147,7 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 
 	if (ip_route_output_key(&init_net, &rt, &f1))
 		return -2;
-	nb_entry = neigh_lookup(&arp_tbl, &dst_ip, rt->u.dst.dev);
+	nb_entry = neigh_lookup(&arp_tbl, &gate_addr, rt->u.dst.dev);
 
 	/*
 	if(!nb_entry) 
@@ -156,8 +157,6 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 	if(!nb_entry || !(nb_entry->nud_state & NUD_VALID)) {
 		if (!nb_entry)
 			printk(KERN_ERR"fuck1");
-		if(!(nb_entry->nud_state & NUD_VALID)) 
-			printk(KERN_ERR"fuck2");
 		neigh_event_send(rt->u.dst.neighbour, NULL);
 		if(nb_entry)
 			neigh_release(nb_entry);
@@ -166,7 +165,7 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 	} else {
 		memcpy(dest, nb_entry->ha, ETH_ALEN);
 		neigh_release(nb_entry);
-		addup_table(dst_ip, nb_entry->ha);
+		addup_table(gate_addr, nb_entry->ha);
 	}
 	if (unlikely(rt)) {
 		skb_dst_drop(skb);
@@ -204,10 +203,10 @@ int build_ethhdr(struct sk_buff *skb)
     skb->protocol = htons(ETH_P_IP);
 	*/
 
-	//dev = dev_get_by_name(&init_net, SOU_DEVICE);
 	struct iphdr *iph;
     iph = ip_hdr(skb);
 	dev = ws_sp_get_dev(saddr);
+	//dev = dev_get_by_name(&init_net, SOU_DEVICE);
 	if (!dev) {
 		printk(KERN_ERR"get device failed.");
 		return -3;
@@ -268,6 +267,7 @@ int build_iphdr(struct sk_buff *skb)
 
 	saddr =  in_aton(SOU_IP);
 	daddr = in_aton(DST_IP);
+	gate_addr = in_aton(GATE_IP);
     iph->saddr    = in_aton(SOU_IP);
     iph->daddr    = in_aton(DST_IP);
 	return 0;
