@@ -14,18 +14,20 @@
 #define DEST   6880
 
 __be32 gate_addr = 0;
-__be32 daddr = 0;
-__be32 saddr = 0;
+//__be32 daddr = 0;
+//__be32 saddr = 0;
 #define GATE_IP "139.209.90.1"
 #define SOU_IP "139.209.90.213"
 #define DST_IP "119.184.176.146"
-#define DST_MAC {0x00, 0x16, 0x31, 0xF0, 0x9B, 0x82}
+
 /*
 #define SOU_IP "192.168.109.181"
 #define DST_IP "192.168.109.147"
 #define DST_MAC {0x00, 0x0C, 0x29, 0x72, 0x7B, 0xF3}
 */
-static u8 dst_mac[ETH_ALEN] = DST_MAC;
+//#define DST_MAC {0x00, 0x16, 0x31, 0xF0, 0x9B, 0x82}
+//static u8 dst_mac[ETH_ALEN] = DST_MAC;
+
 #define SOU_DEVICE "eth0"
 
 #define MAC_IP_TAB_SIZE 2
@@ -39,6 +41,7 @@ struct mac_ip {
 struct mac_ip mac_ip_table[MAC_IP_TAB_SIZE] = {{0,{0},0}};
 unsigned long xmit_itv = 120 * HZ;
 
+/*
 struct net_device *ws_sp_get_dev(__be32 ip)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
@@ -91,6 +94,7 @@ struct net_device *ws_sp_get_dev(__be32 ip)
 out:
 	return netdev;
 }
+*/
 
 static inline struct mac_ip *lookup_table(__be32 ip)
 {
@@ -122,7 +126,7 @@ static inline void addup_table(__be32 ip, char *mac)
 	}
 }
 
-int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_buff *skb) 
+int get_mac(char *dest, __be32 dst_ip, int rtos, struct sk_buff *skb) 
 {
 	struct mac_ip *tmp;
 	struct neighbour *nb_entry = NULL;
@@ -131,41 +135,39 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 	    .oif = 0,
 	    .nl_u = {
 	        .ip4_u = {
-		    .daddr = gate_addr,
+		    .daddr = dst_ip,
 		    .saddr = 0,
 		    .tos = rtos,}},
 	};
 		
-	tmp = lookup_table(gate_addr);
+	tmp = lookup_table(dst_ip);
 	if (likely(tmp)) {
 		memcpy(dest, tmp->mac, ETH_ALEN);
-		return -1;
+		return 1;
 	}
 
+	/* 这个东西的用途？？
 	if (net_ratelimit())
 		pr_warn("look up table failed.\n");
+	*/
 
 	if (ip_route_output_key(&init_net, &rt, &f1))
 		return -2;
-	nb_entry = neigh_lookup(&arp_tbl, &gate_addr, rt->u.dst.dev);
+	nb_entry = neigh_lookup(&arp_tbl, &dst_ip, rt->u.dst.dev);
 
-	/*
-	if(!nb_entry) 
-		nb_entry = neigh_create(&arp_tbl, &dst_ip, rt->u.dst.dev);
-	*/
-
+	printk(KERN_ERR"fuck1");
 	if(!nb_entry || !(nb_entry->nud_state & NUD_VALID)) {
-		if (!nb_entry)
-			printk(KERN_ERR"fuck1");
+		printk(KERN_ERR"fuck2");
 		neigh_event_send(rt->u.dst.neighbour, NULL);
 		if(nb_entry)
 			neigh_release(nb_entry);
 		ip_rt_put(rt);
 		return -3;
 	} else {
+		printk(KERN_ERR"fuck3");
 		memcpy(dest, nb_entry->ha, ETH_ALEN);
 		neigh_release(nb_entry);
-		addup_table(gate_addr, nb_entry->ha);
+		addup_table(dst_ip, nb_entry->ha);
 	}
 	if (unlikely(rt)) {
 		skb_dst_drop(skb);
@@ -174,16 +176,18 @@ int ws_sp_get_mac(char *dest, __be32 dst_ip, __be32 sou_ip, int rtos, struct sk_
 	return 1;
 }
 
+/*
 static unsigned int inet_addr(char *str) 
 { 
 	int a,b,c,d; 
     char arr[4]; 
     sscanf(str, "%d.%d.%d.%d", &a,&b,&c,&d); 
-	/* 网络字节序(big-endian) */
+	// 网络字节序(big-endian) 
     arr[0] = a; arr[1] = b; arr[2] = c; arr[3] = d; 
 
     return *(unsigned int*)arr; 
 } 
+*/
 
 int build_ethhdr(struct sk_buff *skb) 
 {
@@ -191,22 +195,10 @@ int build_ethhdr(struct sk_buff *skb)
 	struct net_device *dev;
 	int err;
 
-	/* from ip_output
-	   from sock_bindtodevice
-
-	//return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
-	sk->sk_net = get_net(net);
-	struct net *net = sk->sk_net;
-	struct net_device *dev = dev_get_by_name(net, devname);
-		
-	skb->dev = dev;
-    skb->protocol = htons(ETH_P_IP);
-	*/
-
 	struct iphdr *iph;
     iph = ip_hdr(skb);
-	dev = ws_sp_get_dev(saddr);
-	//dev = dev_get_by_name(&init_net, SOU_DEVICE);
+	//dev = ws_sp_get_dev(saddr);
+	dev = dev_get_by_name(&init_net, SOU_DEVICE);
 	if (!dev) {
 		printk(KERN_ERR"get device failed.");
 		return -3;
@@ -224,7 +216,8 @@ int build_ethhdr(struct sk_buff *skb)
 	memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
 	//memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 	
-	err = ws_sp_get_mac(eth->h_dest, daddr, saddr, RT_TOS(20), skb);
+	gate_addr = in_aton(GATE_IP);
+	err = get_mac(eth->h_dest, gate_addr, RT_TOS(20), skb);
 	if (err != 1) {
 		kfree_skb(skb);
 		if (net_ratelimit())
@@ -232,15 +225,6 @@ int build_ethhdr(struct sk_buff *skb)
 			return err;
 		}
 
-	/*
-	ret = ws_sp_get_mac(eth->h_dest, daddr, rtos, skb);
-	if (unlikely(!ret)) {
-		kfree_skb(skb);
-		if (net_ratelimit())
-			printk(KERN_ERR"get device mac failed when send packets.");
-			return 3;
-		}
-	*/
     return 0;	
 }
 
@@ -265,9 +249,8 @@ int build_iphdr(struct sk_buff *skb)
     //iph->saddr    = inet_addr(SOU_IP);
     //iph->daddr    = inet_addr(DST_IP);
 
-	saddr =  in_aton(SOU_IP);
-	daddr = in_aton(DST_IP);
-	gate_addr = in_aton(GATE_IP);
+	//saddr =  in_aton(SOU_IP);
+	//daddr = in_aton(DST_IP);
     iph->saddr    = in_aton(SOU_IP);
     iph->daddr    = in_aton(DST_IP);
 	return 0;
@@ -328,7 +311,7 @@ static int minit(void)
    
 	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
 
-	/* The TCP header must be at least 32-bit aligned.  */
+	/* At least 32-bit aligned.  */
     size = ALIGN(sizeof(struct ethhdr), 4) + ALIGN(sizeof(struct iphdr), 4) + ALIGN(sizeof(struct tcphdr), 4) + ALIGN(MD5LEN, 4);
 
 	skb = alloc_skb(size, GFP_ATOMIC);
@@ -352,7 +335,6 @@ static int minit(void)
 		return err;
 	}
 
-	printk(KERN_INFO "1 Start %s.", THIS_MODULE->name);
 	/* build ip header. */
 	err = build_iphdr(skb);
 	if (err != 0) {
@@ -364,28 +346,14 @@ static int minit(void)
     iph = ip_hdr(skb);
 	skb->ip_summed = CHECKSUM_NONE;   
 	skbcsum(skb, iph);
-	/*
-	int tcphoff   = ip_hdrlen(skb);
-	skb->csum = skb_checksum(skb, tcphoff, skb->len - tcphoff, 0);
-	struct tcphdr *th;
-    th = tcp_hdr(skb);
-	th->check = csum_tcpudp_magic(iph->saddr, iph->daddr,
-				skb->len - tcphoff, IPPROTO_TCP, skb->csum);
-	*/
 
-	printk(KERN_INFO "2 Start %s.", THIS_MODULE->name);
 	/* build eth header. */
     err = build_ethhdr(skb); 
 	if (err != 0) {
-		printk(KERN_INFO "2.5 Start %s. err:%d", THIS_MODULE->name, err);
 		return err;
 	}
 
-	printk(KERN_INFO "3 Start %s.", THIS_MODULE->name);
 	err = dev_queue_xmit(skb);
-	msleep(10);
-
-	printk(KERN_INFO "dev_queue_xmit:%d", err);
 
 	return err;    
 }
