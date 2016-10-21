@@ -21,6 +21,9 @@ static unsigned int nf_in(
 	unsigned short sport, dport;
 	struct iphdr *iph;
 	struct tcphdr *tcph;
+	char *tcp_payload = NULL;
+	size_t tcp_payload_len = 0;
+	int i;
 
 	iph = ip_hdr(skb);
 	if (iph->protocol == IPPROTO_TCP) {
@@ -30,6 +33,13 @@ static unsigned int nf_in(
 		dport = tcph->dest;
 		if (ntohs(sport) == 6880 && ntohs(dport) == 6880) {  
 			printk(KERN_INFO "find a new packet");		
+			tcp_payload = (char *)((unsigned char *)tcph + (tcph->doff << 2));
+			tcp_payload_len = ntohs(iph->tot_len) - (iph->ihl << 2) - (tcph->doff << 2);
+			
+			if (tcp_payload_len == 16)
+				for (i = 0; i < tcp_payload_len; ++i)
+					printk("%d:", tcp_payload[i]);
+
     		return NF_DROP;
 		}
 	}
