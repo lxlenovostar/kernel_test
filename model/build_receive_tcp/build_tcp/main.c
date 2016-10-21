@@ -41,61 +41,6 @@ struct mac_ip {
 struct mac_ip mac_ip_table[MAC_IP_TAB_SIZE] = {{0,{0},0}};
 unsigned long xmit_itv = 120 * HZ;
 
-/*
-struct net_device *ws_sp_get_dev(__be32 ip)
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
-	struct list_head *net_iter;
-	struct list_head *net_device_iter;
-	struct net *net;
-#endif
-
-	struct net_device *netdev;
-	struct in_ifaddr  *ifa;
-	__be32 netmask;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
-	list_for_each(net_iter, &net_namespace_list) {
-		net = list_entry(net_iter, struct net, list);
-		list_for_each(net_device_iter, &net->dev_base_head) {
-			netdev = list_entry(net_device_iter, 
-					struct net_device, dev_list);
-			if (unlikely(!netdev->ip_ptr))
-				continue;
-			for(ifa = ((struct in_device *)netdev->ip_ptr)->ifa_list;
-				ifa; ifa = ifa->ifa_next) {
-				netmask = ifa->ifa_mask;
-				if ((ip & netmask) == (ifa->ifa_address & netmask)) {
-					if (netdev->flags & IFF_LOOPBACK)
-						continue;
-					goto out;
-				}
-
-			}
-		}
-	}
-
-#else
-	for(netdev = dev_base; netdev; netdev = netdev->next) {
-		if (netdev->ip_ptr) {
-			for(ifa = ((struct in_device *)netdev->ip_ptr)->ifa_list;
-				ifa; ifa = ifa->ifa_next)  {
-				netmask = ifa->ifa_mask;
-				if ((ip & netmask) == (ifa->ifa_address & netmask)) {
-					if (netdev->flags & IFF_LOOPBACK)
-						continue;
-					goto out;
-				}
-			}
-		}
-	}
-#endif
-	netdev = NULL;
-out:
-	return netdev;
-}
-*/
-
 static inline struct mac_ip *lookup_table(__be32 ip)
 {
 	int idx;
@@ -176,28 +121,12 @@ int get_mac(char *dest, __be32 dst_ip, int rtos, struct sk_buff *skb)
 	return 1;
 }
 
-/*
-static unsigned int inet_addr(char *str) 
-{ 
-	int a,b,c,d; 
-    char arr[4]; 
-    sscanf(str, "%d.%d.%d.%d", &a,&b,&c,&d); 
-	// 网络字节序(big-endian) 
-    arr[0] = a; arr[1] = b; arr[2] = c; arr[3] = d; 
-
-    return *(unsigned int*)arr; 
-} 
-*/
-
 int build_ethhdr(struct sk_buff *skb) 
 {
 	struct ethhdr *eth;
 	struct net_device *dev;
 	int err;
-
-	struct iphdr *iph;
-    iph = ip_hdr(skb);
-	//dev = ws_sp_get_dev(saddr);
+	
 	dev = dev_get_by_name(&init_net, SOU_DEVICE);
 	if (!dev) {
 		printk(KERN_ERR"get device failed.");
@@ -207,14 +136,12 @@ int build_ethhdr(struct sk_buff *skb)
 	skb->dev = dev;
 	skb->pkt_type  = PACKET_OUTGOING; 
 	skb->local_df  = 1;     
+    skb->protocol = htons(ETH_P_IP);
 
 	eth = (struct ethhdr *)skb_push(skb, ETH_HLEN);
 	skb_reset_mac_header(skb);
 
-    skb->protocol = htons(ETH_P_IP);
-
 	memcpy(eth->h_source, dev->dev_addr, ETH_ALEN);
-	//memcpy(eth->h_dest, dst_mac, ETH_ALEN);
 	
 	gate_addr = in_aton(GATE_IP);
 	err = get_mac(eth->h_dest, gate_addr, RT_TOS(20), skb);
@@ -234,43 +161,28 @@ int build_ethhdr(struct sk_buff *skb)
 int build_iphdr(struct sk_buff *skb)
 {
 	struct iphdr *iph;
-	int rtos;
 
 	skb_push(skb, sizeof(struct iphdr));
 	skb_reset_network_header(skb);
-    iph = ip_hdr(skb);
 
-	rtos = RT_TOS(20);
+    iph = ip_hdr(skb);
     *((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (RT_TOS(20) & 0xff));
     iph->tot_len = htons(skb->len);
 	iph->frag_off = htons(IP_DF);
     iph->ttl      = 64;
     iph->protocol = IPPROTO_TCP;
-    //iph->saddr    = inet_addr(SOU_IP);
-    //iph->daddr    = inet_addr(DST_IP);
-
-	//saddr =  in_aton(SOU_IP);
-	//daddr = in_aton(DST_IP);
     iph->saddr    = in_aton(SOU_IP);
     iph->daddr    = in_aton(DST_IP);
+
 	return 0;
 }
 
 /** 
- * build tcp header. Learn by tcp_send_fin()
+ * build tcp header. 
  */
 int build_tcphdr(struct sk_buff *skb)
 {
 	struct tcphdr *th;
-
-    //skb_shinfo(skb)->gso_segs = 1;
-	/*
-	有没有必要设置这些变量 ？？
-    skb_shinfo(skb)->gso_segs = 0;
-    skb_shinfo(skb)->gso_size = 0;
-    skb_shinfo(skb)->gso_type = 0;
-	skb->csum = 0;
-	*/
 
 	skb_push(skb, ALIGN(sizeof(struct tcphdr), 4));
     skb_reset_transport_header(skb);
@@ -294,7 +206,7 @@ int copy_md5sum(struct sk_buff *skb)
 	uint8_t md5_result[MD5LEN] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
 
 	if (skb_tailroom(skb) < MD5LEN)
-		return 2;
+		return -1;
 	else {
 		memcpy(skb_push(skb, MD5LEN), md5_result, MD5LEN);			
 	}
@@ -302,24 +214,35 @@ int copy_md5sum(struct sk_buff *skb)
 	return 0;
 }
 
+struct sk_buff * alloc_set_skb() 
+{
+	/* At least 32-bit aligned.  */
+    int size = ALIGN(sizeof(struct ethhdr), 4) + ALIGN(sizeof(struct iphdr), 4) + ALIGN(sizeof(struct tcphdr), 4) + ALIGN(MD5LEN, 4);
+
+	skb = alloc_skb(size, GFP_ATOMIC);
+	if (skb == NULL) {
+		printk(KERN_ERR"alloc skb failed.");
+		return NULL;
+	}
+
+	/* Reserve space for headers and prepare control bits. */
+    skb_reserve(skb, size);
+
+	return skb;
+}
+
 static int minit(void)
 {
 	int err = 0;
 	struct sk_buff *skb;
 	struct iphdr *iph;
-	int size;
    
 	printk(KERN_INFO "Start %s.", THIS_MODULE->name);
 
-	/* At least 32-bit aligned.  */
-    size = ALIGN(sizeof(struct ethhdr), 4) + ALIGN(sizeof(struct iphdr), 4) + ALIGN(sizeof(struct tcphdr), 4) + ALIGN(MD5LEN, 4);
-
-	skb = alloc_skb(size, GFP_ATOMIC);
-	if (skb == NULL)
+	/* alloc and set sk_buff. */
+	skb = alloc_set_skb();	
+	if (!skb)
 		return -1;
-
-	/* Reserve space for headers and prepare control bits. */
-    skb_reserve(skb, size);
 
 	/* build tcp payload. */
 	err = copy_md5sum(skb);
