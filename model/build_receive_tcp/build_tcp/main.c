@@ -91,25 +91,17 @@ int get_mac(char *dest, __be32 dst_ip, int rtos, struct sk_buff *skb)
 		return 1;
 	}
 
-	/* 这个东西的用途？？
-	if (net_ratelimit())
-		pr_warn("look up table failed.\n");
-	*/
-
 	if (ip_route_output_key(&init_net, &rt, &f1))
 		return -2;
 	nb_entry = neigh_lookup(&arp_tbl, &dst_ip, rt->u.dst.dev);
 
-	printk(KERN_ERR"fuck1");
 	if(!nb_entry || !(nb_entry->nud_state & NUD_VALID)) {
-		printk(KERN_ERR"fuck2");
 		neigh_event_send(rt->u.dst.neighbour, NULL);
 		if(nb_entry)
 			neigh_release(nb_entry);
 		ip_rt_put(rt);
 		return -3;
 	} else {
-		printk(KERN_ERR"fuck3");
 		memcpy(dest, nb_entry->ha, ETH_ALEN);
 		neigh_release(nb_entry);
 		addup_table(dst_ip, nb_entry->ha);
@@ -214,8 +206,9 @@ int copy_md5sum(struct sk_buff *skb)
 	return 0;
 }
 
-struct sk_buff * alloc_set_skb() 
+struct sk_buff * alloc_set_skb(void) 
 {
+	struct sk_buff *skb;
 	/* At least 32-bit aligned.  */
     int size = ALIGN(sizeof(struct ethhdr), 4) + ALIGN(sizeof(struct iphdr), 4) + ALIGN(sizeof(struct tcphdr), 4) + ALIGN(MD5LEN, 4);
 
