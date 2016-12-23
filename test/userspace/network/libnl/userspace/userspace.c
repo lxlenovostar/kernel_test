@@ -11,10 +11,8 @@ int
 rece_from_kernel(struct nl_msg *msg, void *arg)
 {
 	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
-	
  	printf("Received message payload:%s\n", (char *)NLMSG_DATA(r_nlh));
 
-	nlmsg_free(msg);	
 	return 0;
 }
 
@@ -77,7 +75,6 @@ main(int argc, char *argv[])
         printf("sent %d bytes\n", ret);
     }
 
-	while(1) {	
 	ret = nl_recvmsgs_default(nls); 
 	//ret = nl_recvmsgs(nls, rece_from_kernel); 
  	if (ret < 0) {
@@ -88,8 +85,6 @@ main(int argc, char *argv[])
     } else {
         printf("receive bytes\n");
     }
-	
-	}
 
     nl_close(nls);
     nl_socket_free(nls);
