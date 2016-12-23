@@ -65,8 +65,17 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
     	exit(1);
   	} else if (event & EV_READ) {
 		//debug_info();
-  	}
+		struct bufferevent *send_bev = (struct bufferevent *)arg;
 
+		printf("callback start\n");
+		rece_from_kernel();
+       
+		int n = strlen("send your message every 10s."); 	
+		buffer_libnl_libevent[n] = '\0';
+       	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
+       	bufferevent_write(send_bev, buffer_libnl_libevent, n);
+		memset(buffer_libnl_libevent, '\0', 64);
+  	}
 }
 
 void eventcb(struct bufferevent *bev, short events, void *ptr)
@@ -88,7 +97,7 @@ void eventcb(struct bufferevent *bev, short events, void *ptr)
   		struct event *netlink_event;
 		struct event_base *base = (struct event_base *)ptr;
   		//netlink_event = event_new(base, netlink_fd, EV_READ | EV_PERSIST, event_handler, NULL);
-  		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, NULL);
+  		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, bev);
   		event_add(netlink_event, NULL);
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */

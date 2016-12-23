@@ -36,6 +36,24 @@ out:
 }
 
 int 
+data_from_kernel(struct nl_msg *msg, void *arg)
+{
+	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
+
+ 	printf("%s:Received message payload:%s, type is:0x%x\n", __FUNCTION__, (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
+
+	/* a ACK, or other thing. */
+	if (((r_nlh->nlmsg_type)&0xff) != NLMSG_DONE)
+		goto out;
+	
+	strcpy(buffer_libnl_libevent, (char *)NLMSG_DATA(r_nlh));
+
+out:
+	return NL_OK;
+}
+
+
+int 
 init_sock(void) 
 {
 	int res = 0;
@@ -107,8 +125,14 @@ restart:
 	send_to_kernel();
 	rece_from_kernel();
 
-	if (insmod_flag == 1)
+	if (insmod_flag == 1) {
+		/*
+		 we need change this, libevent need it.
+         */
+		nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, data_from_kernel, NULL);
+		netlink_fd = nl_socket_get_fd(nls);
 		return 0;
+	}
 	else {
 		count++;
 		

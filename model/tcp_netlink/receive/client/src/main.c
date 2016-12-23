@@ -100,8 +100,6 @@ main(int argc, char *argv[])
 	if ((long)res_check != 0) {
 		err_quit("insmod kernel module failed");
 	}
-
-	err_quit("just for fun");
 	
 	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
 	if (res != 0) {

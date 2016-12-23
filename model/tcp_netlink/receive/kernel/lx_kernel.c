@@ -37,7 +37,7 @@ void send_message(unsigned long data)
 
     res = nlmsg_unicast(nl_sk, skb_out, pid);
     if (res < 0)
-        printk(KERN_INFO "Error while sending bak to user"); 
+        printk(KERN_INFO "Error while sending back to user"); 
 
 out:
 	mod_timer(&message_timer, jiffies + 10*HZ);	
@@ -56,7 +56,6 @@ static int
 nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
 {
 	struct nlmsghdr *s_nlh;
-    int pid;
     struct sk_buff *skb_out;
     int msg_size;
     char *msg = "get your pid";
