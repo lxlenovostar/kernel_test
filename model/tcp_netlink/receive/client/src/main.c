@@ -97,7 +97,6 @@ main(int argc, char *argv[])
 		err_quit("Thread join failed");
 	}
 
-	//TODO 判断线程返回值，如果安装了内核模块继续执行，否则就退出。
 	if ((long)res_check != 0) {
 		err_quit("insmod kernel module failed");
 	}

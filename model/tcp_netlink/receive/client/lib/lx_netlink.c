@@ -7,7 +7,6 @@
 #include <netlink/socket.h>
 #include <netlink/msg.h>
 
-
 #include "lx_netlink.h"
 #include "unp.h"
 
@@ -25,7 +24,7 @@ ping_from_kernel(struct nl_msg *msg, void *arg)
  	printf("Received message payload:%s, type is:0x%x\n", (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
 
 	/* a ACK, or other thing. */
-	if (((r_nlh->nlmsg_type)&0xff) == NLMSG_ERROR)
+	if (((r_nlh->nlmsg_type)&0xff) != NLMSG_DONE)
 		goto out;
 
 	if (strcmp(c_msg, (char *)NLMSG_DATA(r_nlh)) == 0)  
@@ -48,6 +47,7 @@ init_sock(void)
     }
 
 	 nl_socket_disable_seq_check(nls);
+	 nl_socket_disable_auto_ack(nls);
 
 	 nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, ping_from_kernel, NULL);
 
@@ -112,7 +112,7 @@ restart:
 	else {
 		count++;
 		
-		if (count < 4) {
+		if (count < 3) {
 			sleep(10);
 			goto restart;
 		}
