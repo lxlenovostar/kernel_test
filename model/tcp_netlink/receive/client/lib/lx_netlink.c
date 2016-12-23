@@ -13,22 +13,50 @@ struct iovec rece_iov;
 int init_sock() 
 {
 	int res = 0;
+    struct nl_sock *nls;
 
+	/*
 	netlink_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
 	if (netlink_fd < 0)
 		return -1;
 
  	memset(&src_addr, 0, sizeof(src_addr));
  	src_addr.nl_family = AF_NETLINK;
- 	src_addr.nl_pid = getpid();  /* self pid */
- 	src_addr.nl_groups = 0;  /* not in mcast groups */
+ 	src_addr.nl_pid = getpid();  // self pid 
+ 	src_addr.nl_groups = 0;  // not in mcast groups 
 
  	bind(netlink_fd, (struct sockaddr*)&src_addr, sizeof(src_addr));
 
  	memset(&dest_addr, 0, sizeof(dest_addr));
  	dest_addr.nl_family = AF_NETLINK;
- 	dest_addr.nl_pid = 0;   /* For Linux Kernel */
- 	dest_addr.nl_groups = 0; /* unicast */
+ 	dest_addr.nl_pid = 0;   // For Linux Kernel 
+ 	dest_addr.nl_groups = 0; // unicast 
+	*/
+
+    nls = nl_socket_alloc();
+    if (!nls) {
+        printf("bad nl_socket_alloc\n");
+        return EXIT_FAILURE;
+    }
+
+	 nl_socket_disable_seq_check(nls);
+
+	 //nl_socket_modify_cb(nls, NL_CB_VALID, NL_CB_CUSTOM, rece_from_kernel, NULL);
+	 nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, rece_from_kernel, NULL);
+
+	/*
+     Creates a new Netlink socket using socket() and binds the socket to the protocol 
+     and local port specified in the sk socket object. Fails if the socket is already connected. 
+
+     NETLINK_USERSOCK : Reserved for user-mode socket protocols.
+     */
+    ret = nl_connect(nls, NETLINK_USERSOCK);
+    if (ret < 0) {
+        nl_perror(ret, "nl_connect");
+        nl_socket_free(nls);
+        return EXIT_FAILURE;
+    }
+
 
 	return res;
 }
