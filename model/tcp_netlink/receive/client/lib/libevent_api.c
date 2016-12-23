@@ -67,7 +67,6 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
 		//debug_info();
 
 		printf("callback start\n");
-		/*
 		struct bufferevent *send_bev = (struct bufferevent *)arg;
 		rece_from_kernel();
        
@@ -76,7 +75,6 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
        	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
        	bufferevent_write(send_bev, buffer_libnl_libevent, n);
 		memset(buffer_libnl_libevent, '\0', 64);
-		*/
   	}
 }
 
@@ -104,8 +102,9 @@ void eventcb(struct bufferevent *bev, short events, void *ptr)
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
         printf("connection error\n");
+		//TODO 什么时候释放bev
+    	bufferevent_free(bev);
     }
-    bufferevent_free(bev);
 }
 
 void run(void)
