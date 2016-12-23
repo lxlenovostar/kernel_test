@@ -65,9 +65,10 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
     	exit(1);
   	} else if (event & EV_READ) {
 		//debug_info();
-		struct bufferevent *send_bev = (struct bufferevent *)arg;
 
 		printf("callback start\n");
+		/*
+		struct bufferevent *send_bev = (struct bufferevent *)arg;
 		rece_from_kernel();
        
 		int n = strlen("send your message every 10s."); 	
@@ -75,6 +76,7 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
        	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
        	bufferevent_write(send_bev, buffer_libnl_libevent, n);
 		memset(buffer_libnl_libevent, '\0', 64);
+		*/
   	}
 }
 
