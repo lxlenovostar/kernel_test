@@ -34,8 +34,10 @@ ping_pong_kernel(void)
 	}
 
 	res = check_netlink_status();  
-	if (res != 0)
+	if (res != 0) {
 		printf("kernel module don't insmod. Please insmod it.\n");
+		free_netlink_resource();		
+	}
 	else 
 		printf("kernel module insmod succcess.\n");
 
@@ -57,43 +59,10 @@ deliver_message()
 static void* 
 thread_comm_kernel(void *arg) 
 {
-	int res;
+	long res;
 	res = ping_pong_kernel();
-	
-	if (res == 0) {
-		pthread_exit(0);
-	
-		/*
-		// ok, we wait information from kernel. 
-		int maxfdp1;
-		fd_set rset;
-		int n = 0;
 
-		for (;;) {
-			FD_SET(netlink_fd, &rset);
-			maxfdp1 = netlink_fd + 1;
-			
-			Select(maxfdp1, &rset, NULL, NULL, NULL);
-			
-			// socket is readable 
-			if (FD_ISSET(netlink_fd, &rset)) {
-				n = rece_from_kernel();
-				if (n == 0) {
-					err_quit("kernel maybe terminated prematurely.");
-				} else if (n == -1) {
-					err_quit("something error.");
-				}
-	
-				debug_info();
-
-				deliver_message();
-			}
-		}
-		*/
-	}
-
-	//free_rece_msg(); 
-    return NULL;
+    return (void *)res;
 }
 
 static void* 
@@ -110,6 +79,7 @@ main(int argc, char *argv[])
 {
     pthread_t kernel_tid, socket_tid;
 	int res;
+	void *res_check;
 	struct message_list head;
 
 	//TODO 注册消息处理函数处理15信号，用于关闭进程。
@@ -122,14 +92,18 @@ main(int argc, char *argv[])
 		err_quit("netlink thread creation failed");
 	}
 	
-	res = pthread_join(kernel_tid, NULL);
+	res = pthread_join(kernel_tid, &res_check);
 	if (res != 0) {
 		err_quit("Thread join failed");
 	}
 
-	//just test
-    exit(0);
+	//TODO 判断线程返回值，如果安装了内核模块继续执行，否则就退出。
+	if ((long)res_check != 0) {
+		err_quit("insmod kernel module failed");
+	}
 
+	err_quit("just for fun");
+	
 	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
 	if (res != 0) {
 		err_quit("tcp socket thread creation failed");

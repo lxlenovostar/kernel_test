@@ -14,7 +14,7 @@
 #define MY_MSG_TYPE (0x10 + 2)  // + 2 is arbitrary but is the same for kern/usr
     
 struct nl_sock *nls;
-int insmod_flag = 0;
+int insmod_flag = 0;	/* check kernel module insmod or not. */
 
 int 
 ping_from_kernel(struct nl_msg *msg, void *arg)
@@ -22,16 +22,18 @@ ping_from_kernel(struct nl_msg *msg, void *arg)
     const char *c_msg = "get your pid";
 	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
 
- 	printf("Received message payload:%s\n", (char *)NLMSG_DATA(r_nlh));
+ 	printf("Received message payload:%s, type is:0x%x\n", (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
 
-	if (strcmp(c_msg, (char *)NLMSG_DATA(r_nlh)) == 0) { 
+	/* a ACK, or other thing. */
+	if (((r_nlh->nlmsg_type)&0xff) == NLMSG_ERROR)
+		goto out;
+
+	if (strcmp(c_msg, (char *)NLMSG_DATA(r_nlh)) == 0)  
 		insmod_flag = 1;
-		return 0;
-	}
-	else  {
+	else  
 		insmod_flag = 0;
-		return 1;
-	}
+out:	
+	return NL_OK;
 }
 
 int 
@@ -99,7 +101,6 @@ rece_from_kernel(void)
 int 
 check_netlink_status(void) 
 {
-	int ret = 0;
 	int count = 0;
 
 restart:
@@ -111,7 +112,7 @@ restart:
 	else {
 		count++;
 		
-		if (count < 3) {
+		if (count < 4) {
 			sleep(10);
 			goto restart;
 		}
@@ -119,7 +120,7 @@ restart:
 			return 1;
 	}
 
-	return ret;
+	return 1;
 }
 
 void 

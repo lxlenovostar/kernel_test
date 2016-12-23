@@ -7,4 +7,4 @@
 
 int init_sock(void); 
 int check_netlink_status(void); 
-void free_resource(void); 
+void free_netlink_resource(void); 
