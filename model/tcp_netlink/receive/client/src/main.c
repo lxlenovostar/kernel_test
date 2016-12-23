@@ -22,14 +22,16 @@ struct message_list
 //pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 //int avail = 0; //just for test 
 
-int ping_pong_kernel(void) 
+int 
+ping_pong_kernel(void) 
 {
 	int res = 0;
 
-	init_sock();
-
-	set_send_msg();
-	set_rece_msg();
+	res = init_sock();
+	if (res != 0) {
+		printf("netlink socket build failed.\n");
+		return res;
+	}
 
 	res = check_netlink_status();  
 	if (res != 0)
@@ -40,7 +42,8 @@ int ping_pong_kernel(void)
 	return res;
 } 
 
-void deliver_message() 
+void 
+deliver_message() 
 {
 	/*
 	Pthread_mutex_lock(&mtx);
@@ -51,15 +54,13 @@ void deliver_message()
 	*/
 }
 
-static void* thread_comm_kernel(void *arg) 
+static void* 
+thread_comm_kernel(void *arg) 
 {
 	int res;
 	res = ping_pong_kernel();
 	
 	if (res == 0) {
-		/* kernel module install success. So, we don't send information to kernel module. */
-		free_send_msg();
-
 		pthread_exit(0);
 	
 		/*
@@ -91,11 +92,12 @@ static void* thread_comm_kernel(void *arg)
 		*/
 	}
 
-	free_rece_msg(); 
+	//free_rece_msg(); 
     return NULL;
 }
 
-static void* thread_comm_server(void *arg) 
+static void* 
+thread_comm_server(void *arg) 
 {
 	/* start socket by libevent. */
 	run();
@@ -124,6 +126,9 @@ main(int argc, char *argv[])
 	if (res != 0) {
 		err_quit("Thread join failed");
 	}
+
+	//just test
+    exit(0);
 
 	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
 	if (res != 0) {

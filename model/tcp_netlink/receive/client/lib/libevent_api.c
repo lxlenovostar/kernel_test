@@ -64,7 +64,7 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
   		printf("timeout\n");
     	exit(1);
   	} else if (event & EV_READ) {
-		debug_info();
+		//debug_info();
   	}
 
 }
