@@ -32,6 +32,7 @@ void stdin_read_cb(struct bufferevent *bev, void *ctx)
         printf("fd=%u, read line: %s\n", fd, line);
 
         bufferevent_write(send_bev, line, n);
+        bufferevent_write(bev, line, n);
     }
 }
 
@@ -51,7 +52,6 @@ void stdin_error_cb(struct bufferevent *bev, short event, void *arg)
     bufferevent_free(bev);
 }
 
-
 void eventcb(struct bufferevent *bev, short events, void *ptr)
 {
     if (events & BEV_EVENT_CONNECTED) {
@@ -69,8 +69,8 @@ void eventcb(struct bufferevent *bev, short events, void *ptr)
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
         printf("connection error\n");
+    	bufferevent_free(bev);
     }
-    bufferevent_free(bev);
 }
 
 void
