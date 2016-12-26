@@ -32,7 +32,6 @@ void stdin_read_cb(struct bufferevent *bev, void *ctx)
         printf("fd=%u, read line: %s\n", fd, line);
 
         bufferevent_write(send_bev, line, n);
-        bufferevent_write(bev, line, n);
     }
 }
 
@@ -58,13 +57,13 @@ void eventcb(struct bufferevent *bev, short events, void *ptr)
          /* We're connected to 127.0.0.1:9877. Ordinarily we'd do
             something here, like start reading or writing. */
 
-        struct bufferevent *bev;
+        struct bufferevent *stdin_bev;
 		struct event_base *base = (struct event_base *)ptr;
         //evutil_make_socket_nonblocking(fileno(stdin));
-        bev = bufferevent_socket_new(base, fileno(stdin), BEV_OPT_CLOSE_ON_FREE);
-        bufferevent_setcb(bev, stdin_read_cb, NULL, stdin_error_cb, bev);
-        bufferevent_setwatermark(bev, EV_READ, 0, MAX_LINE);
-        bufferevent_enable(bev, EV_READ|EV_WRITE);
+        stdin_bev = bufferevent_socket_new(base, fileno(stdin), BEV_OPT_CLOSE_ON_FREE);
+        bufferevent_setcb(stdin_bev, stdin_read_cb, NULL, stdin_error_cb, bev);
+        bufferevent_setwatermark(stdin_bev, EV_READ, 0, MAX_LINE);
+        bufferevent_enable(stdin_bev, EV_READ|EV_WRITE);
 		
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
