@@ -224,32 +224,25 @@ main (int argc, char *argv[])
                          data. So go back to the main loop. */
                       if (errno != EAGAIN)
                         {
-                          perror ("read");
                           done = 1;
                         }
-					  printf("read1 is:%s\n", buf);
                       break;
                     }
                   else if (count == 0)
                   {
                       /* End of file. The remote has closed the
                          connection. */
-					printf("read2 is:%s\n", buf);
                       done = 1;
                       break;
-                  } else {
-					printf("read3 is:%s\n", buf);
-				  }
+                  } 
 
                   /* Write the buffer to standard output */
-				  /*		
                   s = write (1, buf, count);
                   if (s == -1)
                     {
                       perror ("write");
                       abort ();
                     }
-				  */
                 }
 				 
               if (done)
