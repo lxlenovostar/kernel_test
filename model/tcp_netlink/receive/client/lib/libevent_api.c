@@ -2,72 +2,13 @@
 #include "lx_netlink.h"
 #include "unp.h"
 
-void stdin_read_cb(struct bufferevent *bev, void *ctx)
+void 
+event_handler(evutil_socket_t fd, short event, void *arg)
 {
-    char line[MAX_LINE];
-    int n;
-    evutil_socket_t fd = bufferevent_getfd(bev);
-	struct bufferevent *send_bev = (struct bufferevent *)ctx;
-
-    while (n = bufferevent_read(bev, line, MAX_LINE), n > 0) {
-        line[n] = '\0';
-        printf("fd=%u, read line: %s\n", fd, line);
-
-        bufferevent_write(send_bev, line, n);
-    }
-}
-
-void stdin_error_cb(struct bufferevent *bev, short event, void *arg)
-{
-    evutil_socket_t fd = bufferevent_getfd(bev);
-    printf("fd = %u, ", fd);
-    if (event & BEV_EVENT_TIMEOUT) {
-        printf("Timed out\n"); //if bufferevent_set_timeouts() called
-    }
-    else if (event & BEV_EVENT_EOF) {
-        printf("connection closed\n");
-    }
-    else if (event & BEV_EVENT_ERROR) {
-        printf("some other error\n");
-    }   
-    bufferevent_free(bev);
-}
-
-/*
-void wait_from_other()
-{
-
-    for (;;) {
-        Pthread_mutex_lock(&mtx);
-
-        while (avail == 0) {            // Wait for something to consume 
-            Pthread_cond_wait(&cond, &mtx);
-        }
-
-        // At this point, 'mtx' is locked... 
-
-        while (avail > 0) {             // Consume all available units 
-            // Do something with produced unit 
-            avail--;
-            printf("we spend one\n");
-        }
-
-        Pthread_mutex_unlock(&mtx);
-    }
-}
-*/
-
-void event_handler(evutil_socket_t fd, short event, void *arg)
-{
-	if (event & EV_TIMEOUT) 
-	{
-  		printf("timeout\n");
-    	exit(1);
-  	} else if (event & EV_READ) {
-		//debug_info();
-
+  	if (event & EV_READ) {
 		printf("callback start\n");
 		struct bufferevent *send_bev = (struct bufferevent *)arg;
+
 		rece_from_kernel();
        
 		int n = strlen("send your message every 10s."); 	
@@ -78,36 +19,27 @@ void event_handler(evutil_socket_t fd, short event, void *arg)
   	}
 }
 
-void eventcb(struct bufferevent *bev, short events, void *ptr)
+void 
+eventcb(struct bufferevent *bev, short events, void *ptr)
 {
     if (events & BEV_EVENT_CONNECTED) {
-         /* We're connected to 127.0.0.1:9877. Ordinarily we'd do
-            something here, like start reading or writing. */
-		/*
-        struct bufferevent *bev;
-		struct event_base *base = (struct event_base *)ptr;
-        //evutil_make_socket_nonblocking(fileno(stdin));
-        bev = bufferevent_socket_new(base, fileno(stdin), BEV_OPT_CLOSE_ON_FREE);
-        bufferevent_setcb(bev, stdin_read_cb, NULL, stdin_error_cb, bev);
-        bufferevent_setwatermark(bev, EV_READ, 0, MAX_LINE);
-        bufferevent_enable(bev, EV_READ|EV_WRITE);
-		*/
-		//wait_from_other();
-
+         /* 
+          We're connected to 127.0.0.1:9877. Ordinarily we'd do
+          something here, like start reading or writing. 
+          */
   		struct event *netlink_event;
 		struct event_base *base = (struct event_base *)ptr;
   		//netlink_event = event_new(base, netlink_fd, EV_READ | EV_PERSIST, event_handler, NULL);
   		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, bev);
   		event_add(netlink_event, NULL);
-    } else if (events & BEV_EVENT_ERROR) {
-         /* An error occured while connecting. */
+    } else {
         printf("connection error\n");
-		//TODO 什么时候释放bev
     	bufferevent_free(bev);
     }
 }
 
-void run(void)
+void 
+run(void)
 {
     struct sockaddr_in servaddr;
     struct event_base *base;
@@ -147,16 +79,3 @@ void run(void)
     event_base_dispatch(base);
   	return; 
 }
-
-/*
-int
-main(int c, char **v)
-{
-    setvbuf(stdout, NULL, _IONBF, 0);
-
-    run();
-
-    printf("The End.");
-    return 0;
-}
-*/

@@ -52,7 +52,6 @@ out:
 	return NL_OK;
 }
 
-
 int 
 init_sock(void) 
 {
