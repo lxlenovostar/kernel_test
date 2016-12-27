@@ -2,6 +2,7 @@
 #include    <stdlib.h>      /* for convenience */
 #include    <string.h>      /* for convenience */
 #include    <unistd.h>      /* for convenience */
+#include    <pthread.h>
 #include	"../lib/error.h"
 #include	"../lib/lx_netlink.h"
 #include	"../lib/libevent_api.h"
@@ -44,7 +45,7 @@ static void*
 thread_comm_server(void *arg) 
 {
 	/* start socket by libevent. */
-	run(arg);
+	run();
 
 	return NULL;
 }
@@ -56,12 +57,7 @@ main(int argc, char *argv[])
 	int res;
 	void *res_check;
 
-	//TODO 注册消息处理函数处理15信号，用于关闭进程。
-	//TODO 如何实现心跳 
-
-	if (argc != 2)
-		err_quit("You should just enter IPv4 address.");
-
+	/*
 	res = pthread_create(&kernel_tid, NULL, thread_comm_kernel, NULL);
 	if (res != 0) {
 		err_quit("netlink thread creation failed");
@@ -75,8 +71,9 @@ main(int argc, char *argv[])
 	if ((long)res_check != 0) {
 		err_quit("insmod kernel module failed");
 	}
+	*/
 	
-	res = pthread_create(&socket_tid, NULL, thread_comm_server, argv[1]);
+	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
 	if (res != 0) {
 		err_quit("tcp socket thread creation failed");
 	}

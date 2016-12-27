@@ -1,76 +1,95 @@
 #include "libevent_api.h"
 #include "lx_netlink.h"
-#include "lx_sock.h"
 #include "unp.h"
 
-void 
-event_handler(evutil_socket_t fd, short event, void *arg)
+void read_cb(struct bufferevent *bev, void *arg)
 {
-  	if (event & EV_READ) {
-		printf("callback start\n");
-		struct bufferevent *send_bev = (struct bufferevent *)arg;
+    char line[MAX_LINE];
+    int n;
+    evutil_socket_t fd = bufferevent_getfd(bev);
 
-		rece_from_kernel();
-       
-		int n = strlen("send your message every 10s."); 	
-		buffer_libnl_libevent[n] = '\0';
-       	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
-       	bufferevent_write(send_bev, buffer_libnl_libevent, n);
-		memset(buffer_libnl_libevent, '\0', 64);
-  	}
-}
-
-void 
-eventcb(struct bufferevent *bev, short events, void *ptr)
-{
-    if (events & BEV_EVENT_CONNECTED) {
-         /* 
-          We're connected to 127.0.0.1:9877. Ordinarily we'd do
-          something here, like start reading or writing. 
-          */
-  		struct event *netlink_event;
-		struct event_base *base = (struct event_base *)ptr;
-  		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, bev);
-  		event_add(netlink_event, NULL);
-    } else {
-        printf("connection error\n");
-    	bufferevent_free(bev);
+    while (n = bufferevent_read(bev, line, MAX_LINE), n > 0) {
+        line[n] = '\0';
+        printf("fd=%u, read line: %s\n", fd, line);
     }
 }
 
-void 
-run(void *dst_address)
+void error_cb(struct bufferevent *bev, short event, void *arg)
 {
-    struct sockaddr_in servaddr;
-    struct event_base *base;
-	struct bufferevent *bev;
+    evutil_socket_t fd = bufferevent_getfd(bev);
+    printf("fd = %u, ", fd);
+    if (event & BEV_EVENT_TIMEOUT) {
+        printf("Timed out\n"); 
+    }
+    else if (event & BEV_EVENT_EOF) {
+        printf("connection closed\n");
+    }
+    else if (event & BEV_EVENT_ERROR) {
+        printf("some other error\n");
+    }
+    bufferevent_free(bev);
+}
 
-    base = event_base_new();
-    if (!base)
-        return; 
-
-	memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(SERV_PORT);
-	Inet_pton(AF_INET, dst_address, &servaddr.sin_addr.s_addr);
-	//servaddr.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
-
-	/*
-     BEV_OPT_CLOSE_ON_FREE: When the bufferevent is freed, close the underlying transport. 
-	 This will close an underlying socket, free an underlying bufferevent, etc.
-     */
-	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-
-	bufferevent_setcb(bev, NULL, NULL, eventcb, (void *)base);
-    bufferevent_enable(bev, EV_READ|EV_WRITE);
-
-	if (bufferevent_socket_connect(bev, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-     	perror("connect");
-        bufferevent_free(bev);
+void do_accept(evutil_socket_t listener, short event, void *arg)
+{
+    struct event_base *base = (struct event_base *)arg;
+    evutil_socket_t fd;
+    struct sockaddr_in sin;
+    socklen_t slen = sizeof(sin);
+    fd = accept(listener, (struct sockaddr *)&sin, &slen);
+    if (fd < 0) {
+        perror("accept");
         return;
+    } else if (fd > FD_SETSIZE) { 
+        perror("fd > FD_SETSIZE\n");
+		close(fd);
+        return;
+    } else {
+    	printf("ACCEPT: fd = %u\n", fd);
+
+    	struct bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    	bufferevent_setcb(bev, read_cb, NULL, error_cb, arg);
+    	bufferevent_enable(bev, EV_READ|EV_WRITE|EV_PERSIST);
+	}
+}
+
+int 
+run(void)
+{
+	evutil_socket_t listener;
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    assert(listener > 0);
+
+    evutil_make_listen_socket_reuseable(listener);
+
+    struct sockaddr_in sin;
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = 0;
+    sin.sin_port = htons(SERV_PORT);
+
+    if (bind(listener, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+        perror("bind");
+        return 1;
     }
 
-	printf("begin dispatch\n");
+    if (listen(listener, LISTEN_BACKLOG) < 0) {
+        perror("listen");
+        return 1;
+    }
+
+    printf ("Listening...\n");
+
+    evutil_make_socket_nonblocking(listener);
+
+    struct event_base *base = event_base_new();
+    assert(base != NULL);
+    struct event *listen_event;
+
+    listen_event = event_new(base, listener, EV_READ|EV_PERSIST, do_accept, (void*)base);
+
+    event_add(listen_event, NULL);
+
     event_base_dispatch(base);
-  	return; 
+
+  	return 0; 
 }
