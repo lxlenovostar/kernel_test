@@ -18,10 +18,6 @@ struct message_list
 	const char* str;
 };
 
-//pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-//pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-//int avail = 0; //just for test 
-
 int 
 ping_pong_kernel(void) 
 {
@@ -43,18 +39,6 @@ ping_pong_kernel(void)
 
 	return res;
 } 
-
-void 
-deliver_message() 
-{
-	/*
-	Pthread_mutex_lock(&mtx);
-	avail++;
-    printf("we get a product\n");
-	Pthread_mutex_unlock(&mtx);
-	Pthread_cond_signal(&cond);
-	*/
-}
 
 static void* 
 thread_comm_kernel(void *arg) 

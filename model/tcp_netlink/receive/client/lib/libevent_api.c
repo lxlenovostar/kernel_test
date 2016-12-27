@@ -30,7 +30,6 @@ eventcb(struct bufferevent *bev, short events, void *ptr)
           */
   		struct event *netlink_event;
 		struct event_base *base = (struct event_base *)ptr;
-  		//netlink_event = event_new(base, netlink_fd, EV_READ | EV_PERSIST, event_handler, NULL);
   		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, bev);
   		event_add(netlink_event, NULL);
     } else {
@@ -62,11 +61,6 @@ run(void *dst_address)
      */
 	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-	/*
-	 The bufferevent_setcb() function changes one or more of the callbacks of a bufferevent. 
-	 The readcb, writecb, and eventcb functions are called (respectively) when enough data is 
-	 read, when enough data is written, or when an event occurs.
-     */
 	bufferevent_setcb(bev, NULL, NULL, eventcb, (void *)base);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 
