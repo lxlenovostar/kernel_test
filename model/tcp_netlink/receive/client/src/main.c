@@ -69,7 +69,7 @@ static void*
 thread_comm_server(void *arg) 
 {
 	/* start socket by libevent. */
-	run();
+	run(arg);
 
 	return NULL;
 }
@@ -84,7 +84,10 @@ main(int argc, char *argv[])
 
 	//TODO 注册消息处理函数处理15信号，用于关闭进程。
 	//TODO 如何实现心跳 
-	
+
+	if (argc != 2)
+		err_quit("You should just enter IPv4 address.");
+
   	INIT_LIST_HEAD(&head.list);
 
 	res = pthread_create(&kernel_tid, NULL, thread_comm_kernel, NULL);
@@ -101,7 +104,7 @@ main(int argc, char *argv[])
 		err_quit("insmod kernel module failed");
 	}
 	
-	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
+	res = pthread_create(&socket_tid, NULL, thread_comm_server, argv[1]);
 	if (res != 0) {
 		err_quit("tcp socket thread creation failed");
 	}

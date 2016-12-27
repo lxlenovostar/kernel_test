@@ -20,4 +20,4 @@
 #define SERV_PORT 9877 
 #define MAX_LINE 4096
 
-void run(void);
+void run(void *dst_address);

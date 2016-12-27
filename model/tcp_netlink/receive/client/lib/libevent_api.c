@@ -1,5 +1,6 @@
 #include "libevent_api.h"
 #include "lx_netlink.h"
+#include "lx_sock.h"
 #include "unp.h"
 
 void 
@@ -39,7 +40,7 @@ eventcb(struct bufferevent *bev, short events, void *ptr)
 }
 
 void 
-run(void)
+run(void *dst_address)
 {
     struct sockaddr_in servaddr;
     struct event_base *base;
@@ -52,8 +53,8 @@ run(void)
 	memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(SERV_PORT);
-	//inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
-	servaddr.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
+	Inet_pton(AF_INET, dst_address, &servaddr.sin_addr.s_addr);
+	//servaddr.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
 
 	/*
      BEV_OPT_CLOSE_ON_FREE: When the bufferevent is freed, close the underlying transport. 
