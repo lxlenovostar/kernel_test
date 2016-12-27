@@ -86,7 +86,7 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
 
     res = nlmsg_unicast(nl_sk, skb_out, pid);
     if (res < 0) {
-        printk(KERN_INFO "Error while sending bak to user"); 
+        printk(KERN_INFO "Error while sending back to user"); 
 		return res;
 	}
 
