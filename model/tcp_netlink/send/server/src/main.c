@@ -57,7 +57,6 @@ main(int argc, char *argv[])
 	int res;
 	void *res_check;
 
-	/*
 	res = pthread_create(&kernel_tid, NULL, thread_comm_kernel, NULL);
 	if (res != 0) {
 		err_quit("netlink thread creation failed");
@@ -71,7 +70,6 @@ main(int argc, char *argv[])
 	if ((long)res_check != 0) {
 		err_quit("insmod kernel module failed");
 	}
-	*/
 	
 	res = pthread_create(&socket_tid, NULL, thread_comm_server, NULL);
 	if (res != 0) {

@@ -7,7 +7,7 @@
 struct sock *nl_sk = NULL;
 int pid = 1;	
 struct timer_list message_timer;
-#define MY_MSG_TYPE (0x10 + 2)  
+#define PING_PONG_TYPE (0x10 + 3)  
 #define MD5_TYPE (0x10 + 4)  
 DEFINE_MUTEX(my_mutex);
 
@@ -23,7 +23,7 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
 
     type = r_nlh->nlmsg_type;
 
-	if (type == MY_MSG_TYPE) {
+	if (type == PING_PONG_TYPE) {
     	printk(KERN_INFO "Netlink received msg payload:%s", (char *)NLMSG_DATA(r_nlh));
 
     	pid = r_nlh->nlmsg_pid; /*pid of sending process */
@@ -52,7 +52,7 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
 
 		return 0;
 	} else {
-        printk(KERN_ERR "%s: expect %#x or %#x got %#x", __func__, MY_MSG_TYPE, MD5_TYPE, type);
+        printk(KERN_ERR "%s: expect %#x or %#x got %#x", __func__, PING_PONG_TYPE, MD5_TYPE, type);
         return -EINVAL;
 	}
 }

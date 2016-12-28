@@ -10,7 +10,7 @@
 #include "lx_netlink.h"
 #include "unp.h"
 
-#define MY_MSG_TYPE (0x10 + 2)  // + 2 is arbitrary but is the same for kern/usr
+#define PING_PONG_TYPE (0x10 + 3)  // + 2 is arbitrary but is the same for kern/usr
     
 struct nl_sock *nls;
 int insmod_flag = 0;	/* check kernel module insmod or not. */
@@ -85,7 +85,7 @@ send_to_kernel(void)
     char msg[] = "give your present";
 
 	printf("Sending message to kernel\n");
-    ret = nl_send_simple(nls, MY_MSG_TYPE, 0, msg, sizeof(msg));
+    ret = nl_send_simple(nls, PING_PONG_TYPE, 0, msg, sizeof(msg));
     if (ret < 0) {
         nl_perror(ret, "nl_send_simple");
         nl_close(nls);
