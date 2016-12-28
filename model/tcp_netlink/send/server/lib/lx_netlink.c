@@ -8,9 +8,9 @@
 #include <netlink/msg.h>
 
 #include "lx_netlink.h"
-#include "unp.h"
 
-#define PING_PONG_TYPE (0x10 + 3)  // + 2 is arbitrary but is the same for kern/usr
+#define PING_PONG_TYPE (0x10 + 3)  
+#define MD5_TYPE       (0x10 + 4)  
     
 struct nl_sock *nls;
 int insmod_flag = 0;	/* check kernel module insmod or not. */
@@ -32,23 +32,6 @@ ping_from_kernel(struct nl_msg *msg, void *arg)
 	else  
 		insmod_flag = 0;
 out:	
-	return NL_OK;
-}
-
-int 
-data_from_kernel(struct nl_msg *msg, void *arg)
-{
-	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
-
- 	printf("%s:Received message payload:%s, type is:0x%x\n", __FUNCTION__, (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
-
-	/* a ACK, or other thing. */
-	if (((r_nlh->nlmsg_type)&0xff) != NLMSG_DONE)
-		goto out;
-	
-	strcpy(buffer_libnl_libevent, (char *)NLMSG_DATA(r_nlh));
-
-out:
 	return NL_OK;
 }
 
@@ -78,6 +61,7 @@ init_sock(void)
 	return res;
 }
 
+/*
 int 
 send_to_kernel(void) 
 {
@@ -86,6 +70,24 @@ send_to_kernel(void)
 
 	printf("Sending message to kernel\n");
     ret = nl_send_simple(nls, PING_PONG_TYPE, 0, msg, sizeof(msg));
+    if (ret < 0) {
+        nl_perror(ret, "nl_send_simple");
+        nl_close(nls);
+        nl_socket_free(nls);
+        return EXIT_FAILURE;
+    } else {
+        printf("sent %d bytes\n", ret);
+    }
+
+	return ret;
+}
+*/
+int 
+send_message_kernel(char *msg, size_t len) 
+{
+	int ret = 0;
+
+    ret = nl_send_simple(nls, MD5_TYPE, 0, msg, len);
     if (ret < 0) {
         nl_perror(ret, "nl_send_simple");
         nl_close(nls);
@@ -119,17 +121,14 @@ int
 check_netlink_status(void) 
 {
 	int count = 0;
+    char msg[] = "give your present";
+	size_t len = sizeof(msg);
 
 restart:
-	send_to_kernel();
+	send_message_kernel(msg, len);
 	rece_from_kernel();
 
 	if (insmod_flag == 1) {
-		/*
-		 we need change this, libevent need it.
-         */
-		nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, data_from_kernel, NULL);
-		netlink_fd = nl_socket_get_fd(nls);
 		return 0;
 	}
 	else {

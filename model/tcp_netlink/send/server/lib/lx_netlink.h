@@ -8,4 +8,4 @@
 int init_sock(void); 
 int check_netlink_status(void); 
 void free_netlink_resource(void); 
-int rece_from_kernel(void);
+int send_message_kernel(char *msg, size_t len); 

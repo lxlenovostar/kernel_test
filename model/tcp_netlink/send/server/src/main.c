@@ -6,7 +6,6 @@
 #include	"../lib/error.h"
 #include	"../lib/lx_netlink.h"
 #include	"../lib/libevent_api.h"
-#include    "../lib/unp.h"
 
 int netlink_fd;
 

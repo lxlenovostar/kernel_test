@@ -1,6 +1,5 @@
 #include "libevent_api.h"
 #include "lx_netlink.h"
-#include "unp.h"
 
 void read_cb(struct bufferevent *bev, void *arg)
 {
@@ -10,7 +9,10 @@ void read_cb(struct bufferevent *bev, void *arg)
 
     while (n = bufferevent_read(bev, line, MAX_LINE), n > 0) {
         line[n] = '\0';
-        printf("fd=%u, read line: %s\n", fd, line);
+        printf("fd=%u, send message to kernel: %s\n", fd, line);
+	
+		//TODO 如何处理返回值?
+		send_message_kernel(line, n);	
     }
 }
 
