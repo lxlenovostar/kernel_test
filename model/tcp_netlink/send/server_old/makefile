@@ -7,6 +7,6 @@ tcpcli :
 
 .PHONY : clean
 clean:
-	rm tcpserver; 
+	rm tcpserver_old; 
 	cd lib; make clean
 	cd src; make clean  

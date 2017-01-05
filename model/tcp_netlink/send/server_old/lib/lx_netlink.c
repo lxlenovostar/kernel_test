@@ -14,21 +14,21 @@ int init_sock()
 {
 	int res = 0;
 
-	netlink_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
+	netlink_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
 	if (netlink_fd < 0)
 		return -1;
 
  	memset(&src_addr, 0, sizeof(src_addr));
  	src_addr.nl_family = AF_NETLINK;
- 	src_addr.nl_pid = getpid();  /* self pid */
- 	src_addr.nl_groups = 0;  /* not in mcast groups */
+ 	src_addr.nl_pid = getpid();  	/* self pid */
+ 	src_addr.nl_groups = 0;      	/* not in mcast groups */
 
  	bind(netlink_fd, (struct sockaddr*)&src_addr, sizeof(src_addr));
 
  	memset(&dest_addr, 0, sizeof(dest_addr));
  	dest_addr.nl_family = AF_NETLINK;
- 	dest_addr.nl_pid = 0;   /* For Linux Kernel */
- 	dest_addr.nl_groups = 0; /* unicast */
+ 	dest_addr.nl_pid = 0;   		/* For Linux Kernel */
+ 	dest_addr.nl_groups = 0; 		/* unicast */
 
 	return res;
 }
@@ -41,22 +41,24 @@ void free_send_msg()
 int set_send_msg() 
 {
  	send_nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(MAX_PAYLOAD));
+
 	/* Fill the netlink message header */
  	send_nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
  	send_nlh->nlmsg_pid = getpid();  /* self pid */
  	send_nlh->nlmsg_flags = 0;
+	send_nlh->nlmsg_type = PING_PONG_TYPE;
 
  	/* Fill in the netlink message payload */
  	strcpy(NLMSG_DATA(send_nlh), "give your present!");
 
-	/* set struct iovec iov */
+	/* set struct iovec */
  	send_iov.iov_base = (void *)send_nlh;		/* starting address of buffer */
  	send_iov.iov_len = send_nlh->nlmsg_len;	    /* size of buffer */
 
- 	send_msg.msg_name = (void *)&dest_addr;	/* protocol address */
- 	send_msg.msg_namelen = sizeof(dest_addr); /* size of protocol address */
- 	send_msg.msg_iov = &send_iov; /* scatter/gather array */
- 	send_msg.msg_iovlen = 1;	/* elements in msg_iov */
+ 	send_msg.msg_name = (void *)&dest_addr;		/* protocol address */
+ 	send_msg.msg_namelen = sizeof(dest_addr); 	/* size of protocol address */
+ 	send_msg.msg_iov = &send_iov; 				/* scatter/gather array */
+ 	send_msg.msg_iovlen = 1;					/* elements in msg_iov */
 
 	return 0;
 }
@@ -69,17 +71,18 @@ void free_rece_msg()
 int set_rece_msg() 
 {
  	rece_nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(MAX_PAYLOAD));
+
 	/* Fill the netlink message header */
  	rece_nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
 
-	/* set struct iovec iov */
+	/* set struct iovec */
  	rece_iov.iov_base = (void *)rece_nlh;		/* starting address of buffer */
  	rece_iov.iov_len = rece_nlh->nlmsg_len;	    /* size of buffer */
 
- 	rece_msg.msg_name = (void *)&dest_addr;	/* protocol address */
- 	rece_msg.msg_namelen = sizeof(dest_addr); /* size of protocol address */
- 	rece_msg.msg_iov = &rece_iov; /* scatter/gather array */
- 	rece_msg.msg_iovlen = 1;	/* elements in msg_iov */
+ 	rece_msg.msg_name = (void *)&dest_addr;		/* protocol address */
+ 	rece_msg.msg_namelen = sizeof(dest_addr); 	/* size of protocol address */
+ 	rece_msg.msg_iov = &rece_iov; 				/* scatter/gather array */
+ 	rece_msg.msg_iovlen = 1;					/* elements in msg_iov */
 	
 	return 0;
 }

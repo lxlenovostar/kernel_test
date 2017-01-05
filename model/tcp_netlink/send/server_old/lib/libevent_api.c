@@ -12,7 +12,7 @@ void read_cb(struct bufferevent *bev, void *arg)
         printf("fd=%u, send message to kernel: %s\n", fd, line);
 	
 		//TODO 如何处理返回值?
-		send_message_kernel(line, n);	
+		rece_from_kernel();
     }
 }
 

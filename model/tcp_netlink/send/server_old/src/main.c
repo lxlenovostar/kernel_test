@@ -7,6 +7,12 @@
 #include	"../lib/lx_netlink.h"
 #include	"../lib/libevent_api.h"
 
+/*
+ TODO: 
+ 1. 使用信号15处理函数来合理关闭程序，比如netlink的套接字。
+ 2. 后续使用libnl3库。
+ */
+
 int netlink_fd;
 
 int 
@@ -19,11 +25,13 @@ ping_pong_kernel(void)
 		printf("netlink socket build failed.\n");
 		return res;
 	}
+	set_send_msg();
+	set_rece_msg();
 
 	res = check_netlink_status();  
 	if (res != 0) {
 		printf("kernel module don't insmod. Please insmod it.\n");
-		free_netlink_resource();		
+		free_resource();
 	}
 	else 
 		printf("kernel module insmod succcess.\n");
