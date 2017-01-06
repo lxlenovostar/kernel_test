@@ -6,6 +6,8 @@
 void 
 event_handler(evutil_socket_t fd, short event, void *arg)
 {
+	int ret;
+
   	if (event & EV_READ) {
 		printf("callback start\n");
 		struct bufferevent *send_bev = (struct bufferevent *)arg;
@@ -15,9 +17,13 @@ event_handler(evutil_socket_t fd, short event, void *arg)
 		int n = strlen("send your message every 10s."); 	
 		buffer_libnl_libevent[n] = '\0';
        	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
-       	bufferevent_write(send_bev, buffer_libnl_libevent, n);
+       	ret = bufferevent_write(send_bev, buffer_libnl_libevent, n);
+       	printf("send ret:%d\n", ret);
 		memset(buffer_libnl_libevent, '\0', 64);
-  	}
+  	} else {
+       	printf("event:%d,0x:%x\n", event, event&0xff); 
+		close(fd);
+    }
 }
 
 void 
@@ -28,13 +34,15 @@ eventcb(struct bufferevent *bev, short events, void *ptr)
           We're connected to 127.0.0.1:9877. Ordinarily we'd do
           something here, like start reading or writing. 
           */
-  		struct event *netlink_event;
 		struct event_base *base = (struct event_base *)ptr;
+		struct event *netlink_event;
   		netlink_event = event_new(base, netlink_fd, EV_READ | EV_ET | EV_PERSIST, event_handler, bev);
   		event_add(netlink_event, NULL);
     } else {
         printf("connection error\n");
     	bufferevent_free(bev);
+		struct event_base *base = (struct event_base *)ptr;
+		event_base_loopexit(base, NULL);
     }
 }
 
