@@ -6,8 +6,6 @@
 void 
 event_handler(evutil_socket_t fd, short event, void *arg)
 {
-	int ret;
-
   	if (event & EV_READ) {
 		printf("callback start\n");
 		struct bufferevent *send_bev = (struct bufferevent *)arg;
@@ -17,8 +15,8 @@ event_handler(evutil_socket_t fd, short event, void *arg)
 		int n = strlen("send your message every 10s."); 	
 		buffer_libnl_libevent[n] = '\0';
        	printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
-       	ret = bufferevent_write(send_bev, buffer_libnl_libevent, n);
-       	printf("send ret:%d\n", ret);
+		/* when function bufferevent_write return, data just copy to buffer not send to dst host. */
+       	bufferevent_write(send_bev, buffer_libnl_libevent, n);
 		memset(buffer_libnl_libevent, '\0', 64);
   	} else {
        	printf("event:%d,0x:%x\n", event, event&0xff); 
