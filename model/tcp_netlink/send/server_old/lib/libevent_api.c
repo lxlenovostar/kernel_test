@@ -4,15 +4,21 @@
 void read_cb(struct bufferevent *bev, void *arg)
 {
     char line[MAX_LINE];
-    int n;
+    int n, ret;
     evutil_socket_t fd = bufferevent_getfd(bev);
 
     while (n = bufferevent_read(bev, line, MAX_LINE), n > 0) {
         line[n] = '\0';
         printf("fd=%u, send message to kernel: %s\n", fd, line);
 	
-		//TODO 如何处理返回值?
-		rece_from_kernel();
+		ret = build_md5_msg(line);
+		if (ret != 0) {
+        	printf("fd=%u, build md5 message failed.\n", fd);
+    		bufferevent_free(bev);
+			return;
+		}
+		send_to_kernel(); 
+		
     }
 }
 
@@ -51,7 +57,8 @@ void do_accept(evutil_socket_t listener, short event, void *arg)
 
     	struct bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     	bufferevent_setcb(bev, read_cb, NULL, error_cb, arg);
-    	bufferevent_enable(bev, EV_READ|EV_WRITE|EV_PERSIST);
+    	//bufferevent_enable(bev, EV_READ|EV_WRITE|EV_PERSIST);
+    	bufferevent_enable(bev, EV_READ|EV_PERSIST);
 	}
 }
 

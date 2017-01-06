@@ -64,6 +64,35 @@ int set_send_msg()
 	return 0;
 }
 
+int build_md5_msg(char *msg) 
+{
+	if (!send_nlh)
+		return -1;
+
+ 	memset(send_nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));
+
+	/* Fill the netlink message header */
+ 	send_nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
+ 	send_nlh->nlmsg_pid = getpid();  /* self pid */
+ 	send_nlh->nlmsg_flags = 0;
+	send_nlh->nlmsg_type = MD5_TYPE;
+
+ 	/* Fill in the netlink message payload */
+ 	strncpy(NLMSG_DATA(send_nlh), msg, strlen(msg));
+
+	/* set struct iovec */
+ 	send_iov.iov_base = (void *)send_nlh;		/* starting address of buffer */
+ 	send_iov.iov_len = send_nlh->nlmsg_len;	    /* size of buffer */
+
+ 	send_msg.msg_name = (void *)&dest_addr;		/* protocol address */
+ 	send_msg.msg_namelen = sizeof(dest_addr); 	/* size of protocol address */
+ 	send_msg.msg_iov = &send_iov; 				/* scatter/gather array */
+ 	send_msg.msg_iovlen = 1;					/* elements in msg_iov */
+
+	return 0;
+}
+
+
 void free_rece_msg() 
 {
 	free(rece_nlh);
@@ -92,7 +121,6 @@ void send_to_kernel()
 {
 	printf("Sending message to kernel\n");
  	sendmsg(netlink_fd, &send_msg, 0);
-	printf("Waiting for message from kernel\n");
 }
 
 int rece_from_kernel()

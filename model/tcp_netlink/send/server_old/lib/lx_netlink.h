@@ -17,3 +17,5 @@ int rece_from_kernel(void);
 void debug_info(void);
 int set_send_msg(void); 
 int set_rece_msg(void); 
+int build_md5_msg(char *msg); 
+void send_to_kernel(void); 

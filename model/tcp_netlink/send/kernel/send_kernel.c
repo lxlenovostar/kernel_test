@@ -19,8 +19,6 @@ static void nl_data_ready(struct sk_buff *skb)
     char *msg = "get your pid";
     int res;
 	int type;
-
-	printk(KERN_INFO "fuck1");
 	
 	r_nlh = (struct nlmsghdr *)skb->data; 
     type = r_nlh->nlmsg_type;
