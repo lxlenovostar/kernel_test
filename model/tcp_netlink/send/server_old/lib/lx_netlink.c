@@ -15,6 +15,7 @@ int init_sock()
 	int res = 0;
 
 	netlink_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
+	printf("netlink_fd:%d\n", netlink_fd);
 	if (netlink_fd < 0)
 		return -1;
 
