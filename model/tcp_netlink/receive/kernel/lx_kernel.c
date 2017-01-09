@@ -4,11 +4,12 @@
 #include <net/sock.h>
 #include <linux/netlink.h>
 
+#define PING_PONG_TYPE (0x10 + 3)  
+#define MD5_TYPE (0x10 + 4)  
+
 struct sock *nl_sk = NULL;
 int pid = 1;	
 struct timer_list message_timer;
-#define MY_MSG_TYPE (0x10 + 2)  // + 2 is arbitrary. same value for kern/usr
-DEFINE_MUTEX(my_mutex);
 
 void send_message(unsigned long data)
 {
@@ -52,8 +53,7 @@ void init_message_timer(void)
 	add_timer(&message_timer);
 }
 
-static int 
-nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
+static void nl_data_ready(struct sk_buff *skb)
 {
 	struct nlmsghdr *s_nlh;
     struct sk_buff *skb_out;
@@ -61,11 +61,13 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
     char *msg = "get your pid";
     int res;
 	int type;
+	struct nlmsghdr *r_nlh;
 
+	r_nlh = (struct nlmsghdr *)skb->data; 
     type = r_nlh->nlmsg_type;
-    if (type != MY_MSG_TYPE) {
-        printk(KERN_ERR "%s: expect %#x got %#x", __func__, MY_MSG_TYPE, type);
-        return -EINVAL;
+    if (type != PING_PONG_TYPE) {
+        printk(KERN_ERR "%s: expect %#x got %#x", __func__, PING_PONG_TYPE, type);
+        return;
     }
 
     printk(KERN_INFO "Netlink received msg payload:%s", (char *)NLMSG_DATA(r_nlh));
@@ -76,7 +78,7 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
     skb_out = nlmsg_new(msg_size, 0);
     if (!skb_out) {
         printk(KERN_ERR "Failed to allocate new skb");
-        return -ENOMEM;
+        return;
     }
 
     s_nlh = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, msg_size, 0);
@@ -87,22 +89,12 @@ nl_data_ready(struct sk_buff *skb, struct nlmsghdr *r_nlh)
     res = nlmsg_unicast(nl_sk, skb_out, pid);
     if (res < 0) {
         printk(KERN_INFO "Error while sending back to user"); 
-		return res;
+		return;
 	}
-
-	return 0;
-}
-
-static void
-nl_rcv_msg(struct sk_buff *skb)
-{
-    mutex_lock(&my_mutex);
-    netlink_rcv_skb(skb, &nl_data_ready);
-    mutex_unlock(&my_mutex);
 }
 
 static int netlink_init(void) {
-	nl_sk = netlink_kernel_create(&init_net, NETLINK_USERSOCK, 0, nl_rcv_msg, NULL, THIS_MODULE);
+	nl_sk = netlink_kernel_create(&init_net, NETLINK_USERSOCK, 0, nl_data_ready, NULL, THIS_MODULE);
     if (!nl_sk) {
         printk(KERN_ALERT "Error creating socket.");
         return -1;
