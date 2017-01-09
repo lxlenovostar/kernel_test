@@ -1,137 +1,143 @@
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <netlink/netlink.h>
-#include <netlink/socket.h>
-#include <netlink/msg.h>
-
-#include "lx_netlink.h"
 #include "unp.h"
+#include "lx_netlink.h"
 
-#define MY_MSG_TYPE (0x10 + 2)  // + 2 is arbitrary but is the same for kern/usr
-    
-struct nl_sock *nls;
-int insmod_flag = 0;	/* check kernel module insmod or not. */
+struct sockaddr_nl src_addr;
+struct sockaddr_nl dest_addr;
+struct nlmsghdr *send_nlh = NULL;
+struct nlmsghdr *rece_nlh = NULL;
+struct msghdr send_msg;
+struct msghdr rece_msg;
+struct iovec send_iov;
+struct iovec rece_iov;
 
-int 
-ping_from_kernel(struct nl_msg *msg, void *arg)
-{
-    const char *c_msg = "get your pid";
-	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
-
- 	printf("Received message payload:%s, type is:0x%x\n", (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
-
-	/* a ACK, or other thing. */
-	if (((r_nlh->nlmsg_type)&0xff) != NLMSG_DONE)
-		goto out;
-
-	if (strcmp(c_msg, (char *)NLMSG_DATA(r_nlh)) == 0)  
-		insmod_flag = 1;
-	else  
-		insmod_flag = 0;
-out:	
-	return NL_OK;
-}
-
-int 
-data_from_kernel(struct nl_msg *msg, void *arg)
-{
-	struct nlmsghdr *r_nlh = nlmsg_hdr(msg);
-
- 	printf("%s:Received message payload:%s, type is:0x%x\n", __FUNCTION__, (char *)NLMSG_DATA(r_nlh), (r_nlh->nlmsg_type)&0xff);
-
-	/* a ACK, or other thing. */
-	if (((r_nlh->nlmsg_type)&0xff) != NLMSG_DONE)
-		goto out;
-	
-	strcpy(buffer_libnl_libevent, (char *)NLMSG_DATA(r_nlh));
-
-out:
-	return NL_OK;
-}
-
-int 
-init_sock(void) 
+int init_sock() 
 {
 	int res = 0;
 
-    nls = nl_socket_alloc();
-    if (!nls) {
-        printf("bad nl_socket_alloc\n");
-        return EXIT_FAILURE;
-    }
+	netlink_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
+	printf("netlink_fd:%d\n", netlink_fd);
+	if (netlink_fd < 0)
+		return -1;
 
-	 nl_socket_disable_seq_check(nls);
-	 nl_socket_disable_auto_ack(nls);
+ 	memset(&src_addr, 0, sizeof(src_addr));
+ 	src_addr.nl_family = AF_NETLINK;
+ 	src_addr.nl_pid = getpid();  	/* self pid */
+ 	src_addr.nl_groups = 0;      	/* not in mcast groups */
 
-	 nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, ping_from_kernel, NULL);
+ 	bind(netlink_fd, (struct sockaddr*)&src_addr, sizeof(src_addr));
 
-    res = nl_connect(nls, NETLINK_USERSOCK);
-    if (res < 0) {
-        nl_perror(res, "nl_connect");
-        nl_socket_free(nls);
-        return EXIT_FAILURE;
-    }
+ 	memset(&dest_addr, 0, sizeof(dest_addr));
+ 	dest_addr.nl_family = AF_NETLINK;
+ 	dest_addr.nl_pid = 0;   		/* For Linux Kernel */
+ 	dest_addr.nl_groups = 0; 		/* unicast */
 
 	return res;
 }
 
-int 
-send_to_kernel(void) 
+void free_send_msg() 
 {
-	int ret = 0;
-    char msg[] = "give your present";
+	free(send_nlh);
+}
 
+int set_send_msg() 
+{
+ 	send_nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(MAX_PAYLOAD));
+
+	/* Fill the netlink message header */
+ 	send_nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
+ 	send_nlh->nlmsg_pid = getpid();  /* self pid */
+ 	send_nlh->nlmsg_flags = 0;
+	send_nlh->nlmsg_type = PING_PONG_TYPE;
+
+ 	/* Fill in the netlink message payload */
+ 	strcpy(NLMSG_DATA(send_nlh), "give your present!");
+
+	/* set struct iovec */
+ 	send_iov.iov_base = (void *)send_nlh;		/* starting address of buffer */
+ 	send_iov.iov_len = send_nlh->nlmsg_len;	    /* size of buffer */
+
+ 	send_msg.msg_name = (void *)&dest_addr;		/* protocol address */
+ 	send_msg.msg_namelen = sizeof(dest_addr); 	/* size of protocol address */
+ 	send_msg.msg_iov = &send_iov; 				/* scatter/gather array */
+ 	send_msg.msg_iovlen = 1;					/* elements in msg_iov */
+
+	return 0;
+}
+
+void free_rece_msg() 
+{
+	free(rece_nlh);
+}
+
+int set_rece_msg() 
+{
+ 	rece_nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(MAX_PAYLOAD));
+
+	/* Fill the netlink message header */
+ 	rece_nlh->nlmsg_len = NLMSG_SPACE(MAX_PAYLOAD);
+
+	/* set struct iovec */
+ 	rece_iov.iov_base = (void *)rece_nlh;		/* starting address of buffer */
+ 	rece_iov.iov_len = rece_nlh->nlmsg_len;	    /* size of buffer */
+
+ 	rece_msg.msg_name = (void *)&dest_addr;		/* protocol address */
+ 	rece_msg.msg_namelen = sizeof(dest_addr); 	/* size of protocol address */
+ 	rece_msg.msg_iov = &rece_iov; 				/* scatter/gather array */
+ 	rece_msg.msg_iovlen = 1;					/* elements in msg_iov */
+	
+	return 0;
+}
+
+void send_to_kernel() 
+{
 	printf("Sending message to kernel\n");
-    ret = nl_send_simple(nls, MY_MSG_TYPE, 0, msg, sizeof(msg));
-    if (ret < 0) {
-        nl_perror(ret, "nl_send_simple");
-        nl_close(nls);
-        nl_socket_free(nls);
-        return EXIT_FAILURE;
-    } else {
-        printf("sent %d bytes\n", ret);
-    }
-
-	return ret;
+ 	sendmsg(netlink_fd, &send_msg, 0);
 }
 
-int 
-rece_from_kernel(void)
+int rece_from_kernel()
 {
-	int ret;
-	ret = nl_recvmsgs_default(nls); 
- 	if (ret < 0) {
-        nl_perror(ret, "nl_recvmsgs_default");
-        nl_close(nls);
-        nl_socket_free(nls);
-        return EXIT_FAILURE;
-    } else {
-        printf("receive bytes\n");
-    }
+	int n;
+ 	/* Read message from kernel */
+ 	memset(rece_nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));
+ 	n = recvmsg(netlink_fd, &rece_msg, 0);
+	if (n > 0)
+		strncpy(buffer_libnl_libevent, (char *)NLMSG_DATA(rece_nlh), n);
 
-	return ret;
+	return n;
 }
 
-int 
-check_netlink_status(void) 
+void debug_info()
 {
+	if (rece_nlh != NULL && NLMSG_DATA(rece_nlh) != NULL)
+ 		printf("Received message payload:%s\n", (char *)NLMSG_DATA(rece_nlh));
+}
+
+int check_from_kernel() 
+{
+    const char *msg = "get your pid";
+
+ 	/* Read message from kernel */
+ 	memset(rece_nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));
+ 	recvmsg(netlink_fd, &rece_msg, 0);
+ 	printf("Received message payload:%s\n", (char *)NLMSG_DATA(rece_nlh));
+
+	if (strcmp(msg, (char *)NLMSG_DATA(rece_nlh)) == 0) 
+		return 0;
+	else 
+		return 1;
+}
+
+int check_netlink_status() 
+{
+	int res = 0;
 	int count = 0;
 
 restart:
 	send_to_kernel();
-	rece_from_kernel();
 
-	if (insmod_flag == 1) {
-		/*
-		 we need change this, libevent need it.
-         */
-		nl_socket_modify_cb(nls, NL_CB_MSG_IN, NL_CB_CUSTOM, data_from_kernel, NULL);
-		netlink_fd = nl_socket_get_fd(nls);
+	res = check_from_kernel();
+	if (res == 0)
 		return 0;
-	}
 	else {
 		count++;
 		
@@ -142,13 +148,32 @@ restart:
 		else 
 			return 1;
 	}
-
-	return 1;
 }
 
-void 
-free_netlink_resource(void) 
+void free_resource() 
 {
-    nl_close(nls);
-    nl_socket_free(nls);
+	free_send_msg();
+	free_rece_msg();
+	
+ 	/* Close Netlink Socket */
+    close(netlink_fd);
 }
+
+/*
+int main() {
+	int res = 0;
+
+	init_sock();
+
+	set_send_msg();
+	set_rece_msg();
+
+	res = check_netlink_status();  
+	if (res != 0)
+		printf("kernel module don't insmod. Please insmod it.\n");
+	else 
+		printf("kernel module insmod succcess.\n");
+
+	return 0;
+}
+*/
