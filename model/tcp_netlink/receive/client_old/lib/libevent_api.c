@@ -14,8 +14,7 @@ event_handler(evutil_socket_t fd, short event, void *arg)
 
 		ret_num = rece_from_kernel();
       	if (ret_num > 0) {
-			int n = strlen("send your message every 10s."); 	
-			buffer_libnl_libevent[n] = '\0';
+			size_t n = strlen(buffer_libnl_libevent); 	
        		printf("fd=%u, read line: %s\n", fd, buffer_libnl_libevent);
 			/* when function bufferevent_write return, data just copy to buffer not send to dst host. */
        		bufferevent_write(send_bev, buffer_libnl_libevent, n);
